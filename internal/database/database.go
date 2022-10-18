@@ -12,12 +12,12 @@ type DB struct {
 }
 
 type DBParams struct {
-	Host string
-	Port int64
-	User string
+	Host     string
+	Port     int64
+	User     string
 	Password string
-	DBName string
-	SSLMode string
+	DBName   string
+	SSLMode  string
 }
 
 func NewDatabase(params *DBParams) (*DB, error) {

@@ -24,12 +24,12 @@ func SetupConfig() *Config {
 
 	return &Config{
 		DBParams: &database.DBParams{
-			Host: os.Getenv("PG_HOST"),
-			Port: port,
-			User: os.Getenv("PG_USER"),
+			Host:     os.Getenv("PG_HOST"),
+			Port:     port,
+			User:     os.Getenv("PG_USER"),
 			Password: os.Getenv("PG_PASSWORD"),
-			DBName: os.Getenv("PG_DBNAME"),
-			SSLMode: os.Getenv("PG_SSLMODE"),
+			DBName:   os.Getenv("PG_DBNAME"),
+			SSLMode:  os.Getenv("PG_SSLMODE"),
 		},
 	}
 }

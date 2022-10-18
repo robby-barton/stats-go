@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	limiter "github.com/ulule/limiter/v3"
-	"github.com/ulule/limiter/v3/drivers/store/memory"
 	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
 type Server struct {
@@ -43,14 +43,14 @@ func NewServer() (*Server, error) {
 	return server, nil
 }
 
-func createLimiterMiddleware() (gin.HandlerFunc, error){
+func createLimiterMiddleware() (gin.HandlerFunc, error) {
 	rate, err := limiter.NewRateFromFormatted("5-S")
 	if err != nil {
 		return nil, err
 	}
 
 	store := memory.NewStore()
-	
+
 	return mgin.NewMiddleware(limiter.New(store, rate)), nil
 }
 
