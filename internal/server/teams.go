@@ -5,12 +5,16 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/robby-barton/stats-api/internal/database"
 )
 
 func (s *Server) teams(c *gin.Context) {
-	teams, err := s.DB.Query("select * from team_name")
-	if err != nil {
-		log.Println(err)
+	var teams []database.TeamName
+
+	result := s.DB.
+		Find(&teams)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
 		c.JSON(http.StatusOK, teams)
@@ -19,8 +23,14 @@ func (s *Server) teams(c *gin.Context) {
 
 func (s *Server) teamById(c *gin.Context) {
 	teamId := c.Param("id")
-	team, err := s.DB.Query("select * from team_name where team_id = $1", teamId)
-	if err != nil {
+
+	var team database.TeamName
+
+	result := s.DB.
+		Where("team_id = ?", teamId).
+		Find(&team)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
 		c.JSON(http.StatusOK, team)
@@ -29,11 +39,20 @@ func (s *Server) teamById(c *gin.Context) {
 
 func (s *Server) resultsByTeam(c *gin.Context) {
 	teamId := c.Param("team")
-	results, err := s.DB.Query("select * from team_week_result where team_id = $1 order by year, week, postseason desc", teamId)
-	if err != nil {
+
+	var teamResults []database.TeamWeekResult
+
+	result := s.DB.
+		Where("team_id = ?", teamId).
+		Order("year desc").
+		Order("postseason desc").
+		Order("week desc").
+		Find(&teamResults)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, teamResults)
 	}
 }
 

@@ -8,11 +8,12 @@ import (
 	limiter "github.com/ulule/limiter/v3"
 	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
+	"gorm.io/gorm"
 )
 
 type Server struct {
 	APIServer *gin.Engine
-	DB        *database.DB
+	DB        *gorm.DB
 	CFG       *config.Config
 }
 
