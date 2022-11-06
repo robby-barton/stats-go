@@ -4,15 +4,16 @@ import (
 	// "os"
 	// "os/signal"
 	// "syscall"
-	// "time"
 
-	"encoding/json"
 	"fmt"
+	"time"
 
-	"github.com/robby-barton/stats-api/internal/games"
+	"github.com/robby-barton/stats-api/internal/updater"
 )
 
 func main() {
+	start := time.Now()
+
 	// ticker := time.NewTicker(24 * time.Hour)
 	// quit := make(chan bool)
 	// go func() {
@@ -37,12 +38,15 @@ func main() {
 	// <- sigc
 	// quit <- true
 
-	weekGames, err := games.GetWeek(2022, 2, games.Regular, games.FBS)
-	fmt.Println(weekGames)
+	u, err := updater.NewUpdater()
+	if err != nil {
+		panic(err)
+	}
 
-	body, err := games.GetGameStats(401403869)
-
-	jsonBody, _ := json.MarshalIndent(body, "", "    ")
-	fmt.Println(string(jsonBody))
+	gameInfo, err := u.UpdateGamesForYear(2022)
+	fmt.Println(len(gameInfo))
 	fmt.Println(err)
+
+	duration := time.Since(start)
+	fmt.Println(duration)
 }

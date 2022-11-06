@@ -34,7 +34,8 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 
 	res, err := client.Do(req)
 	count := 1
-	for count < 5 && err != nil && os.IsTimeout(err) {
+	for count < 5 && ((err != nil && os.IsTimeout(err)) || res.StatusCode != 200) {
+		time.Sleep(1 * time.Second)
 		res, err = client.Do(req)
 		count += 1
 	}

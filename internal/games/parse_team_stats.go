@@ -86,6 +86,10 @@ func (s *ParsedGameInfo) parseTeamInfo(gameInfo GameInfoESPN) {
 	}
 
 	for _, teamStats := range gameInfo.GamePackage.Boxscore.Teams {
+		if len(teamStats.Statistics) == 0 {
+			continue
+		}
+
 		if teamStats.Team.Id == homeTeam.TeamId {
 			parseTeamStats(teamStats.Statistics, &homeTeam)
 		} else if teamStats.Team.Id == awayTeam.TeamId {
