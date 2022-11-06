@@ -43,8 +43,7 @@ func main() {
 		panic(err)
 	}
 
-	gameInfo, err := u.UpdateGamesForYear(2022)
-	fmt.Println(len(gameInfo))
+	err = u.UpdateGamesForYear(2022)
 	fmt.Println(err)
 
 	duration := time.Since(start)

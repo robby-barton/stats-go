@@ -6,6 +6,7 @@ import (
 
 	"github.com/robby-barton/stats-api/internal/database"
 	"github.com/robby-barton/stats-api/internal/games"
+	"gorm.io/gorm"
 )
 
 func combineGames(gamesLists [][]int64) []int64 {
@@ -46,15 +47,86 @@ func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
 	return newGames, nil
 }
 
-func (u *Updater) UpdateGamesForYear(year int64) ([]games.ParsedGameInfo, error) {
+func (u *Updater) insertGameInfo(game games.ParsedGameInfo) error {
+	return u.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&game.GameInfo).Error; err != nil {
+			return err
+		}
+
+		if len(game.TeamStats) > 0 {
+			if err := tx.Create(&game.TeamStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.PassingStats) > 0 {
+			if err := tx.Create(&game.PassingStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.RushingStats) > 0 {
+			if err := tx.Create(&game.RushingStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.ReceivingStats) > 0 {
+			if err := tx.Create(&game.ReceivingStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.FumbleStats) > 0 {
+			if err := tx.Create(&game.FumbleStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.DefensiveStats) > 0 {
+			if err := tx.Create(&game.DefensiveStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.InterceptionStats) > 0 {
+			if err := tx.Create(&game.InterceptionStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.ReturnStats) > 0 {
+			if err := tx.Create(&game.ReturnStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.KickStats) > 0 {
+			if err := tx.Create(&game.KickStats).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(game.PuntStats) > 0 {
+			if err := tx.Create(&game.PuntStats).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+}
+
+func (u *Updater) UpdateGamesForYear(year int64) error {
 	fbsGames, err := games.GetGamesByYear(year, games.FBS)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	fcsGames, err := games.GetGamesByYear(year, games.FCS)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	gameIds := combineGames([][]int64{fbsGames, fcsGames})
@@ -62,7 +134,7 @@ func (u *Updater) UpdateGamesForYear(year int64) ([]games.ParsedGameInfo, error)
 
 	gameIds, err = u.checkGames(gameIds)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var parsedGameInfo []games.ParsedGameInfo
@@ -71,13 +143,20 @@ func (u *Updater) UpdateGamesForYear(year int64) ([]games.ParsedGameInfo, error)
 		gameInfo, err := games.GetGameStats(gameId)
 		if err != nil {
 			fmt.Println(gameId)
-			return nil, err
+			return err
 		}
 
 		parsedGameInfo = append(parsedGameInfo, *gameInfo)
 
 		time.Sleep(200 * time.Millisecond)
 	}
+	fmt.Println(len(parsedGameInfo))
 
-	return parsedGameInfo, nil
+	for _, game := range parsedGameInfo {
+		if err := u.insertGameInfo(game); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

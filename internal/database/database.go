@@ -27,5 +27,7 @@ func NewDatabase(params *DBParams) (*gorm.DB, error) {
 		params.SSLMode,
 	)
 
-	return gorm.Open(postgres.Open(connInfo), &gorm.Config{})
+	return gorm.Open(postgres.Open(connInfo), &gorm.Config{
+		SkipDefaultTransaction: true, // handle my own transactions
+	})
 }
