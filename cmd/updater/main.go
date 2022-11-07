@@ -9,43 +9,29 @@ import (
 	"time"
 
 	"github.com/robby-barton/stats-api/internal/updater"
+
+	"github.com/go-co-op/gocron"
 )
 
 func main() {
-	start := time.Now()
-
-	// ticker := time.NewTicker(24 * time.Hour)
-	// quit := make(chan bool)
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <- ticker.C:
-	// 			println("Test")
-	// 		case <- quit:
-	// 			ticker.Stop()
-	// 			return
-	// 		}
-	// 	}
-	// }()
-
-	// sigc := make(chan os.Signal, 1)
-	// signal.Notify(
-	// 	sigc,
-	// 	syscall.SIGINT,
-	// 	syscall.SIGTERM,
-	// 	syscall.SIGQUIT,
-	// )
-	// <- sigc
-	// quit <- true
-
 	u, err := updater.NewUpdater()
 	if err != nil {
 		panic(err)
 	}
+	sqlDB, _ := u.DB.DB()
+	defer sqlDB.Close()
 
-	err = u.UpdateGamesForYear(2022)
-	fmt.Println(err)
+	s := gocron.NewScheduler(time.Local)
 
-	duration := time.Since(start)
-	fmt.Println(duration)
+	// update games at 5:30 AM every day
+	s.Every(1).Day().At("05:30").Do(func(){
+		start := time.Now()
+		err = u.UpdateGamesForYear(2022)
+		fmt.Println(err)
+
+		duration := time.Since(start)
+		fmt.Println(duration)
+	})
+
+	s.StartBlocking()
 }

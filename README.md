@@ -1,8 +1,12 @@
-# API Server for stats repo
-A Go API server using [Gin](https://github.com/gin-gonic/gin).
+# College Football Computer Ranking
+A set of Go services for ranking college football teams.
 
 ## Development
-### Running locally
+### Environment
 Copy `.env-sample` to `.env` and set the variables as needed to connect to the database.
 
-Run `make server` to start web server on `:8080`.
+### Server
+Run `make server` to start API server on `:8080`.
+
+### Updater
+Run `make updater` to run the updater to update new game info.

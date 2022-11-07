@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/gin-gonic/gin v1.8.1
+	github.com/go-co-op/gocron v1.17.1
 	github.com/joho/godotenv v1.4.0
 	github.com/ulule/limiter/v3 v3.10.0
 	gorm.io/driver/postgres v1.4.5
@@ -34,9 +35,11 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/ugorji/go/codec v1.2.7 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
