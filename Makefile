@@ -20,4 +20,7 @@ refresh-modules:
 build:
 	@echo "Building all projects"
 	@go build ./cmd/server
-	@go build ./cmd/game-updater
+	@go build ./cmd/updater
+
+clean:
+	@rm server updater
