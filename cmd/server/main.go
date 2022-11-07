@@ -9,7 +9,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer s.DB.Close()
+
+	// make sure to close underlying sql connection
+	sqlDB, _ := s.DB.DB()
+	defer sqlDB.Close()
 
 	s.APIServer.Run()
 }

@@ -3,75 +3,52 @@ package server
 import (
 	"log"
 	"net/http"
-	"strconv"
 
-	"github.com/robby-barton/stats-api/internal/common"
+	"github.com/robby-barton/stats-api/internal/database"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (s *Server) results(c *gin.Context) {
-	year, week, ps, err := common.GetTimeframe(s.DB, 0, 0)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{})
-		return
-	}
+	var teamResults []database.TeamWeekResult
 
-	results, err := s.DB.Query("select * from team_week_result where year = $1 and week = $2 and postseason = $3", year, week, ps)
-	if err != nil {
-		log.Println(err)
+	result := s.DB.Where("year = (?)", s.DB.Table("team_week_results").Select("MAX(year)")).
+		Find(&teamResults)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, teamResults)
 	}
 }
 
 func (s *Server) resultsForYear(c *gin.Context) {
-	year, err := strconv.ParseInt(c.Param("year"), 10, 64)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{})
-		return
-	}
+	var teamResults []database.TeamWeekResult
 
-	_, week, ps, err := common.GetTimeframe(s.DB, year, 0)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{})
-		return
-	}
-
-	results, err := s.DB.Query("select * from team_week_result where year = $1 and week = $2 and postseason = $3", year, week, ps)
-	if err != nil {
-		log.Println(err)
+	result := s.DB.Where("year = ?", c.Param("year")).
+		Order("postseason desc").
+		Order("week desc").
+		Order("final_rank desc").
+		Find(&teamResults)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, teamResults)
 	}
 }
 
 func (s *Server) resultsForWeek(c *gin.Context) {
-	year, err := strconv.ParseInt(c.Param("year"), 10, 64)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{})
-		return
-	}
+	var teamResults []database.TeamWeekResult
 
-	week, err := strconv.ParseInt(c.Param("week"), 10, 64)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{})
-		return
-	}
-
-	results, err := s.DB.Query("select * from team_week_result where year = $1 and week = $2 and postseason = $3", year, week, 0)
-	if err != nil {
-		log.Println(err)
+	result := s.DB.Where("year = ? AND week = ?", c.Param("year"), c.Param("week")).
+		Order("final_rank desc").
+		Find(&teamResults)
+	if result.Error != nil {
+		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, teamResults)
 	}
 }
 
