@@ -1,14 +1,14 @@
-.PHONY: server
+.PHONY: fmt run-server run-updater refresh-modules build clean
 
 fmt:
 	@echo "Running go fmt"
 	@go fmt ./...
 
-server:
+run-server:
 	@echo "Starting server"
 	@go run ./cmd/server
 
-updater:
+run-updater:
 	@echo "Starting updater"
 	@go run ./cmd/updater
 
@@ -17,10 +17,14 @@ refresh-modules:
 	@go get -u ./...
 	@go mod tidy
 
-build:
-	@echo "Building all projects"
+server:
 	@go build ./cmd/server
+
+updater:
 	@go build ./cmd/updater
 
+build: server updater
+	@echo "Building all projects"
+
 clean:
-	@rm server updater
+	@rm -rf server updater > /dev/null 2>&1
