@@ -20,7 +20,7 @@ func main() {
 	flag.BoolVar(&rating, "r", false, "print rating")
 	flag.Parse()
 
-	r, err := ranking.NewRanker()
+	r, err := ranking.NewRanker(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -31,7 +31,7 @@ func main() {
 	div, err := r.CalculateRanking(ranking.CalculateRankingParams{
 		Year: year,
 		Week: week,
-		Fbs:  !fcs,
+		Fcs:  fcs,
 	})
 	duration := time.Since(start)
 

@@ -13,12 +13,12 @@ func (r *Ranker) setup(params CalculateRankingParams) (TeamList, error) {
 
 	var teamList TeamList
 	var err error
-	if params.Fbs {
-		if teamList, err = r.createTeamList(1); err != nil {
+	if params.Fcs {
+		if teamList, err = r.createTeamList(0); err != nil {
 			return nil, err
 		}
 	} else {
-		if teamList, err = r.createTeamList(0); err != nil {
+		if teamList, err = r.createTeamList(1); err != nil {
 			return nil, err
 		}
 	}
@@ -103,6 +103,11 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 		teamList[team.TeamId] = &Team{
 			Name: team.Name,
 			Conf: team.Conf,
+			Year: year,
+			Week: week,
+		}
+		if postseason {
+			teamList[team.TeamId].Postseason = 1
 		}
 	}
 

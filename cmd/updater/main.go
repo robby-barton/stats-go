@@ -11,10 +11,12 @@ import (
 )
 
 func main() {
-	var scheduled, games bool
+	var scheduled, games, rank, rankAll bool
 
 	flag.BoolVar(&scheduled, "s", false, "run scheduler")
 	flag.BoolVar(&games, "g", false, "one-time game update")
+	flag.BoolVar(&rank, "r", false, "one-time ranking update")
+	flag.BoolVar(&rankAll, "a", false, "one-time update of all rankings")
 	flag.Parse()
 
 	u, err := updater.NewUpdater()
@@ -41,6 +43,14 @@ func main() {
 	} else {
 		if games {
 			err = u.UpdateGamesForYear(2022)
+			fmt.Println(err)
+		}
+		if rank {
+			err = u.UpdateRecentRankings()
+			fmt.Println(err)
+		}
+		if rankAll {
+			err = u.UpdateAllRankings()
 			fmt.Println(err)
 		}
 	}
