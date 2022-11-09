@@ -6,15 +6,15 @@ fmt:
 
 run-server:
 	@echo "Starting server"
-	@go run ./cmd/server
+	@go run ./cmd/server ${OPTS}
 
 run-updater:
 	@echo "Starting updater"
-	@go run ./cmd/updater
+	@go run ./cmd/updater ${OPTS}
 
 run-ranking:
 	@echo "Starting ranking"
-	@go run ./cmd/ranking
+	@go run ./cmd/ranking ${OPTS}
 
 refresh-modules:
 	@echo "Updating go modules"

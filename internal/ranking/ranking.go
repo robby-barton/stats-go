@@ -84,7 +84,7 @@ type CalculateRankingParams struct {
 	Fbs  bool
 }
 
-func PrintRankings(teamList TeamList) {
+func PrintRankings(teamList TeamList, top int) {
 	var ids []int64
 	for id := range teamList {
 		ids = append(ids, id)
@@ -101,8 +101,8 @@ func PrintRankings(teamList TeamList) {
 	fmt.Printf("Games up to %v\n", startTime)
 	fmt.Printf("%-5s %-25s %-7s %-8s %-5s %-5s %-5s %7s\n",
 		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "SoV", "Total")
-	for _, id := range ids {
-		team := teamList[id]
+	for i := 0; i < top; i++ {
+		team := teamList[ids[i]]
 		fmt.Printf("%-5d %-25s %-7s %-8s %-5d %-5d %-5d %.5f\n",
 			team.FinalRank, team.Name, team.Conf, team.Record, team.SRSRank,
 			team.SOSRank, team.SOVRank, team.FinalRaw)
