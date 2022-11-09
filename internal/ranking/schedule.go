@@ -49,7 +49,7 @@ func sos(teamList TeamList) {
 	})
 
 	max := teamList[ids[0]].SOS
-	min := teamList[ids[len(ids) - 1]].SOS
+	min := teamList[ids[len(ids)-1]].SOS
 	var prev float64
 	var prevRank int64
 	for rank, id := range ids {
@@ -73,7 +73,7 @@ func sos(teamList TeamList) {
 	})
 
 	max = teamList[ids[0]].SOV
-	min = teamList[ids[len(ids) - 1]].SOV
+	min = teamList[ids[len(ids)-1]].SOV
 	prev = 0
 	prevRank = 0
 	for rank, id := range ids {
