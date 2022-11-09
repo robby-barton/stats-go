@@ -9,11 +9,15 @@ import (
 )
 
 func main() {
+	// args
 	var year, week int64
-	var fcs bool
+	var top int
+	var fcs, rating bool
 	flag.Int64Var(&year, "y", 0, "ranking year")
 	flag.Int64Var(&week, "w", 0, "ranking week")
+	flag.IntVar(&top, "t", 0, "print top N teams")
 	flag.BoolVar(&fcs, "f", false, "rank FCS")
+	flag.BoolVar(&rating, "r", false, "print rating")
 	flag.Parse()
 
 	r, err := ranking.NewRanker()
@@ -24,14 +28,23 @@ func main() {
 	defer sqlDB.Close()
 
 	start := time.Now()
-	fbs, err := r.CalculateRanking(ranking.CalculateRankingParams{
+	div, err := r.CalculateRanking(ranking.CalculateRankingParams{
 		Year: year,
 		Week: week,
 		Fbs:  !fcs,
 	})
 	duration := time.Since(start)
 
-	ranking.PrintRankings(fbs)
+	// sanitize input
+	if top <= 0 || top > len(div) {
+		top = len(div)
+	}
+
+	if rating {
+		ranking.PrintSRS(div, top)
+	} else {
+		ranking.PrintRankings(div, top)
+	}
 	fmt.Println(err)
 	fmt.Println(duration)
 }
