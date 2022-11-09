@@ -32,12 +32,7 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGamesByWeek(
-	year int64,
-	week int64,
-	group group,
-	seasonType seasonType,
-) ([]int64, error) {
+func GetGamesByWeek(year int64, week int64, group group, seasonType seasonType) ([]int64, error) {
 	var games []int64
 
 	url := fmt.Sprintf(weekUrl, year, week, seasonType, group)
@@ -60,7 +55,7 @@ func GetGamesByWeek(
 	return games, nil
 }
 
-func getSeasonWeeksInYear(year int64) (int64, error) {
+func GetSeasonWeeksInYear(year int64) (int64, error) {
 	url := fmt.Sprintf(weekUrl, year, int64(1), Regular, FBS)
 
 	var res GameScheduleESPN
@@ -72,13 +67,24 @@ func getSeasonWeeksInYear(year int64) (int64, error) {
 	return int64(len(res.Content.Calendar[0].Weeks)), nil
 }
 
-func GetGamesByYear(
-	year int64,
-	group group,
-) ([]int64, error) {
+func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
+	url := fmt.Sprintf(weekUrl, year, int64(1), Regular, FBS)
+
+	var res GameScheduleESPN
+	err := makeRequest(url, &res)
+	if err != nil {
+		return false, err
+	}
+
+	postSeasonStart, _ := time.Parse("2006-01-02T15:04Z",
+		res.Content.Calendar[1].StartDate)
+	return postSeasonStart.Before(startTime), nil
+}
+
+func GetGamesByYear(year int64, group group) ([]int64, error) {
 	var gameIds []int64
 
-	numWeeks, err := getSeasonWeeksInYear(year)
+	numWeeks, err := GetSeasonWeeksInYear(year)
 	if err != nil {
 		return nil, err
 	}
