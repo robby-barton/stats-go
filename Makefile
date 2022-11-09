@@ -1,4 +1,5 @@
-.PHONY: fmt run-server run-updater run-ranking refresh-modules build clean
+.PHONY: fmt run-server run-updater run-ranker refresh-modules
+.PHONY: download-modules modules build clean
 
 fmt:
 	@echo "Running go fmt"
@@ -12,13 +13,18 @@ run-updater:
 	@echo "Starting updater"
 	@go run ./cmd/updater ${OPTS}
 
-run-ranking:
-	@echo "Starting ranking"
-	@go run ./cmd/ranking ${OPTS}
+run-ranker:
+	@echo "Starting ranker"
+	@go run ./cmd/ranker ${OPTS}
 
-refresh-modules:
-	@echo "Updating go modules"
+refresh-modules: download-modules modules
 	@go get -u ./...
+	@go mod tidy
+
+download-modules:
+	@go get -u ./...
+
+modules:
 	@go mod tidy
 
 server:
@@ -27,11 +33,11 @@ server:
 updater:
 	@go build ./cmd/updater
 
-ranking:
-	@go build ./cmd/ranking
+ranker:
+	@go build ./cmd/ranker
 
 build: server updater ranking
 	@echo "Building all projects"
 
 clean:
-	@rm -rf server updater ranking > /dev/null 2>&1
+	@rm -rf server updater ranker > /dev/null 2>&1
