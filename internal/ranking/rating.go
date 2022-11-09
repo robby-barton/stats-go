@@ -41,11 +41,19 @@ func PrintSRS(teamList TeamList, top int) {
 }
 
 func (r *Ranker) srs(teamList TeamList) error {
+	// range order over a map is not deterministic, so create a slice to ensure
+	// order when creating vectors/matrices for SoE
+	var teamOrder []int64
+	for id := range teamList {
+		teamOrder = append(teamOrder, id)
+	}
+
 	requiredGames := 6
 	// get previous season games just to be ready
 	var prevSeason []database.Game
 	if err := r.DB.Where("season = ?", year-1).
 		Order("start_time desc").Find(&prevSeason).Error; err != nil {
+
 		return err
 	}
 
@@ -87,6 +95,39 @@ func (r *Ranker) srs(teamList TeamList) error {
 				}
 				if divGames >= requiredGames {
 					break
+				}
+			}
+
+			/*
+				This solves the James Madison problem. In 2022 JMU moved to FBS and won it's
+				first 5 games. Since the rating system only takes into account games played
+				between division-mates (and only goes back through the previous year to backfill
+				in the beginning of the season) JMU ended up having fewer than the required amount
+				of games but all wins throwing off the rating scale. For teams in this situation
+				we can individually search for their remaining games against division-mates.
+			*/
+			if divGames < requiredGames {
+				var remainingGames []int64
+				if err := r.DB.Model(&database.Game{}).
+					Where(
+						"season < ? and ((home_id = ? and away_id in (?)) or "+
+							"(away_id = ? and home_id in (?)))",
+						year-1,
+						id,
+						teamOrder,
+						id,
+						teamOrder,
+					).Limit(requiredGames-divGames).Order("start_time desc").
+					Pluck("game_id", &remainingGames).Error; err != nil {
+
+					return nil
+				}
+				teamGames[id] = append(teamGames[id], remainingGames...)
+				for _, game := range remainingGames {
+					if _, ok := found[game]; !ok {
+						games = append(games, game)
+						found[game] = true
+					}
 				}
 			}
 		}
@@ -133,13 +174,6 @@ func (r *Ranker) srs(teamList TeamList) error {
 				spread.spread = -mov
 			}
 		}
-	}
-
-	// range order over a map is not deterministic, so create a slice to ensure
-	// order when creating vectors/matrices for SoE
-	var teamOrder []int64
-	for id := range teamList {
-		teamOrder = append(teamOrder, id)
 	}
 
 	var terms []float64

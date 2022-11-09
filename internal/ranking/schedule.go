@@ -48,6 +48,8 @@ func sos(teamList TeamList) {
 		return teamList[ids[i]].SOS > teamList[ids[j]].SOS
 	})
 
+	max := teamList[ids[0]].SOS
+	min := teamList[ids[len(ids) - 1]].SOS
 	var prev float64
 	var prevRank int64
 	for rank, id := range ids {
@@ -59,6 +61,7 @@ func sos(teamList TeamList) {
 			prev = team.SOS
 			prevRank = team.SOSRank
 		}
+		team.SOSNorm = (team.SOS - min) / (max - min)
 	}
 
 	ids = make([]int64, 0)
@@ -69,6 +72,8 @@ func sos(teamList TeamList) {
 		return teamList[ids[i]].SOV > teamList[ids[j]].SOV
 	})
 
+	max = teamList[ids[0]].SOV
+	min = teamList[ids[len(ids) - 1]].SOV
 	prev = 0
 	prevRank = 0
 	for rank, id := range ids {
@@ -80,5 +85,6 @@ func sos(teamList TeamList) {
 			prev = team.SOV
 			prevRank = team.SOVRank
 		}
+		team.SOVNorm = (team.SOV - min) / (max - min)
 	}
 }

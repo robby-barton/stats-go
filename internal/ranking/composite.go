@@ -16,6 +16,7 @@ func (r *Ranker) getComposites(teamList TeamList) error {
 	}
 	if err := r.DB.Where("year = ? and team_id in (?)", year, ids).
 		Find(&composites).Error; err != nil {
+
 		return err
 	}
 
