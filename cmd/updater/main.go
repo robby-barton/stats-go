@@ -28,7 +28,7 @@ func main() {
 		s := gocron.NewScheduler(time.Local)
 
 		// update games at 5:30 AM every day
-		s.Every(1).Day().At("05:30").Do(func(){
+		s.Every(1).Day().At("05:30").Do(func() {
 			start := time.Now()
 			err = u.UpdateGamesForYear(2022)
 			fmt.Println(err)
