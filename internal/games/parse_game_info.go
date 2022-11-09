@@ -14,7 +14,7 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo GameInfoESPN) {
 		gameInfo.GamePackage.Header.Competitions[0].Date)
 	game.Week = gameInfo.GamePackage.Header.Week
 	game.Season = gameInfo.GamePackage.Header.Season.Year
-	game.Postseason = int64(Postseason) - gameInfo.GamePackage.Header.Season.Type
+	game.Postseason = gameInfo.GamePackage.Header.Season.Type - int64(Regular)
 	if gameInfo.GamePackage.Header.Competitions[0].ConfGame {
 		game.ConfGame = 1
 	}

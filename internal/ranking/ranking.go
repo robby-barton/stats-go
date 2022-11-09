@@ -28,6 +28,9 @@ type Ranker struct {
 type Team struct {
 	Name          string
 	Conf          string
+	Year          int64
+	Week          int64
+	Postseason    int64
 	Schedule      []ScheduleGame
 	Record        Record
 	Composite     float64
@@ -64,12 +67,16 @@ type ScheduleGame struct {
 
 type TeamList map[int64]*Team
 
-func NewRanker() (*Ranker, error) {
+func NewRanker(existing *gorm.DB) (*Ranker, error) {
 	cfg := config.SetupConfig()
 
-	db, err := database.NewDatabase(cfg.DBParams)
-	if err != nil {
-		return nil, err
+	db := existing
+	if db == nil {
+		var err error
+		db, err = database.NewDatabase(cfg.DBParams)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Ranker{
@@ -81,7 +88,7 @@ func NewRanker() (*Ranker, error) {
 type CalculateRankingParams struct {
 	Year int64
 	Week int64
-	Fbs  bool
+	Fcs  bool
 }
 
 func PrintRankings(teamList TeamList, top int) {
@@ -110,8 +117,13 @@ func PrintRankings(teamList TeamList, top int) {
 }
 
 func (r *Ranker) CalculateRanking(globals CalculateRankingParams) (TeamList, error) {
-	var teamList TeamList
+	// reset globals for subsequent runs (updater can make multiple calls)
+	year = 0
+	week = 0
+	startTime = time.Time{}
+	postseason = false
 
+	var teamList TeamList
 	teamList, err := r.setup(globals)
 	if err != nil {
 		return nil, err
