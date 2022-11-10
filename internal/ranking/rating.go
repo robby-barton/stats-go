@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"

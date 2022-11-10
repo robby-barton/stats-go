@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/robby-barton/stats-api/internal/server"
+	"github.com/robby-barton/stats-go/internal/server"
 )
 
 func main() {

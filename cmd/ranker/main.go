@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/robby-barton/stats-api/internal/ranking"
+	"github.com/robby-barton/stats-go/internal/ranking"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/robby-barton/stats-api
+module github.com/robby-barton/stats-go
 
 go 1.18
 

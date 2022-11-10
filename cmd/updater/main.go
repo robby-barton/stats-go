@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/robby-barton/stats-api/internal/updater"
+	"github.com/robby-barton/stats-go/internal/updater"
 
 	"github.com/go-co-op/gocron"
 )

@@ -1,12 +1,13 @@
-package games
+package game
 
 import (
 	"time"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 )
 
-func (s *ParsedGameInfo) parseGameInfo(gameInfo GameInfoESPN) {
+func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) {
 	var game database.Game
 
 	game.GameId = gameInfo.GamePackage.Header.Id
@@ -14,7 +15,7 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo GameInfoESPN) {
 		gameInfo.GamePackage.Header.Competitions[0].Date)
 	game.Week = gameInfo.GamePackage.Header.Week
 	game.Season = gameInfo.GamePackage.Header.Season.Year
-	game.Postseason = gameInfo.GamePackage.Header.Season.Type - int64(Regular)
+	game.Postseason = gameInfo.GamePackage.Header.Season.Type - int64(espn.Regular)
 	if gameInfo.GamePackage.Header.Competitions[0].ConfGame {
 		game.ConfGame = 1
 	}

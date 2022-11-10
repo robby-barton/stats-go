@@ -1,14 +1,15 @@
-package games
+package game
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 )
 
-func createStatMaps(stats PlayerStatistics) []map[string]interface{} {
+func createStatMaps(stats espn.PlayerStatistics) []map[string]interface{} {
 	var statMaps []map[string]interface{}
 
 	keys := stats.Labels
@@ -39,7 +40,7 @@ func createStatMaps(stats PlayerStatistics) []map[string]interface{} {
 func parsePassingStats(
 	gameId int64,
 	teamId int64,
-	passStats PlayerStatistics,
+	passStats espn.PlayerStatistics,
 ) []database.PassingStats {
 	var retStats []database.PassingStats
 
@@ -76,7 +77,7 @@ func parsePassingStats(
 func parseRushingStats(
 	gameId int64,
 	teamId int64,
-	rushStats PlayerStatistics,
+	rushStats espn.PlayerStatistics,
 ) []database.RushingStats {
 	var retStats []database.RushingStats
 
@@ -111,7 +112,7 @@ func parseRushingStats(
 func parseReceivingStats(
 	gameId int64,
 	teamId int64,
-	recStats PlayerStatistics,
+	recStats espn.PlayerStatistics,
 ) []database.ReceivingStats {
 	var retStats []database.ReceivingStats
 
@@ -146,7 +147,7 @@ func parseReceivingStats(
 func parseFumbleStats(
 	gameId int64,
 	teamId int64,
-	fumbleStats PlayerStatistics,
+	fumbleStats espn.PlayerStatistics,
 ) []database.FumbleStats {
 	var retStats []database.FumbleStats
 
@@ -179,7 +180,7 @@ func parseFumbleStats(
 func parseDefensiveStats(
 	gameId int64,
 	teamId int64,
-	defStats PlayerStatistics,
+	defStats espn.PlayerStatistics,
 ) []database.DefensiveStats {
 	var retStats []database.DefensiveStats
 
@@ -220,7 +221,7 @@ func parseDefensiveStats(
 func parseInterceptionStats(
 	gameId int64,
 	teamId int64,
-	intStats PlayerStatistics,
+	intStats espn.PlayerStatistics,
 ) []database.InterceptionStats {
 	var retStats []database.InterceptionStats
 
@@ -253,7 +254,7 @@ func parseInterceptionStats(
 func parseReturnStats(
 	gameId int64,
 	teamId int64,
-	returnStats PlayerStatistics,
+	returnStats espn.PlayerStatistics,
 	returnType string,
 ) []database.ReturnStats {
 	var retStats []database.ReturnStats
@@ -290,7 +291,7 @@ func parseReturnStats(
 func parseKickStats(
 	gameId int64,
 	teamId int64,
-	kickStats PlayerStatistics,
+	kickStats espn.PlayerStatistics,
 ) []database.KickStats {
 	var retStats []database.KickStats
 
@@ -329,7 +330,7 @@ func parseKickStats(
 func parsePuntStats(
 	gameId int64,
 	teamId int64,
-	puntStats PlayerStatistics,
+	puntStats espn.PlayerStatistics,
 ) []database.PuntStats {
 	var retStats []database.PuntStats
 
@@ -363,7 +364,7 @@ func parsePuntStats(
 	return retStats
 }
 
-func (t *ParsedGameInfo) parsePlayerStats(gameInfo GameInfoESPN) {
+func (t *ParsedGameInfo) parsePlayerStats(gameInfo *espn.GameInfoESPN) {
 	gameId := gameInfo.GamePackage.Header.Id
 	players := gameInfo.GamePackage.Boxscore.Players
 	for _, playerStats := range players {
