@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/robby-barton/stats-api/internal/config"
-	"github.com/robby-barton/stats-api/internal/database"
-	"github.com/robby-barton/stats-api/internal/games"
+	"github.com/robby-barton/stats-go/internal/config"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 
 	"gorm.io/gorm"
 )
@@ -151,7 +151,7 @@ func (r *Ranker) CalculateRanking(globals CalculateRankingParams) (TeamList, err
 }
 
 func finalRanking(teamList TeamList) error {
-	numWeeks, err := games.GetSeasonWeeksInYear(year)
+	numWeeks, err := espn.GetWeeksInSeason(year)
 	if err != nil {
 		return err
 	}

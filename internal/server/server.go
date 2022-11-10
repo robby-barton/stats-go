@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/robby-barton/stats-api/internal/config"
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/config"
+	"github.com/robby-barton/stats-go/internal/database"
 
 	"github.com/gin-gonic/gin"
 	limiter "github.com/ulule/limiter/v3"

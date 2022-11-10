@@ -1,4 +1,4 @@
-package games
+package espn
 
 const weekUrl = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false" +
 	"&userab=18&year=%d&week=%d&seasontype=%d&group=%d"

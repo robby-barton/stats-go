@@ -1,4 +1,4 @@
-package games
+package espn
 
 const gameStatsUrl = "https://cdn.espn.com/core/college-football/playbyplay" +
 	"?gameId=%d&xhr=1&render=false&userab=18"
@@ -10,8 +10,6 @@ type GameInfoESPN struct {
 type GamePackage struct {
 	Header   Header   `json:"header"`
 	Boxscore Boxscore `json:"boxscore"`
-	// Drives       interface{} `json:"drives,omitEmpty"`
-	// ScoringPlays interface{} `json:"scoringPlays,omitEmpty"`
 }
 
 type Header struct {

@@ -1,4 +1,4 @@
-package games
+package espn
 
 import (
 	"encoding/json"

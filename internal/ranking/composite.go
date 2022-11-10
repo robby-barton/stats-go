@@ -3,7 +3,7 @@ package ranking
 import (
 	"sort"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
 )
 
 func (r *Ranker) getComposites(teamList TeamList) error {

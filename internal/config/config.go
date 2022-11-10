@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
 
 	"github.com/joho/godotenv"
 )

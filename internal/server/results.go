@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,9 +12,12 @@ import (
 func (s *Server) results(c *gin.Context) {
 	var teamResults []database.TeamWeekResult
 
-	result := s.DB.Where("year = (?)", s.DB.Table("team_week_results").Select("MAX(year)")).
-		Find(&teamResults)
-	if result.Error != nil {
+	if err := s.DB.Where("year = (?)", s.DB.Table("team_week_results").Select("MAX(year)")).
+		Order("postseason desc").
+		Order("week desc").
+		Order("final_rank desc").
+		Find(&teamResults).Error; err != nil {
+
 		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
@@ -25,12 +28,12 @@ func (s *Server) results(c *gin.Context) {
 func (s *Server) resultsForYear(c *gin.Context) {
 	var teamResults []database.TeamWeekResult
 
-	result := s.DB.Where("year = ?", c.Param("year")).
+	if err := s.DB.Where("year = ?", c.Param("year")).
 		Order("postseason desc").
 		Order("week desc").
 		Order("final_rank desc").
-		Find(&teamResults)
-	if result.Error != nil {
+		Find(&teamResults).Error; err != nil {
+
 		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
@@ -41,10 +44,10 @@ func (s *Server) resultsForYear(c *gin.Context) {
 func (s *Server) resultsForWeek(c *gin.Context) {
 	var teamResults []database.TeamWeekResult
 
-	result := s.DB.Where("year = ? AND week = ?", c.Param("year"), c.Param("week")).
+	if err := s.DB.Where("year = ? AND week = ?", c.Param("year"), c.Param("week")).
 		Order("final_rank desc").
-		Find(&teamResults)
-	if result.Error != nil {
+		Find(&teamResults).Error; err != nil {
+
 		log.Println(result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {

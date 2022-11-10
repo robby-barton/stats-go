@@ -3,8 +3,8 @@ package updater
 import (
 	"fmt"
 
-	"github.com/robby-barton/stats-api/internal/database"
-	"github.com/robby-barton/stats-api/internal/ranking"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/ranking"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

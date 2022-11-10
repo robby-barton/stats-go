@@ -2,10 +2,9 @@ package updater
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/robby-barton/stats-api/internal/database"
-	"github.com/robby-barton/stats-api/internal/games"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/game"
 	"gorm.io/gorm"
 )
 
@@ -47,7 +46,7 @@ func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
 	return newGames, nil
 }
 
-func (u *Updater) insertGameInfo(game games.ParsedGameInfo) error {
+func (u *Updater) insertGameInfo(game game.ParsedGameInfo) error {
 	return u.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&game.GameInfo).Error; err != nil {
 			return err
@@ -119,40 +118,21 @@ func (u *Updater) insertGameInfo(game games.ParsedGameInfo) error {
 }
 
 func (u *Updater) UpdateGamesForYear(year int64) error {
-	fbsGames, err := games.GetGamesByYear(year, games.FBS)
+	gameIds, err := game.GetGamesForSeason(year)
 	if err != nil {
 		return err
 	}
-
-	fcsGames, err := games.GetGamesByYear(year, games.FCS)
-	if err != nil {
-		return err
-	}
-
-	gameIds := combineGames([][]int64{fbsGames, fcsGames})
-	fmt.Println(gameIds)
 
 	gameIds, err = u.checkGames(gameIds)
 	if err != nil {
 		return err
 	}
 
-	var parsedGameInfo []games.ParsedGameInfo
-	for i, gameId := range gameIds {
-		fmt.Printf("%d/%d\n", i+1, len(gameIds))
-		gameInfo, err := games.GetGameStats(gameId)
-		if err != nil {
-			fmt.Println(gameId)
-			return err
-		}
+	gameStats, err := game.GetGameStats(gameIds)
 
-		parsedGameInfo = append(parsedGameInfo, *gameInfo)
+	fmt.Println(len(gameStats))
 
-		time.Sleep(200 * time.Millisecond)
-	}
-	fmt.Println(len(parsedGameInfo))
-
-	for _, game := range parsedGameInfo {
+	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {
 			return err
 		}

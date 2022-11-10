@@ -1,4 +1,4 @@
-package games
+package game
 
 import (
 	"fmt"
@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 )
 
-func parseTeamStats(stats []TeamStatistics, tgs *database.TeamGameStats) {
+func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
 
 	// ESPN occasionally throws in extra dashes into stats
 	var re = regexp.MustCompile(`\-+`)
@@ -67,7 +68,7 @@ func parseTeamStats(stats []TeamStatistics, tgs *database.TeamGameStats) {
 	}
 }
 
-func (s *ParsedGameInfo) parseTeamInfo(gameInfo GameInfoESPN) {
+func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN) {
 	homeTeam := database.TeamGameStats{
 		GameId: gameInfo.GamePackage.Header.Id,
 	}

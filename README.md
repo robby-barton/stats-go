@@ -41,6 +41,8 @@ Updater can run on-demand updates or run as a service and update on a schedule.
 | --- | --- | --- |
 | `-s` | `true` | Run as scheduler |
 | `-g` | `false` | Update games now. Will run once and exit. |
+| `-r` | `false` | Update current ranking now. Will run once and exit. |
+| `-a` | `false` | Update all rankings now. Will run once and exit. |
 
 ### Server
 Server is an API server for a pending site to host rankings.

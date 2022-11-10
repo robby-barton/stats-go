@@ -1,8 +1,8 @@
 package updater
 
 import (
-	"github.com/robby-barton/stats-api/internal/config"
-	"github.com/robby-barton/stats-api/internal/database"
+	"github.com/robby-barton/stats-go/internal/config"
+	"github.com/robby-barton/stats-go/internal/database"
 
 	"gorm.io/gorm"
 )
