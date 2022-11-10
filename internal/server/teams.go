@@ -12,7 +12,7 @@ func (s *Server) teams(c *gin.Context) {
 	var teams []database.TeamName
 
 	if err := s.DB.Find(&teams).Error; err != nil {
-		log.Println(result.Error)
+		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
 		c.JSON(http.StatusOK, teams)
@@ -25,7 +25,7 @@ func (s *Server) teamById(c *gin.Context) {
 	var team database.TeamName
 
 	if err := s.DB.Where("team_id = ?", teamId).Find(&team).Error; err != nil {
-		log.Println(result.Error)
+		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
 		c.JSON(http.StatusOK, team)
@@ -44,7 +44,7 @@ func (s *Server) resultsByTeam(c *gin.Context) {
 		Order("week desc").
 		Find(&teamResults).Error; err != nil {
 
-		log.Println(result.Error)
+		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 	} else {
 		c.JSON(http.StatusOK, teamResults)

@@ -26,7 +26,7 @@ func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	})
 }
 
-func teamListToTeamWeekResult(teamList ranking.TeamList) []database.TeamWeekResult {
+func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.TeamWeekResult {
 	var retTWR []database.TeamWeekResult
 
 	for id, result := range teamList {
@@ -42,13 +42,18 @@ func teamListToTeamWeekResult(teamList ranking.TeamList) []database.TeamWeekResu
 			SRSRank:    result.SRSRank,
 			SOSRank:    result.SOSRank,
 			SOVRank:    result.SOVRank,
+			Fbs:        fbs,
 		})
 	}
 
 	return retTWR
 }
 
-func rankingForWeek(ranker *ranking.Ranker, year int64, week int64) ([]database.TeamWeekResult, error) {
+func rankingForWeek(
+	ranker *ranking.Ranker,
+	year int64,
+	week int64,
+) ([]database.TeamWeekResult, error) {
 	var teamWeekResults []database.TeamWeekResult
 
 	fbsRanking, err := ranker.CalculateRanking(ranking.CalculateRankingParams{
@@ -58,7 +63,7 @@ func rankingForWeek(ranker *ranking.Ranker, year int64, week int64) ([]database.
 	if err != nil {
 		return nil, err
 	}
-	teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fbsRanking)...)
+	teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fbsRanking, true)...)
 
 	fcsRanking, err := ranker.CalculateRanking(ranking.CalculateRankingParams{
 		Year: year,
@@ -68,7 +73,7 @@ func rankingForWeek(ranker *ranking.Ranker, year int64, week int64) ([]database.
 	if err != nil {
 		return nil, err
 	}
-	teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fcsRanking)...)
+	teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fcsRanking, false)...)
 
 	return teamWeekResults, nil
 }
