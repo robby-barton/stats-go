@@ -61,7 +61,9 @@ func sos(teamList TeamList) {
 			prev = team.SOS
 			prevRank = team.SOSRank
 		}
-		team.SOSNorm = (team.SOS - min) / (max - min)
+		if max-min != 0 {
+			team.SOSNorm = (team.SOS - min) / (max - min)
+		}
 	}
 
 	ids = make([]int64, 0)
@@ -85,6 +87,8 @@ func sos(teamList TeamList) {
 			prev = team.SOV
 			prevRank = team.SOVRank
 		}
-		team.SOVNorm = (team.SOV - min) / (max - min)
+		if max-min != 0 {
+			team.SOVNorm = (team.SOV - min) / (max - min)
+		}
 	}
 }

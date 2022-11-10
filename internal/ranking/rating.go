@@ -236,7 +236,7 @@ func (r *Ranker) soe(teamList TeamList) error {
 			prevRank = team.SRSRank
 		}
 
-		if max-min > 0 {
+		if max-min != 0 {
 			team.SRSNorm = (team.SRS - min) / (max - min)
 		}
 	}
@@ -277,16 +277,16 @@ func (r *Ranker) srs(teamList TeamList) error {
 		if divGames < requiredGames {
 			for _, game := range prevSeason {
 				if game.HomeId == id || game.AwayId == id {
-				divGames++
-				teamGames[id] = append(teamGames[id], game.GameId)
-				if _, ok := found[game.GameId]; !ok {
-					games = append(games, game.GameId)
-					found[game.GameId] = true
+					divGames++
+					teamGames[id] = append(teamGames[id], game.GameId)
+					if _, ok := found[game.GameId]; !ok {
+						games = append(games, game.GameId)
+						found[game.GameId] = true
+					}
+					if divGames >= requiredGames {
+						break
+					}
 				}
-				if divGames >= requiredGames {
-					break
-				}
-			}
 			}
 		}
 	}
@@ -393,7 +393,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 			prevRank = team.SRSRank
 		}
 
-		if max-min > 0 {
+		if max-min != 0 {
 			team.SRSNorm = (team.SRS - min) / (max - min)
 		}
 	}

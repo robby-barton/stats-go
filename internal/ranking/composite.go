@@ -41,7 +41,7 @@ func (r *Ranker) getComposites(teamList TeamList) error {
 			prevRank = team.CompositeRank
 		}
 
-		if max-min > 0 {
+		if max-min != 0 {
 			team.CompositeNorm = (composite.Rating - min) / (max - min)
 		}
 	}
