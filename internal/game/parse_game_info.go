@@ -26,8 +26,10 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) {
 	for _, team := range gameInfo.GamePackage.Header.Competitions[0].Competitors {
 		if team.HomeAway == "home" {
 			game.HomeId = team.Id
+			game.HomeScore = team.Score
 		} else if team.HomeAway == "away" {
 			game.AwayId = team.Id
+			game.AwayScore = team.Score
 		}
 	}
 

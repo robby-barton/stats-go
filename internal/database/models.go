@@ -93,7 +93,9 @@ type Game struct {
 	Week       int64     `json:"week" gorm:"column:week"`
 	Postseason int64     `json:"postseason" gorm:"column:postseason"`
 	HomeId     int64     `json:"home_id" gorm:"column:home_id"`
+	HomeScore  int64     `json:"home_score" gorm:"column:home_score"`
 	AwayId     int64     `json:"away_id" gorm:"column:away_id"`
+	AwayScore  int64     `json:"away_score" gorm:"column:away_score"`
 	Retry      int64     `json:"retry" gorm:"column:retry"`
 }
 
