@@ -127,33 +127,13 @@ func (r *Ranker) addGames(teamList TeamList) error {
 		return err
 	}
 
-	var gameIds []int64
-	for _, game := range games {
-		gameIds = append(gameIds, game.GameId)
-	}
-	var tgsWinner []database.TeamGameStats
-	if err := r.DB.Select("distinct on (game_id) game_id, team_id").
-		Where(
-			"game_id in (?)",
-			gameIds,
-		).
-		Order("game_id").
-		Order("score desc").Find(&tgsWinner).Error; err != nil {
-
-		return err
-	}
-	winners := make(map[int64]int64)
-	for _, winner := range tgsWinner {
-		winners[winner.GameId] = winner.TeamId
-	}
-
 	for _, game := range games {
 		if home, ok := teamList[game.HomeId]; ok {
 			scheduleGame := ScheduleGame{
 				GameId:   game.GameId,
 				Opponent: game.AwayId,
 			}
-			if winners[game.GameId] == game.HomeId {
+			if game.HomeScore > game.AwayScore {
 				home.Record.Wins++
 				scheduleGame.Won = true
 			} else {
@@ -170,7 +150,7 @@ func (r *Ranker) addGames(teamList TeamList) error {
 				GameId:   game.GameId,
 				Opponent: game.HomeId,
 			}
-			if winners[game.GameId] == game.AwayId {
+			if game.AwayScore > game.HomeScore {
 				away.Record.Wins++
 				scheduleGame.Won = true
 			} else {

@@ -1,7 +1,6 @@
 package ranking
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -11,6 +10,9 @@ import (
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
+
+const requiredGames int = 6
+const runs int = 10000
 
 type gameSpreadSOE struct {
 	team     int64
@@ -49,118 +51,109 @@ func (r *Ranker) soe(teamList TeamList) error {
 		teamOrder = append(teamOrder, id)
 	}
 
-	requiredGames := 6
-	// get previous season games just to be ready
-	var prevSeason []database.Game
-	if err := r.DB.Where("season = ?", year-1).
-		Order("start_time desc").Find(&prevSeason).Error; err != nil {
+	// get games through last season
+	var gameList []database.Game
+	if err := r.DB.Where("season >= ? and start_time <= ?", year-1, startTime).
+		Order("start_time desc").Find(&gameList).Error; err != nil {
 
 		return err
 	}
 
-	teamGames := make(map[int64][]int64)
-	var games []int64
+	var games []database.Game
 	found := make(map[int64]bool)
-	for id, team := range teamList {
+	for id := range teamList {
 		divGames := 0
-		for _, g := range team.Schedule {
-			if _, ok := teamList[g.Opponent]; ok {
-				divGames++
-				teamGames[id] = append(teamGames[id], g.GameId)
-				if _, ok := found[g.GameId]; !ok {
-					games = append(games, g.GameId)
-					found[g.GameId] = true
-				}
-			}
-		}
-		if divGames < requiredGames {
-			for _, game := range prevSeason {
-				if game.HomeId == id {
-					if _, ok := teamList[game.AwayId]; ok {
+		for _, g := range gameList {
+			if g.Season == year {
+				if g.HomeId == id {
+					if _, ok := teamList[g.AwayId]; ok {
 						divGames++
-						teamGames[id] = append(teamGames[id], game.GameId)
-						if _, ok := found[game.GameId]; !ok {
-							games = append(games, game.GameId)
-							found[game.GameId] = true
+						if _, ok := found[g.GameId]; !ok {
+							games = append(games, g)
+							found[g.GameId] = true
 						}
 					}
-				} else if game.AwayId == id {
-					if _, ok := teamList[game.HomeId]; ok {
+				} else if g.AwayId == id {
+					if _, ok := teamList[g.HomeId]; ok {
 						divGames++
-						teamGames[id] = append(teamGames[id], game.GameId)
-						if _, ok := found[game.GameId]; !ok {
-							games = append(games, game.GameId)
-							found[game.GameId] = true
+						if _, ok := found[g.GameId]; !ok {
+							games = append(games, g)
+							found[g.GameId] = true
 						}
 					}
 				}
-				if divGames >= requiredGames {
+			} else {
+				if divGames < requiredGames {
+					if g.HomeId == id {
+						if _, ok := teamList[g.AwayId]; ok {
+							divGames++
+							if _, ok := found[g.GameId]; !ok {
+								games = append(games, g)
+								found[g.GameId] = true
+							}
+						}
+					} else if g.AwayId == id {
+						if _, ok := teamList[g.HomeId]; ok {
+							divGames++
+							if _, ok := found[g.GameId]; !ok {
+								games = append(games, g)
+								found[g.GameId] = true
+							}
+						}
+					}
+				} else {
 					break
 				}
 			}
+		}
 
-			/*
-				This solves the James Madison problem. In 2022 JMU moved to FBS and won it's
-				first 5 games. Since the rating system only takes into account games played
-				between division-mates (and only goes back through the previous year to backfill
-				in the beginning of the season) JMU ended up having fewer than the required amount
-				of games but all wins throwing off the rating scale. For teams in this situation
-				we can individually search for their remaining games against division-mates.
-			*/
-			if divGames < requiredGames {
-				var remainingGames []int64
-				if err := r.DB.Model(&database.Game{}).
-					Where(
-						"season < ? and ((home_id = ? and away_id in (?)) or "+
-							"(away_id = ? and home_id in (?)))",
-						year-1,
-						id,
-						teamOrder,
-						id,
-						teamOrder,
-					).Limit(requiredGames-divGames).Order("start_time desc").
-					Pluck("game_id", &remainingGames).Error; err != nil {
+		/*
+			This solves the James Madison problem. In 2022 JMU moved to FBS and won its
+			first 5 games. Since the rating system only takes into account games played
+			between division-mates (and only goes back through the previous year to backfill
+			in the beginning of the season) JMU ended up having fewer than the required amount
+			of games but all wins throwing off the rating scale. For teams in this situation
+			we can individually search for their remaining games against division-mates.
+		*/
+		if divGames < requiredGames {
+			var remainingGames []database.Game
+			if err := r.DB.
+				Where(
+					"season < ? and ((home_id = ? and away_id in (?)) or "+
+						"(away_id = ? and home_id in (?)))",
+					year-1,
+					id,
+					teamOrder,
+					id,
+					teamOrder,
+				).Limit(requiredGames - divGames).Order("start_time desc").
+				Find(&remainingGames).Error; err != nil {
 
-					return nil
-				}
-				teamGames[id] = append(teamGames[id], remainingGames...)
-				for _, game := range remainingGames {
-					if _, ok := found[game]; !ok {
-						games = append(games, game)
-						found[game] = true
-					}
+				return nil
+			}
+			for _, game := range remainingGames {
+				if _, ok := found[game.GameId]; !ok {
+					games = append(games, game)
+					found[game.GameId] = true
 				}
 			}
 		}
-	}
-
-	var gameStats []database.TeamGameStats
-	gameStatsMap := make(map[int64][]database.TeamGameStats)
-	if err := r.DB.Where("game_id in (?)", games).Find(&gameStats).Error; err != nil {
-		return err
-	}
-	for _, stat := range gameStats {
-		gameStatsMap[stat.GameId] = append(gameStatsMap[stat.GameId], stat)
 	}
 
 	teamGameInfo := map[int64][]*gameSpreadSOE{}
 	var spreads []float64
-	for id, stats := range gameStatsMap {
-		if len(stats) != 2 {
-			return errors.New(fmt.Sprintf("Not correct number of game stats (%d)", id))
-		}
-
-		spread := stats[0].Score - stats[1].Score
+	for _, game := range games {
+		spread := game.HomeScore - game.AwayScore
 		spreads = append(spreads, float64(spread), float64(-spread))
-		teamGameInfo[stats[0].TeamId] = append(teamGameInfo[stats[0].TeamId], &gameSpreadSOE{
-			team:     stats[0].TeamId,
+		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameSpreadSOE{
+			team:     game.HomeId,
 			spread:   float64(spread),
-			opponent: stats[1].TeamId,
+			opponent: game.AwayId,
 		})
-		teamGameInfo[stats[1].TeamId] = append(teamGameInfo[stats[1].TeamId], &gameSpreadSOE{
-			team:     stats[1].TeamId,
+		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameSpreadSOE{
+			team:     game.AwayId,
 			spread:   float64(-spread),
-			opponent: stats[0].TeamId,
+			opponent: game.HomeId,
 		})
 	}
 
@@ -251,62 +244,47 @@ type gameSpreadSRS struct {
 }
 
 func (r *Ranker) srs(teamList TeamList) error {
-	runs := 10000
-	requiredGames := 6
 	// get previous season games just to be ready
-	var prevSeason []database.Game
-	if err := r.DB.Where("season = ?", year-1).
-		Order("start_time desc").Find(&prevSeason).Error; err != nil {
+	var allGames []database.Game
+	if err := r.DB.Where("season >= ? and start_time <= ?", year-1, startTime).
+		Order("start_time desc").Find(&allGames).Error; err != nil {
 
 		return err
 	}
 
-	teamGames := make(map[int64][]int64)
-	var games []int64
+	var games []database.Game
 	found := make(map[int64]bool)
-	for id, team := range teamList {
+	for id := range teamList {
 		divGames := 0
-		for _, g := range team.Schedule {
-			divGames++
-			teamGames[id] = append(teamGames[id], g.GameId)
-			if _, ok := found[g.GameId]; !ok {
-				games = append(games, g.GameId)
-				found[g.GameId] = true
-			}
-		}
-		if divGames < requiredGames {
-			for _, game := range prevSeason {
+		for _, game := range allGames {
+			if game.Season == year {
 				if game.HomeId == id || game.AwayId == id {
 					divGames++
-					teamGames[id] = append(teamGames[id], game.GameId)
 					if _, ok := found[game.GameId]; !ok {
-						games = append(games, game.GameId)
+						games = append(games, game)
 						found[game.GameId] = true
 					}
-					if divGames >= requiredGames {
-						break
+				}
+			} else {
+				if divGames < requiredGames {
+					if game.HomeId == id || game.AwayId == id {
+						divGames++
+						if _, ok := found[game.GameId]; !ok {
+							games = append(games, game)
+							found[game.GameId] = true
+						}
+						if divGames >= requiredGames {
+							break
+						}
 					}
 				}
 			}
 		}
 	}
 
-	var gameStats []database.TeamGameStats
-	gameStatsMap := make(map[int64][]database.TeamGameStats)
-	if err := r.DB.Where("game_id in (?)", games).Find(&gameStats).Error; err != nil {
-		return err
-	}
-	for _, stat := range gameStats {
-		gameStatsMap[stat.GameId] = append(gameStatsMap[stat.GameId], stat)
-	}
-
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
-	for id, stats := range gameStatsMap {
-		if len(stats) != 2 {
-			return errors.New(fmt.Sprintf("Not correct number of game stats (%d)", id))
-		}
-
-		spread := stats[0].Score - stats[1].Score
+	for _, game := range games {
+		spread := game.HomeScore - game.AwayScore
 		if spread > 24 {
 			spread = 24
 		} else if spread < 7 && spread > 0 {
@@ -317,23 +295,23 @@ func (r *Ranker) srs(teamList TeamList) error {
 			spread = -24
 		}
 
-		firstId := stats[0].TeamId
-		if _, ok := teamList[firstId]; !ok {
-			firstId = 0
+		homeId := game.HomeId
+		if _, ok := teamList[homeId]; !ok {
+			homeId = 0
 		}
-		secondId := stats[1].TeamId
-		if _, ok := teamList[secondId]; !ok {
-			secondId = 0
+		awayId := game.AwayId
+		if _, ok := teamList[awayId]; !ok {
+			awayId = 0
 		}
-		teamGameInfo[firstId] = append(teamGameInfo[firstId], &gameSpreadSRS{
-			team:     firstId,
+		teamGameInfo[homeId] = append(teamGameInfo[homeId], &gameSpreadSRS{
+			team:     homeId,
 			spread:   spread,
-			opponent: secondId,
+			opponent: awayId,
 		})
-		teamGameInfo[secondId] = append(teamGameInfo[secondId], &gameSpreadSRS{
-			team:     secondId,
+		teamGameInfo[awayId] = append(teamGameInfo[awayId], &gameSpreadSRS{
+			team:     awayId,
 			spread:   -spread,
-			opponent: firstId,
+			opponent: homeId,
 		})
 	}
 
