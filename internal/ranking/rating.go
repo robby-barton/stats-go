@@ -1,7 +1,6 @@
 package ranking
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 
@@ -18,29 +17,6 @@ type gameSpreadSOE struct {
 	team     int64
 	spread   float64
 	opponent int64
-}
-
-func (r *Ranker) PrintSRS(teamList TeamList, top int) {
-	var ids []int64
-	for id := range teamList {
-		ids = append(ids, id)
-	}
-	sort.SliceStable(ids, func(i, j int) bool {
-		return teamList[ids[i]].SRSRank < teamList[ids[j]].SRSRank
-	})
-
-	if r.postseason {
-		fmt.Printf("%d Final\n", r.Year)
-	} else {
-		fmt.Printf("%d Week %d\n", r.Year, r.Week)
-	}
-	fmt.Printf("Games up to %v\n", r.startTime)
-	fmt.Printf("%-5s %-25s %-7s %9s\n", "Rank", "Team", "Conf", "SRS")
-	for i := 0; i < top; i++ {
-		team := teamList[ids[i]]
-		fmt.Printf("%-5d %-25s %-7s % 7.5f\n",
-			team.SRSRank, team.Name, team.Conf, team.SRS)
-	}
 }
 
 func (r *Ranker) soe(teamList TeamList) error {
@@ -273,10 +249,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 							games = append(games, game)
 							found[game.GameId] = true
 						}
-						if divGames >= requiredGames {
-							break
-						}
 					}
+				} else {
+					break
 				}
 			}
 		}
