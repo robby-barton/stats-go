@@ -16,12 +16,8 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) {
 	game.Week = gameInfo.GamePackage.Header.Week
 	game.Season = gameInfo.GamePackage.Header.Season.Year
 	game.Postseason = gameInfo.GamePackage.Header.Season.Type - int64(espn.Regular)
-	if gameInfo.GamePackage.Header.Competitions[0].ConfGame {
-		game.ConfGame = 1
-	}
-	if gameInfo.GamePackage.Header.Competitions[0].Neutral {
-		game.Neutral = 1
-	}
+	game.ConfGame = gameInfo.GamePackage.Header.Competitions[0].ConfGame
+	game.Neutral = gameInfo.GamePackage.Header.Competitions[0].Neutral
 
 	for _, team := range gameInfo.GamePackage.Header.Competitions[0].Competitors {
 		if team.HomeAway == "home" {

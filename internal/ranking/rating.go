@@ -339,7 +339,7 @@ func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]floa
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
-		if game.Neutral != 1 {
+		if game.Neutral {
 			spread -= hfa
 		}
 		if spread > mov {
