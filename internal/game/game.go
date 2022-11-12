@@ -39,7 +39,7 @@ func GetGameStats(gameIds []int64) ([]ParsedGameInfo, error) {
 
 		parsedGameStats = append(parsedGameStats, parsedGame)
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	return parsedGameStats, nil

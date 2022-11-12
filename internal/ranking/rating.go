@@ -10,8 +10,12 @@ import (
 	"gonum.org/v1/gonum/stat"
 )
 
-const requiredGames int = 6
-const runs int = 10000
+const (
+	mov           int64 = 30
+	hfa           int64 = 3
+	requiredGames int   = 6
+	runs          int   = 10000
+)
 
 type gameSpreadSOE struct {
 	team     int64
@@ -173,12 +177,9 @@ func (r *Ranker) soe(teamList TeamList) error {
 	solutionsMatrix := mat.NewVecDense(len(teamList), solutions)
 	resultsMatrix := mat.NewVecDense(len(teamList), nil)
 
-	/*
-		The terms matrix is near singular and has infinitely many solutions but the distances
-		between individual results (e.g. South Carolina - Clemson) is always the same, so I can
-		shift whatever solution I get to center on 0 and it ends up being the same between runs.
-		(Hopefully this never changes, though if it does I'd assume math is dead.)
-	*/
+	// ignoring error because matrix is always near-singular
+	// one of these days I'll figure out why numpy.linalg.solve handles this fine while
+	// gonum doesn't
 	_ = resultsMatrix.SolveVec(termsMatrix, solutionsMatrix)
 	results := mat.Col(nil, 0, resultsMatrix)
 	floats.AddConst(-floats.Sum(results)/float64(len(results)), results)
@@ -234,7 +235,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 		divGames := 0
 		for _, game := range allGames {
 			if game.Season == r.Year {
-				if game.HomeId == id || game.AwayId == id {
+				if (game.HomeId == id && teamList.teamIn(game.AwayId)) ||
+					(game.AwayId == id && teamList.teamIn(game.HomeId)) {
+
 					divGames++
 					if _, ok := found[game.GameId]; !ok {
 						games = append(games, game)
@@ -243,7 +246,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 				}
 			} else {
 				if divGames < requiredGames {
-					if game.HomeId == id || game.AwayId == id {
+					if (game.HomeId == id && teamList.teamIn(game.AwayId)) ||
+						(game.AwayId == id && teamList.teamIn(game.HomeId)) {
+
 						divGames++
 						if _, ok := found[game.GameId]; !ok {
 							games = append(games, game)
@@ -252,6 +257,42 @@ func (r *Ranker) srs(teamList TeamList) error {
 					}
 				} else {
 					break
+				}
+			}
+		}
+
+		/*
+			This solves the James Madison problem. In 2022 JMU moved to FBS and won its
+			first 5 games. Since the rating system only takes into account games played
+			between division-mates (and only goes back through the previous year to backfill
+			in the beginning of the season) JMU ended up having fewer than the required amount
+			of games but all wins throwing off the rating scale. For teams in this situation
+			we can individually search for their remaining games against division-mates.
+		*/
+		if divGames < requiredGames {
+			var allowedTeams []int64
+			for id := range teamList {
+				allowedTeams = append(allowedTeams, id)
+			}
+			var remainingGames []database.Game
+			if err := r.DB.
+				Where(
+					"season < ? and ((home_id = ? and away_id in (?)) or "+
+						"(away_id = ? and home_id in (?)))",
+					r.Year-1,
+					id,
+					allowedTeams,
+					id,
+					allowedTeams,
+				).Limit(requiredGames - divGames).Order("start_time desc").
+				Find(&remainingGames).Error; err != nil {
+
+				return nil
+			}
+			for _, game := range remainingGames {
+				if _, ok := found[game.GameId]; !ok {
+					games = append(games, game)
+					found[game.GameId] = true
 				}
 			}
 		}
@@ -298,29 +339,24 @@ func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]floa
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
-		if spread > 24 {
-			spread = 24
-		} else if spread < -24 {
-			spread = -24
+		if game.Neutral != 1 {
+			spread -= hfa
+		}
+		if spread > mov {
+			spread = mov
+		} else if spread < -mov {
+			spread = -mov
 		}
 
-		homeId := game.HomeId
-		if _, ok := teamList[homeId]; !ok {
-			homeId = 0
-		}
-		awayId := game.AwayId
-		if _, ok := teamList[awayId]; !ok {
-			awayId = 0
-		}
-		teamGameInfo[homeId] = append(teamGameInfo[homeId], &gameSpreadSRS{
-			team:     homeId,
+		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameSpreadSRS{
+			team:     game.HomeId,
 			spread:   spread,
-			opponent: awayId,
+			opponent: game.AwayId,
 		})
-		teamGameInfo[awayId] = append(teamGameInfo[awayId], &gameSpreadSRS{
-			team:     awayId,
+		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameSpreadSRS{
+			team:     game.AwayId,
 			spread:   -spread,
-			opponent: homeId,
+			opponent: game.HomeId,
 		})
 	}
 

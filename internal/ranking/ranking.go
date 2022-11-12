@@ -56,6 +56,13 @@ func (r Record) String() string {
 
 type TeamList map[int64]*Team
 
+func (t TeamList) teamIn(team int64) bool {
+	if _, ok := t[team]; !ok {
+		return false
+	}
+	return true
+}
+
 func (r *Ranker) CalculateRanking() (TeamList, error) {
 	var teamList TeamList
 	teamList, err := r.setup()
