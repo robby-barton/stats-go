@@ -87,8 +87,8 @@ func (TeamWeekResult) TableName() string {
 type Game struct {
 	GameId     int64     `json:"game_id" gorm:"column:game_id;primaryKey;not null;unique"`
 	StartTime  time.Time `json:"start_time" gorm:"column:start_time"`
-	Neutral    int64     `json:"neutral" gorm:"column:neutral"`
-	ConfGame   int64     `json:"conf_game" gorm:"column:conf_game"`
+	Neutral    bool      `json:"neutral" gorm:"column:neutral"`
+	ConfGame   bool      `json:"conf_game" gorm:"column:conf_game"`
 	Season     int64     `json:"season" gorm:"column:season"`
 	Week       int64     `json:"week" gorm:"column:week"`
 	Postseason int64     `json:"postseason" gorm:"column:postseason"`
