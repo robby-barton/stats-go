@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/robby-barton/stats-go/internal/config"
+	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/updater"
 
 	"github.com/go-co-op/gocron"
@@ -19,12 +21,18 @@ func main() {
 	flag.BoolVar(&rankAll, "a", false, "one-time update of all rankings")
 	flag.Parse()
 
-	u, err := updater.NewUpdater()
+	cfg := config.SetupConfig()
+
+	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
 		panic(err)
 	}
-	sqlDB, _ := u.DB.DB()
+	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
+
+	u := updater.Updater{
+		DB: db,
+	}
 
 	if scheduled {
 		s := gocron.NewScheduler(time.Local)
