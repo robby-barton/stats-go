@@ -6,23 +6,19 @@ import (
 	"sort"
 	"time"
 
-	"github.com/robby-barton/stats-go/internal/config"
-	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 
 	"gorm.io/gorm"
 )
 
-var (
-	year       int64
-	week       int64
+type Ranker struct {
+	DB   *gorm.DB
+	Year int64
+	Week int64
+	Fcs  bool
+
 	startTime  time.Time
 	postseason bool
-)
-
-type Ranker struct {
-	DB  *gorm.DB
-	CFG *config.Config
 }
 
 type Team struct {
@@ -67,31 +63,7 @@ type ScheduleGame struct {
 
 type TeamList map[int64]*Team
 
-func NewRanker(existing *gorm.DB) (*Ranker, error) {
-	cfg := config.SetupConfig()
-
-	db := existing
-	if db == nil {
-		var err error
-		db, err = database.NewDatabase(cfg.DBParams)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &Ranker{
-		DB:  db,
-		CFG: cfg,
-	}, nil
-}
-
-type CalculateRankingParams struct {
-	Year int64
-	Week int64
-	Fcs  bool
-}
-
-func PrintRankings(teamList TeamList, top int) {
+func (r *Ranker) PrintRankings(teamList TeamList, top int) {
 	var ids []int64
 	for id := range teamList {
 		ids = append(ids, id)
@@ -100,12 +72,12 @@ func PrintRankings(teamList TeamList, top int) {
 		return teamList[ids[i]].FinalRank < teamList[ids[j]].FinalRank
 	})
 
-	if postseason {
-		fmt.Printf("%d Final\n", year)
+	if r.postseason {
+		fmt.Printf("%d Final\n", r.Year)
 	} else {
-		fmt.Printf("%d Week %d\n", year, week)
+		fmt.Printf("%d Week %d\n", r.Year, r.Week)
 	}
-	fmt.Printf("Games up to %v\n", startTime)
+	fmt.Printf("Games up to %v\n", r.startTime)
 	fmt.Printf("%-5s %-25s %-7s %-8s %-5s %-5s %-5s %7s\n",
 		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "SoV", "Total")
 	for i := 0; i < top; i++ {
@@ -116,15 +88,9 @@ func PrintRankings(teamList TeamList, top int) {
 	}
 }
 
-func (r *Ranker) CalculateRanking(globals CalculateRankingParams) (TeamList, error) {
-	// reset globals for subsequent runs (updater can make multiple calls)
-	year = 0
-	week = 0
-	startTime = time.Time{}
-	postseason = false
-
+func (r *Ranker) CalculateRanking() (TeamList, error) {
 	var teamList TeamList
-	teamList, err := r.setup(globals)
+	teamList, err := r.setup()
 	if err != nil {
 		return nil, err
 	}
@@ -143,15 +109,15 @@ func (r *Ranker) CalculateRanking(globals CalculateRankingParams) (TeamList, err
 
 	sos(teamList)
 
-	if err = finalRanking(teamList); err != nil {
+	if err = r.finalRanking(teamList); err != nil {
 		return nil, err
 	}
 
 	return teamList, nil
 }
 
-func finalRanking(teamList TeamList) error {
-	numWeeks, err := espn.GetWeeksInSeason(year)
+func (r *Ranker) finalRanking(teamList TeamList) error {
+	numWeeks, err := espn.GetWeeksInSeason(r.Year)
 	if err != nil {
 		return err
 	}
@@ -159,8 +125,8 @@ func finalRanking(teamList TeamList) error {
 	numWeeks -= 2
 	sharedPct := 0.2
 	compositePct := 0.0
-	if !postseason {
-		compositePct = (math.Max(float64(numWeeks-week+1), 0.0) / float64(numWeeks)) * sharedPct
+	if !r.postseason {
+		compositePct = (math.Max(float64(numWeeks-r.Week+1), 0.0) / float64(numWeeks)) * sharedPct
 	}
 	schedulePct := sharedPct - compositePct
 	for _, team := range teamList {

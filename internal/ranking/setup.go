@@ -6,14 +6,14 @@ import (
 	"github.com/robby-barton/stats-go/internal/database"
 )
 
-func (r *Ranker) setup(params CalculateRankingParams) (TeamList, error) {
-	if err := r.setGlobals(params); err != nil {
+func (r *Ranker) setup() (TeamList, error) {
+	if err := r.setGlobals(); err != nil {
 		return nil, err
 	}
 
 	var teamList TeamList
 	var err error
-	if params.Fcs {
+	if r.Fcs {
 		if teamList, err = r.createTeamList(0); err != nil {
 			return nil, err
 		}
@@ -26,22 +26,20 @@ func (r *Ranker) setup(params CalculateRankingParams) (TeamList, error) {
 	return teamList, nil
 }
 
-func (r *Ranker) setGlobals(globals CalculateRankingParams) error {
-	if globals.Year > 0 {
-		year = globals.Year
-	} else {
+func (r *Ranker) setGlobals() error {
+	if r.Year == 0 {
 		currYear, currMonth, _ := time.Now().Date()
 		if currMonth >= 8 {
-			year = int64(currYear)
+			r.Year = int64(currYear)
 		} else {
-			year = int64(currYear - 1)
+			r.Year = int64(currYear - 1)
 		}
 	}
 
 	var game database.Game
-	if globals.Week > 0 {
+	if r.Week > 0 {
 		if err := r.DB.
-			Where("season = ? and week = ? and postseason = 0", year, globals.Week).
+			Where("season = ? and week = ? and postseason = 0", r.Year, r.Week).
 			Order("start_time asc").
 			Limit(1).
 			Find(&game).Error; err != nil {
@@ -51,14 +49,15 @@ func (r *Ranker) setGlobals(globals CalculateRankingParams) error {
 		if game != (database.Game{}) {
 			y, m, d := game.StartTime.
 				AddDate(0, 0, -int(game.StartTime.Weekday()-time.Tuesday)).Date()
-			startTime = time.Date(y, m, d, 0, 0, 0, 0, time.Local)
-			week = globals.Week
+			r.startTime = time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+		} else {
+			r.Week = 0
 		}
 	}
 
 	if game == (database.Game{}) {
 		if err := r.DB.
-			Where("season <= ?", year).
+			Where("season <= ?", r.Year).
 			Order("start_time desc").
 			Limit(1).
 			Find(&game).Error; err != nil {
@@ -67,16 +66,16 @@ func (r *Ranker) setGlobals(globals CalculateRankingParams) error {
 		}
 	}
 
-	if week == 0 {
-		week = game.Week + 1
+	if r.Week == 0 {
+		r.Week = game.Week + 1
 	}
 
-	if startTime == (time.Time{}) {
-		startTime = game.StartTime
+	if r.startTime == (time.Time{}) {
+		r.startTime = game.StartTime
 	}
 
 	if game.Postseason > 0 {
-		postseason = true
+		r.postseason = true
 	}
 
 	return nil
@@ -92,7 +91,7 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 	if err := r.DB.Model(&database.TeamSeason{}).
 		Select("team_names.team_id, team_names.name, team_seasons.conf").
 		Joins("left join team_names on team_seasons.team_id = team_names.team_id").
-		Where("team_seasons.fbs = ? and team_seasons.year = ?", findFbs, year).
+		Where("team_seasons.fbs = ? and team_seasons.year = ?", findFbs, r.Year).
 		Scan(&teams).Error; err != nil {
 
 		return nil, err
@@ -103,10 +102,10 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 		teamList[team.TeamId] = &Team{
 			Name: team.Name,
 			Conf: team.Conf,
-			Year: year,
-			Week: week,
+			Year: r.Year,
+			Week: r.Week,
 		}
-		if postseason {
+		if r.postseason {
 			teamList[team.TeamId].Postseason = 1
 		}
 	}
@@ -119,8 +118,8 @@ func (r *Ranker) addGames(teamList TeamList) error {
 	if err := r.DB.
 		Where(
 			"season = ? and start_time <= ?",
-			year,
-			startTime,
+			r.Year,
+			r.startTime,
 		).
 		Order("start_time asc").Find(&games).Error; err != nil {
 

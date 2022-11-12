@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/robby-barton/stats-go/internal/config"
+	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/ranking"
 )
 
@@ -20,19 +22,25 @@ func main() {
 	flag.BoolVar(&rating, "r", false, "print rating")
 	flag.Parse()
 
-	r, err := ranking.NewRanker(nil)
+	cfg := config.SetupConfig()
+
+	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
 		panic(err)
 	}
-	sqlDB, _ := r.DB.DB()
+
+	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	start := time.Now()
-	div, err := r.CalculateRanking(ranking.CalculateRankingParams{
+	r := ranking.Ranker{
+		DB:   db,
 		Year: year,
 		Week: week,
 		Fcs:  fcs,
-	})
+	}
+
+	start := time.Now()
+	div, err := r.CalculateRanking()
 	duration := time.Since(start)
 
 	// sanitize input
@@ -41,9 +49,9 @@ func main() {
 	}
 
 	if rating {
-		ranking.PrintSRS(div, top)
+		r.PrintSRS(div, top)
 	} else {
-		ranking.PrintRankings(div, top)
+		r.PrintRankings(div, top)
 	}
 	fmt.Println(err)
 	fmt.Println(duration)

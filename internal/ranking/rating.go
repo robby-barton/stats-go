@@ -20,7 +20,7 @@ type gameSpreadSOE struct {
 	opponent int64
 }
 
-func PrintSRS(teamList TeamList, top int) {
+func (r *Ranker) PrintSRS(teamList TeamList, top int) {
 	var ids []int64
 	for id := range teamList {
 		ids = append(ids, id)
@@ -29,12 +29,12 @@ func PrintSRS(teamList TeamList, top int) {
 		return teamList[ids[i]].SRSRank < teamList[ids[j]].SRSRank
 	})
 
-	if postseason {
-		fmt.Printf("%d Final\n", year)
+	if r.postseason {
+		fmt.Printf("%d Final\n", r.Year)
 	} else {
-		fmt.Printf("%d Week %d\n", year, week)
+		fmt.Printf("%d Week %d\n", r.Year, r.Week)
 	}
-	fmt.Printf("Games up to %v\n", startTime)
+	fmt.Printf("Games up to %v\n", r.startTime)
 	fmt.Printf("%-5s %-25s %-7s %9s\n", "Rank", "Team", "Conf", "SRS")
 	for i := 0; i < top; i++ {
 		team := teamList[ids[i]]
@@ -53,7 +53,7 @@ func (r *Ranker) soe(teamList TeamList) error {
 
 	// get games through last season
 	var gameList []database.Game
-	if err := r.DB.Where("season >= ? and start_time <= ?", year-1, startTime).
+	if err := r.DB.Where("season >= ? and start_time <= ?", r.Year-1, r.startTime).
 		Order("start_time desc").Find(&gameList).Error; err != nil {
 
 		return err
@@ -64,7 +64,7 @@ func (r *Ranker) soe(teamList TeamList) error {
 	for id := range teamList {
 		divGames := 0
 		for _, g := range gameList {
-			if g.Season == year {
+			if g.Season == r.Year {
 				if g.HomeId == id {
 					if _, ok := teamList[g.AwayId]; ok {
 						divGames++
@@ -121,7 +121,7 @@ func (r *Ranker) soe(teamList TeamList) error {
 				Where(
 					"season < ? and ((home_id = ? and away_id in (?)) or "+
 						"(away_id = ? and home_id in (?)))",
-					year-1,
+					r.Year-1,
 					id,
 					teamOrder,
 					id,
@@ -246,7 +246,7 @@ type gameSpreadSRS struct {
 func (r *Ranker) srs(teamList TeamList) error {
 	// get previous season games just to be ready
 	var allGames []database.Game
-	if err := r.DB.Where("season >= ? and start_time <= ?", year-1, startTime).
+	if err := r.DB.Where("season >= ? and start_time <= ?", r.Year-1, r.startTime).
 		Order("start_time desc").Find(&allGames).Error; err != nil {
 
 		return err
@@ -257,7 +257,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 	for id := range teamList {
 		divGames := 0
 		for _, game := range allGames {
-			if game.Season == year {
+			if game.Season == r.Year {
 				if game.HomeId == id || game.AwayId == id {
 					divGames++
 					if _, ok := found[game.GameId]; !ok {
@@ -282,6 +282,44 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
+	adjRatings := generateAdjRatings(teamList, games)
+
+	for id, rating := range adjRatings {
+		teamList[id].SRS = rating
+	}
+
+	var ids []int64
+	for id := range teamList {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return teamList[ids[i]].SRS > teamList[ids[j]].SRS
+	})
+
+	max := teamList[ids[0]].SRS
+	min := teamList[ids[len(ids)-1]].SRS
+	var prev float64
+	var prevRank int64
+	for rank, id := range ids {
+		team := teamList[id]
+
+		if team.SRS == prev {
+			team.SRSRank = prevRank
+		} else {
+			team.SRSRank = int64(rank + 1)
+			prev = float64(team.SRS)
+			prevRank = team.SRSRank
+		}
+
+		if max-min != 0 {
+			team.SRSNorm = (team.SRS - min) / (max - min)
+		}
+	}
+
+	return nil
+}
+
+func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]float64 {
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
@@ -344,37 +382,5 @@ func (r *Ranker) srs(teamList TeamList) error {
 	}
 	delete(adjRatings, 0)
 
-	for id, rating := range adjRatings {
-		teamList[id].SRS = rating
-	}
-
-	var ids []int64
-	for id := range teamList {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		return teamList[ids[i]].SRS > teamList[ids[j]].SRS
-	})
-
-	max := teamList[ids[0]].SRS
-	min := teamList[ids[len(ids)-1]].SRS
-	var prev float64
-	var prevRank int64
-	for rank, id := range ids {
-		team := teamList[id]
-
-		if team.SRS == prev {
-			team.SRSRank = prevRank
-		} else {
-			team.SRSRank = int64(rank + 1)
-			prev = float64(team.SRS)
-			prevRank = team.SRSRank
-		}
-
-		if max-min != 0 {
-			team.SRSNorm = (team.SRS - min) / (max - min)
-		}
-	}
-
-	return nil
+	return adjRatings
 }
