@@ -27,7 +27,6 @@ type Team struct {
 	Year          int64
 	Week          int64
 	Postseason    int64
-	Schedule      []ScheduleGame
 	Record        Record
 	Composite     float64
 	CompositeNorm float64
@@ -55,22 +54,12 @@ func (r Record) String() string {
 	return fmt.Sprintf("%d-%d", r.Wins, r.Losses)
 }
 
-type ScheduleGame struct {
-	GameId   int64
-	Opponent int64
-	Won      bool
-}
-
 type TeamList map[int64]*Team
 
 func (r *Ranker) CalculateRanking() (TeamList, error) {
 	var teamList TeamList
 	teamList, err := r.setup()
 	if err != nil {
-		return nil, err
-	}
-
-	if err = r.addGames(teamList); err != nil {
 		return nil, err
 	}
 
@@ -82,7 +71,9 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 		return nil, err
 	}
 
-	sos(teamList)
+	if err = r.recordAndSos(teamList); err != nil {
+		return nil, err
+	}
 
 	if err = r.finalRanking(teamList); err != nil {
 		return nil, err
