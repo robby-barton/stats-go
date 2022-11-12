@@ -49,27 +49,27 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.Te
 	return retTWR
 }
 
-func rankingForWeek(
-	ranker *ranking.Ranker,
-	year int64,
-	week int64,
-) ([]database.TeamWeekResult, error) {
+func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekResult, error) {
 	var teamWeekResults []database.TeamWeekResult
 
-	fbsRanking, err := ranker.CalculateRanking(ranking.CalculateRankingParams{
+	fbsRanker := ranking.Ranker{
+		DB:   u.DB,
 		Year: year,
 		Week: week,
-	})
+	}
+	fbsRanking, err := fbsRanker.CalculateRanking()
 	if err != nil {
 		return nil, err
 	}
 	teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fbsRanking, true)...)
 
-	fcsRanking, err := ranker.CalculateRanking(ranking.CalculateRankingParams{
+	fcsRanker := ranking.Ranker{
+		DB:   u.DB,
 		Year: year,
 		Week: week,
 		Fcs:  true,
-	})
+	}
+	fcsRanking, err := fcsRanker.CalculateRanking()
 	if err != nil {
 		return nil, err
 	}
@@ -79,12 +79,7 @@ func rankingForWeek(
 }
 
 func (u *Updater) UpdateRecentRankings() error {
-	ranker, err := ranking.NewRanker(u.DB)
-	if err != nil {
-		return err
-	}
-
-	weekRankings, err := rankingForWeek(ranker, 0, 0)
+	weekRankings, err := u.rankingForWeek(0, 0)
 	if err != nil {
 		return nil
 	}
@@ -98,10 +93,6 @@ func (u *Updater) UpdateRecentRankings() error {
 
 func (u *Updater) UpdateAllRankings() error {
 	var teamWeekResults []database.TeamWeekResult
-	ranker, err := ranking.NewRanker(u.DB)
-	if err != nil {
-		return err
-	}
 
 	var yearInfo []struct {
 		Year  int64
@@ -119,7 +110,7 @@ func (u *Updater) UpdateAllRankings() error {
 	for _, year := range yearInfo {
 		for week := int64(1); week <= year.Weeks; week++ {
 			fmt.Printf("%d/%d\n", year.Year, week)
-			weekRankings, err := rankingForWeek(ranker, year.Year, week)
+			weekRankings, err := u.rankingForWeek(year.Year, week)
 			if err != nil {
 				return nil
 			}
@@ -127,7 +118,7 @@ func (u *Updater) UpdateAllRankings() error {
 		}
 		// postseason or current week
 		fmt.Printf("%d/Final\n", year.Year)
-		weekRankings, err := rankingForWeek(ranker, year.Year, 0)
+		weekRankings, err := u.rankingForWeek(year.Year, 0)
 		if err != nil {
 			return nil
 		}
