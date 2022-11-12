@@ -300,10 +300,6 @@ func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]floa
 		spread := game.HomeScore - game.AwayScore
 		if spread > 24 {
 			spread = 24
-		} else if spread < 7 && spread > 0 {
-			spread = 7
-		} else if spread > -7 && spread < 0 {
-			spread = -7
 		} else if spread < -24 {
 			spread = -24
 		}
