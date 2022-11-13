@@ -70,7 +70,9 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 	}
 
 	for id, team := range teamList {
-		team.Record = *teamRecords[id]
+		if record, ok := teamRecords[id]; ok {
+			team.Record = *record
+		}
 	}
 
 	for team, sos := range teamSOS {
@@ -98,7 +100,10 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 	}
 
 	for id, team := range teamList {
-		sosVals := teamSOS[id]
+		sosVals, ok := teamSOS[id]
+		if !ok {
+			continue
+		}
 
 		var ooWins, ooGames, vooWins int64
 		for _, game := range sosVals.games {
