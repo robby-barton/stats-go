@@ -235,8 +235,8 @@ func (r *Ranker) srs(teamList TeamList) error {
 		divGames := 0
 		for _, game := range allGames {
 			if game.Season == r.Year {
-				if (game.HomeId == id && teamList.teamIn(game.AwayId)) ||
-					(game.AwayId == id && teamList.teamIn(game.HomeId)) {
+				if (game.HomeId == id && teamList.teamExists(game.AwayId)) ||
+					(game.AwayId == id && teamList.teamExists(game.HomeId)) {
 
 					divGames++
 					if _, ok := found[game.GameId]; !ok {
@@ -246,8 +246,8 @@ func (r *Ranker) srs(teamList TeamList) error {
 				}
 			} else {
 				if divGames < requiredGames {
-					if (game.HomeId == id && teamList.teamIn(game.AwayId)) ||
-						(game.AwayId == id && teamList.teamIn(game.HomeId)) {
+					if (game.HomeId == id && teamList.teamExists(game.AwayId)) ||
+						(game.AwayId == id && teamList.teamExists(game.HomeId)) {
 
 						divGames++
 						if _, ok := found[game.GameId]; !ok {
