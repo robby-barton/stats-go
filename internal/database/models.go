@@ -26,45 +26,6 @@ func (TeamSeason) TableName() string {
 	return "team_seasons"
 }
 
-type Roster struct {
-	PlayerId int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId   int64  `json:"team_id" gorm:"column:team_id;primaryKey"`
-	Year     int64  `json:"year" gorm:"column:year;primaryKey"`
-	Name     string `json:"name" gorm:"column:name"`
-	Num      int64  `json:"num" gorm:"column:num"`
-	Position string `json:"position" gorm:"column:position"`
-	Height   int64  `json:"height" gorm:"column:height"`
-	Weight   int64  `json:"weight" gorm:"column:weight"`
-	Grade    string `json:"grade" gorm:"column:grade"`
-	Hometown string `json:"hometown" gorm:"column:hometown"`
-}
-
-func (Roster) TableName() string {
-	return "roster"
-}
-
-type Recruiting struct {
-	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
-	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
-	Commits int64   `json:"commits" gorm:"column:commits"`
-	Rating  float64 `json:"rating" gorm:"column:rating"`
-}
-
-func (Recruiting) TableName() string {
-	return "recruiting"
-}
-
-type Composite struct {
-	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
-	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
-	Average float64 `json:"average" gorm:"column:average"`
-	Rating  float64 `json:"rating" gorm:"column:rating"`
-}
-
-func (Composite) TableName() string {
-	return "composite"
-}
-
 type TeamWeekResult struct {
 	TeamId     int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Year       int64   `json:"year" gorm:"column:year;primaryKey;not null"`
@@ -127,6 +88,45 @@ type TeamGameStats struct {
 
 func (TeamGameStats) TableName() string {
 	return "team_game_stats"
+}
+
+type Composite struct {
+	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
+	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
+	Average float64 `json:"average" gorm:"column:average"`
+	Rating  float64 `json:"rating" gorm:"column:rating"`
+}
+
+func (Composite) TableName() string {
+	return "composite"
+}
+
+type Recruiting struct {
+	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
+	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
+	Commits int64   `json:"commits" gorm:"column:commits"`
+	Rating  float64 `json:"rating" gorm:"column:rating"`
+}
+
+func (Recruiting) TableName() string {
+	return "recruiting"
+}
+
+type Roster struct {
+	PlayerId int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamId   int64  `json:"team_id" gorm:"column:team_id;primaryKey"`
+	Year     int64  `json:"year" gorm:"column:year;primaryKey"`
+	Name     string `json:"name" gorm:"column:name"`
+	Num      int64  `json:"num" gorm:"column:num"`
+	Position string `json:"position" gorm:"column:position"`
+	Height   int64  `json:"height" gorm:"column:height"`
+	Weight   int64  `json:"weight" gorm:"column:weight"`
+	Grade    string `json:"grade" gorm:"column:grade"`
+	Hometown string `json:"hometown" gorm:"column:hometown"`
+}
+
+func (Roster) TableName() string {
+	return "roster"
 }
 
 type Player struct {
