@@ -222,8 +222,19 @@ type gameSpreadSRS struct {
 
 func (r *Ranker) srs(teamList TeamList) error {
 	// get previous season games just to be ready
+	var allowedTeams []int64
+	for id := range teamList {
+		allowedTeams = append(allowedTeams, id)
+	}
 	var allGames []database.Game
-	if err := r.DB.Where("season >= ? and start_time <= ?", r.Year-1, r.startTime).
+	if err := r.DB.
+		Where(
+			"season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
+			r.Year-1,
+			r.startTime,
+			allowedTeams,
+			allowedTeams,
+		).
 		Order("start_time desc").Find(&allGames).Error; err != nil {
 
 		return err
@@ -239,7 +250,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 					(game.AwayId == id && teamList.teamExists(game.HomeId)) {
 
 					divGames++
-					if _, ok := found[game.GameId]; !ok {
+					if !found[game.GameId] {
 						games = append(games, game)
 						found[game.GameId] = true
 					}
@@ -250,7 +261,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 						(game.AwayId == id && teamList.teamExists(game.HomeId)) {
 
 						divGames++
-						if _, ok := found[game.GameId]; !ok {
+						if !found[game.GameId] {
 							games = append(games, game)
 							found[game.GameId] = true
 						}
@@ -270,10 +281,6 @@ func (r *Ranker) srs(teamList TeamList) error {
 			we can individually search for their remaining games against division-mates.
 		*/
 		if divGames < requiredGames {
-			var allowedTeams []int64
-			for id := range teamList {
-				allowedTeams = append(allowedTeams, id)
-			}
 			var remainingGames []database.Game
 			if err := r.DB.
 				Where(
@@ -290,7 +297,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 				return nil
 			}
 			for _, game := range remainingGames {
-				if _, ok := found[game.GameId]; !ok {
+				if !found[game.GameId] {
 					games = append(games, game)
 					found[game.GameId] = true
 				}
