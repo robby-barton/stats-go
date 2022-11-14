@@ -1,0 +1,41 @@
+Name: Push to DigitalOcean
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/**' # GitHub Actions changes
+      - 'Dockerfile'           # Dockerfile changes
+      - 'go.*'                 # go.mod or go.sum changes
+      - 'cmd/**'               # binary changes
+      - 'internal/**'          # internal package changes
+
+jobs:
+  deploy:
+    name: Build and push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v2
+
+      - name: Build api image
+        run: docker build -t registry.digitalocean.com/stats-go/api:latest --target api
+
+      - name: Build updater image
+        run: docker build -t registry.digitalocean.com/stats-go/updater:latest --target updater
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Push api image
+        run: docker push registry.digitalocean.com/stats-go/api:latest
+
+      - name: Push updater image
+        run: docker push registry.digitalocean.com/stats-go/updater:latest
