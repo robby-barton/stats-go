@@ -1,4 +1,4 @@
-Name: Push to DigitalOcean
+name: Push to DigitalOcean
 
 on:
   workflow_dispatch:
