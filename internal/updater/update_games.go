@@ -7,13 +7,13 @@ import (
 )
 
 func combineGames(gamesLists [][]int64) []int64 {
-	keys := make(map[int64]bool)
+	found := make(map[int64]bool)
 	var games []int64
 
 	for _, gamesList := range gamesLists {
 		for _, game := range gamesList {
-			if _, value := keys[game]; !value {
-				keys[game] = true
+			if !found[game] {
+				found[game] = true
 				games = append(games, game)
 			}
 		}
@@ -29,14 +29,14 @@ func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
+	exists := map[int64]bool{}
+	for _, x := range existing {
+		exists[x] = true
+	}
 
 	var newGames []int64
-	gameCheck := make(map[int64]struct{}, len(existing))
-	for _, x := range existing {
-		gameCheck[x] = struct{}{}
-	}
 	for _, game := range gameIds {
-		if _, found := gameCheck[game]; !found {
+		if !exists[game] {
 			newGames = append(newGames, game)
 		}
 	}

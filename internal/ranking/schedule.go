@@ -28,45 +28,38 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 		return err
 	}
 
-	teamsMap := map[int64]bool{}
-	for _, team := range allTeams {
-		teamsMap[team] = true
-	}
-
+	allowedTeam := map[int64]bool{}
 	teamSOS := make(map[int64]*sosCalc)
 	teamRecords := make(map[int64]*Record)
+	for _, team := range allTeams {
+		allowedTeam[team] = true
+		teamSOS[team] = &sosCalc{}
+		teamRecords[team] = &Record{}
+	}
+
 	for _, game := range games {
-		// create structs if they don't exist
-		if _, ok := teamSOS[game.HomeId]; !ok {
-			teamSOS[game.HomeId] = &sosCalc{}
+		if allowedTeam[game.HomeId] {
+			teamSOS[game.HomeId].games = append(teamSOS[game.HomeId].games, game)
+			homeRecord := teamRecords[game.HomeId]
+			if game.HomeScore > game.AwayScore {
+				homeRecord.Wins++
+			} else if game.AwayScore > game.HomeScore {
+				homeRecord.Losses++
+			}
+			homeRecord.Record = float64(homeRecord.Wins) /
+				float64(homeRecord.Wins+homeRecord.Losses)
 		}
-		if _, ok := teamSOS[game.AwayId]; !ok {
-			teamSOS[game.AwayId] = &sosCalc{}
+		if allowedTeam[game.AwayId] {
+			teamSOS[game.AwayId].games = append(teamSOS[game.AwayId].games, game)
+			awayRecord := teamRecords[game.AwayId]
+			if game.HomeScore > game.AwayScore {
+				awayRecord.Losses++
+			} else if game.AwayScore > game.HomeScore {
+				awayRecord.Wins++
+			}
+			awayRecord.Record = float64(awayRecord.Wins) /
+				float64(awayRecord.Wins+awayRecord.Losses)
 		}
-		if _, ok := teamRecords[game.HomeId]; !ok {
-			teamRecords[game.HomeId] = &Record{}
-		}
-		if _, ok := teamRecords[game.AwayId]; !ok {
-			teamRecords[game.AwayId] = &Record{}
-		}
-
-		teamSOS[game.HomeId].games = append(teamSOS[game.HomeId].games, game)
-		teamSOS[game.AwayId].games = append(teamSOS[game.AwayId].games, game)
-
-		homeRecord := teamRecords[game.HomeId]
-		awayRecord := teamRecords[game.AwayId]
-
-		if game.HomeScore > game.AwayScore {
-			homeRecord.Wins++
-			awayRecord.Losses++
-		} else if game.AwayScore > game.HomeScore {
-			homeRecord.Losses++
-			awayRecord.Wins++
-		}
-		homeRecord.Record = float64(homeRecord.Wins) /
-			float64(homeRecord.Wins+homeRecord.Losses)
-		awayRecord.Record = float64(awayRecord.Wins) /
-			float64(awayRecord.Wins+awayRecord.Losses)
 	}
 
 	for id, team := range teamList {
@@ -86,7 +79,7 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 				won = game.AwayScore > game.HomeScore
 				oppId = game.HomeId
 			}
-			if _, ok := teamsMap[oppId]; ok {
+			if allowedTeam[oppId] {
 				opp := teamRecords[oppId]
 				sos.oWins += opp.Wins
 				sos.oGames += (opp.Wins + opp.Losses)
@@ -116,7 +109,7 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 				won = game.AwayScore > game.HomeScore
 				oppId = game.HomeId
 			}
-			if _, ok := teamsMap[oppId]; ok {
+			if allowedTeam[oppId] {
 				oppSosVals := teamSOS[oppId]
 				ooWins += oppSosVals.oWins
 				ooGames += oppSosVals.oGames

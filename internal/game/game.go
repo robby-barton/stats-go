@@ -46,13 +46,13 @@ func GetGameStats(gameIds []int64) ([]ParsedGameInfo, error) {
 }
 
 func combineGames(gamesLists [][]int64) []int64 {
-	keys := make(map[int64]bool)
+	found := make(map[int64]bool)
 	var games []int64
 
 	for _, gamesList := range gamesLists {
 		for _, game := range gamesList {
-			if _, value := keys[game]; !value {
-				keys[game] = true
+			if !found[game] {
+				found[game] = true
 				games = append(games, game)
 			}
 		}
