@@ -20,10 +20,34 @@ type ESPNResponses interface {
 	GameInfoESPN | GameScheduleESPN
 }
 
+func GetCurrentWeekGames(group group) ([]int64, error) {
+	var games []int64
+
+	url := weekUrl + fmt.Sprintf("&group=%d", group)
+
+	var res GameScheduleESPN
+	err := makeRequest(url, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, day := range res.Content.Schedule {
+		for _, event := range day.Games {
+
+			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
+				games = append(games, event.Id)
+			}
+		}
+	}
+
+	return games, nil
+}
+
 func GetGamesByWeek(year int64, week int64, group group, seasonType seasonType) ([]int64, error) {
 	var games []int64
 
-	url := fmt.Sprintf(weekUrl, year, week, seasonType, group)
+	url := weekUrl +
+		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -44,7 +68,7 @@ func GetGamesByWeek(year int64, week int64, group group, seasonType seasonType) 
 }
 
 func GetWeeksInSeason(year int64) (int64, error) {
-	url := fmt.Sprintf(weekUrl, year, int64(1), Regular, FBS)
+	url := weekUrl + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -56,7 +80,7 @@ func GetWeeksInSeason(year int64) (int64, error) {
 }
 
 func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
-	url := fmt.Sprintf(weekUrl, year, int64(1), Regular, FBS)
+	url := weekUrl + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -97,9 +121,7 @@ func GetGamesBySeason(year int64, group group) ([]int64, error) {
 	return gameIds, nil
 }
 
-func GetGameStats(
-	gameId int64,
-) (*GameInfoESPN, error) {
+func GetGameStats(gameId int64) (*GameInfoESPN, error) {
 	url := fmt.Sprintf(gameStatsUrl, gameId)
 
 	var res GameInfoESPN
