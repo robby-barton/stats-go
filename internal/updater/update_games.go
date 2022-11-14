@@ -1,8 +1,6 @@
 package updater
 
 import (
-	"fmt"
-
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/game"
 	"gorm.io/gorm"
@@ -117,26 +115,46 @@ func (u *Updater) insertGameInfo(game game.ParsedGameInfo) error {
 
 }
 
-func (u *Updater) UpdateGamesForYear(year int64) error {
-	gameIds, err := game.GetGamesForSeason(year)
+func (u *Updater) UpdateCurrentWeek() (int, error) {
+	gameIds, err := game.GetCurrentWeekGames()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	gameIds, err = u.checkGames(gameIds)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	gameStats, err := game.GetGameStats(gameIds)
 
-	fmt.Println(len(gameStats))
-
 	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return nil
+	return len(gameStats), nil
+}
+
+func (u *Updater) UpdateGamesForYear(year int64) (int, error) {
+	gameIds, err := game.GetGamesForSeason(year)
+	if err != nil {
+		return 0, err
+	}
+
+	gameIds, err = u.checkGames(gameIds)
+	if err != nil {
+		return 0, err
+	}
+
+	gameStats, err := game.GetGameStats(gameIds)
+
+	for _, game := range gameStats {
+		if err := u.insertGameInfo(game); err != nil {
+			return 0, err
+		}
+	}
+
+	return len(gameStats), nil
 }

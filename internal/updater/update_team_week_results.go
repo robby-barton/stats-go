@@ -1,8 +1,6 @@
 package updater
 
 import (
-	"fmt"
-
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/ranking"
 	"gorm.io/gorm"
@@ -109,7 +107,7 @@ func (u *Updater) UpdateAllRankings() error {
 
 	for _, year := range yearInfo {
 		for week := int64(1); week <= year.Weeks; week++ {
-			fmt.Printf("%d/%d\n", year.Year, week)
+			u.Logger.Infof("%d/%d", year.Year, week)
 			weekRankings, err := u.rankingForWeek(year.Year, week)
 			if err != nil {
 				return nil
@@ -117,7 +115,7 @@ func (u *Updater) UpdateAllRankings() error {
 			teamWeekResults = append(teamWeekResults, weekRankings...)
 		}
 		// postseason or current week
-		fmt.Printf("%d/Final\n", year.Year)
+		u.Logger.Infof("%d/Final", year.Year)
 		weekRankings, err := u.rankingForWeek(year.Year, 0)
 		if err != nil {
 			return nil

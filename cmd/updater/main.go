@@ -2,23 +2,30 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
 
 	"github.com/go-co-op/gocron"
 )
 
 func main() {
-	var scheduled, games, rank, rankAll bool
+	logger := logger.NewLogger()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+
+	var scheduled, games, rank, all bool
 
 	flag.BoolVar(&scheduled, "s", false, "run scheduler")
 	flag.BoolVar(&games, "g", false, "one-time game update")
 	flag.BoolVar(&rank, "r", false, "one-time ranking update")
-	flag.BoolVar(&rankAll, "a", false, "one-time update of all rankings")
+	flag.BoolVar(&all, "a", false, "update all rankings or games")
 	flag.Parse()
 
 	cfg := config.SetupConfig()
@@ -31,35 +38,89 @@ func main() {
 	defer sqlDB.Close()
 
 	u := updater.Updater{
-		DB: db,
+		DB:     db,
+		Logger: sugar,
 	}
 
 	if scheduled {
 		s := gocron.NewScheduler(time.Local)
 
-		// update games at 5:30 AM every day
-		s.Every(1).Day().At("05:30").Do(func() {
-			start := time.Now()
-			err = u.UpdateGamesForYear(2022)
-			fmt.Println(err)
+		update := make(chan bool, 1)
+		stop := make(chan bool, 1)
+		go func() {
+			for {
+				select {
+				case <-update:
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								sugar.Errorf("panic caught: %s", r)
+							}
+						}()
 
-			duration := time.Since(start)
-			fmt.Println(duration)
+						err = u.UpdateRecentRankings()
+						if err != nil {
+							sugar.Error(err)
+						} else {
+							sugar.Info("rankings updated")
+						}
+					}()
+				case <-stop:
+					return
+				}
+			}
+		}()
+
+		s.Cron("*/5 * * 1,8-12 *").Do(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					sugar.Errorf("panic caught: %s", r)
+				}
+			}()
+
+			addedGames, err := u.UpdateCurrentWeek()
+
+			sugar.Infof("Added %d games\n", addedGames)
+			if addedGames > 0 {
+				update <- true
+			} else if err != nil {
+				sugar.Error(err)
+			}
 		})
 
-		s.StartBlocking()
+		s.StartAsync()
+
+		end := make(chan os.Signal, 1)
+		signal.Notify(end, syscall.SIGINT, syscall.SIGTERM)
+
+		<-end
+		s.Stop()
+		stop <- true
 	} else {
+		var err error
 		if games {
-			err = u.UpdateGamesForYear(2022)
-			fmt.Println(err)
+			var addedGames int
+			if all {
+				year, _, _ := time.Now().Date()
+				addedGames, err = u.UpdateGamesForYear(int64(year))
+			} else {
+				addedGames, err = u.UpdateCurrentWeek()
+			}
+			if err != nil {
+				sugar.Error(err)
+			} else {
+				sugar.Infof("Added %d games\n", addedGames)
+			}
 		}
 		if rank {
-			err = u.UpdateRecentRankings()
-			fmt.Println(err)
-		}
-		if rankAll {
-			err = u.UpdateAllRankings()
-			fmt.Println(err)
+			if all {
+				err = u.UpdateAllRankings()
+			} else {
+				err = u.UpdateRecentRankings()
+			}
+			if err != nil {
+				sugar.Error(err)
+			}
 		}
 	}
 }

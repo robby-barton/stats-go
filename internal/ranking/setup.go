@@ -28,12 +28,13 @@ func (r *Ranker) setup() (TeamList, error) {
 
 func (r *Ranker) setGlobals() error {
 	if r.Year == 0 {
-		currYear, currMonth, _ := time.Now().Date()
-		if currMonth >= 8 {
-			r.Year = int64(currYear)
-		} else {
-			r.Year = int64(currYear - 1)
+		var year int64
+		if err := r.DB.Model(database.TeamSeason{}).
+			Select("max(year) as year").Pluck("year", &year).Error; err != nil {
+
+			return err
 		}
+		r.Year = year
 	}
 
 	var game database.Game
@@ -66,16 +67,20 @@ func (r *Ranker) setGlobals() error {
 		}
 	}
 
-	if r.Week == 0 {
-		r.Week = game.Week + 1
+	if game.Season < r.Year {
+		r.Week = 1
+	} else {
+		if r.Week == 0 {
+			r.Week = game.Week + 1
+		}
+
+		if game.Postseason > 0 {
+			r.postseason = true
+		}
 	}
 
 	if r.startTime == (time.Time{}) {
 		r.startTime = game.StartTime
-	}
-
-	if game.Postseason > 0 {
-		r.postseason = true
 	}
 
 	return nil

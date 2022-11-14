@@ -61,6 +61,22 @@ func combineGames(gamesLists [][]int64) []int64 {
 	return games
 }
 
+func GetCurrentWeekGames() ([]int64, error) {
+	fbsGames, err := espn.GetCurrentWeekGames(espn.FBS)
+	if err != nil {
+		return nil, err
+	}
+
+	fcsGames, err := espn.GetCurrentWeekGames(espn.FCS)
+	if err != nil {
+		return nil, err
+	}
+
+	gameIds := combineGames([][]int64{fbsGames, fcsGames})
+
+	return gameIds, nil
+}
+
 func GetGamesForSeason(year int64) ([]int64, error) {
 	fbsGames, err := espn.GetGamesBySeason(year, espn.FBS)
 	if err != nil {
