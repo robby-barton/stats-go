@@ -9,7 +9,7 @@ ADD internal ./internal
 RUN go build -o server ./cmd/server
 RUN go build -o updater ./cmd/updater
 
-FROM alpine:latest as server
+FROM alpine:latest as api
 WORKDIR /
 
 RUN apk add --no-cache tzdata

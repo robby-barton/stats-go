@@ -21,10 +21,10 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build api image
-        run: docker build -t registry.digitalocean.com/stats-go/api:latest --target api
+        run: docker build -t registry.digitalocean.com/stats-go/api:latest --target api .
 
       - name: Build updater image
-        run: docker build -t registry.digitalocean.com/stats-go/updater:latest --target updater
+        run: docker build -t registry.digitalocean.com/stats-go/updater:latest --target updater .
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
