@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	Env      string
 	DBParams *database.DBParams
 }
 
@@ -23,6 +24,7 @@ func SetupConfig() *Config {
 	port, _ := strconv.ParseInt(os.Getenv("PG_PORT"), 10, 64)
 
 	return &Config{
+		Env: env,
 		DBParams: &database.DBParams{
 			Host:     os.Getenv("PG_HOST"),
 			Port:     port,
