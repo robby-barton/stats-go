@@ -79,7 +79,7 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 func (u *Updater) UpdateRecentRankings() error {
 	weekRankings, err := u.rankingForWeek(0, 0)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if err := u.insertRankingsToDB(weekRankings); err != nil {
@@ -110,7 +110,7 @@ func (u *Updater) UpdateAllRankings() error {
 			u.Logger.Infof("%d/%d", year.Year, week)
 			weekRankings, err := u.rankingForWeek(year.Year, week)
 			if err != nil {
-				return nil
+				return err
 			}
 			teamWeekResults = append(teamWeekResults, weekRankings...)
 		}
@@ -118,7 +118,7 @@ func (u *Updater) UpdateAllRankings() error {
 		u.Logger.Infof("%d/Final", year.Year)
 		weekRankings, err := u.rankingForWeek(year.Year, 0)
 		if err != nil {
-			return nil
+			return err
 		}
 		teamWeekResults = append(teamWeekResults, weekRankings...)
 	}
