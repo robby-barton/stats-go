@@ -28,6 +28,10 @@ func NewServer() (*Server, error) {
 
 	cfg := config.SetupConfig()
 
+	if cfg.Env == "prod" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
 		return nil, err
