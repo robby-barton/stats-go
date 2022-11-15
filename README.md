@@ -12,17 +12,15 @@ The services are currenlty set up to only connect to Postgres databases.
 
 ## Services
 ### Running and Building
-Each of the services can be run locally using `make run-{ranker,updater,server}` and their
-binaries can be built with `make {ranker,updater,server}`.
+Each of the services can be run locally using `make {ranker,updater,server}`.
 
-When running the services with `make run-*` you can pass command line arguments by appending
-`OPTS="..."` to the make call: `make run-ranker OPTS="-t 25"`.
+When running the services locally you can pass command line arguments by appending
+`OPTS="..."` to the make call: `make ranker OPTS="-t 25"`.
 
 ### Ranker
 Ranker will generate a ranking for the year/week requested and print the results.
 
 #### Options
-The ranker has the following options:
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `-y YEAR` | `int` | most recent | The year to rank |
@@ -42,7 +40,7 @@ Updater can run on-demand updates or run as a service and update on a schedule.
 | `-s` | `true` | Run as scheduler |
 | `-g` | `false` | Update games now. Will run once and exit. |
 | `-r` | `false` | Update current ranking now. Will run once and exit. |
-| `-a` | `false` | Update all rankings now. Will run once and exit. |
+| `-a` | `false` | Update all games or rankings. Use with `-g` or `-r`. |
 
 ### Server
 Server is an API server for a pending site to host rankings.
