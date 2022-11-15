@@ -18,6 +18,17 @@ type Server struct {
 }
 
 func NewServer() (*Server, error) {
+	cfg := config.SetupConfig()
+
+	db, err := database.NewDatabase(cfg.DBParams)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Env == "prod" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	apiServer := gin.Default()
 
 	middleware, err := createLimiterMiddleware()
@@ -25,17 +36,6 @@ func NewServer() (*Server, error) {
 		return nil, err
 	}
 	apiServer.Use(middleware)
-
-	cfg := config.SetupConfig()
-
-	if cfg.Env == "prod" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
-	db, err := database.NewDatabase(cfg.DBParams)
-	if err != nil {
-		return nil, err
-	}
 
 	server := &Server{
 		APIServer: apiServer,
