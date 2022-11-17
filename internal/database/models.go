@@ -28,6 +28,8 @@ func (TeamSeason) TableName() string {
 
 type TeamWeekResult struct {
 	TeamId     int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	Name       string  `json:"name" gorm:"column:name;not null"`
+	Conf       string  `json:"conf" gorm:"column:conf"`
 	Year       int64   `json:"year" gorm:"column:year;primaryKey;not null"`
 	Week       int64   `json:"week" gorm:"column:week;primaryKey;not null"`
 	Postseason int64   `json:"postseason" gorm:"column:postseason;primaryKey"`
