@@ -30,6 +30,8 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.Te
 	for id, result := range teamList {
 		retTWR = append(retTWR, database.TeamWeekResult{
 			TeamId:     id,
+			Name:       result.Name,
+			Conf:       result.Conf,
 			Year:       result.Year,
 			Week:       result.Week,
 			Postseason: result.Postseason,
