@@ -2,6 +2,8 @@ package espn
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -40,7 +42,7 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 		count += 1
 	}
 	if err != nil {
-		return err
+		return errors.New(fmt.Sprintf("Error from \"%s\": %v", endpoint, err))
 	}
 
 	defer res.Body.Close()
