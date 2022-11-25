@@ -20,12 +20,6 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v2
 
-      - name: Build api image
-        run: docker build -t registry.digitalocean.com/stats-go/api:latest --target api .
-
-      - name: Build updater image
-        run: docker build -t registry.digitalocean.com/stats-go/updater:latest --target updater .
-
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
@@ -34,8 +28,11 @@ jobs:
       - name: Log in to DigitalOcean Container Registry
         run: doctl registry login --expiry-seconds 600
 
-      - name: Push api image
-        run: docker push registry.digitalocean.com/stats-go/api:latest
-
-      - name: Push updater image
-        run: docker push registry.digitalocean.com/stats-go/updater:latest
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: "registry.digitatlocean.com/stats-go/updater:latest"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
