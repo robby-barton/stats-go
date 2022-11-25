@@ -9,16 +9,6 @@ ADD internal ./internal
 RUN go build -o server ./cmd/server
 RUN go build -o updater ./cmd/updater
 
-FROM alpine:latest as api
-WORKDIR /
-
-RUN apk add --no-cache tzdata
-ENV TZ=America/New_York
-
-COPY --from=builder /app/server .
-EXPOSE 8080
-ENTRYPOINT ["/server"]
-
 FROM alpine:latest as updater
 WORKDIR /
 
