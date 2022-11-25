@@ -33,6 +33,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: "registry.digitatlocean.com/stats-go/updater:latest"
+          tags: "registry.digitalocean.com/stats-go/updater:latest"
           cache-from: type=gha
           cache-to: type=gha,mode=max
