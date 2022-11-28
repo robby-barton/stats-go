@@ -109,7 +109,7 @@ func (r *Ranker) finalRanking(teamList TeamList) error {
 	}
 	schedulePct := sharedPct - compositePct
 	for _, team := range teamList {
-		team.FinalRaw = (team.Record.Record * 0.50) + (team.SRSNorm * 0.30) +
+		team.FinalRaw = (team.Record.Record * 0.50) + (team.SRS * 0.30) +
 			(team.CompositeNorm * compositePct) + ((team.SOSNorm + team.SOVNorm) / 2 * schedulePct)
 	}
 
