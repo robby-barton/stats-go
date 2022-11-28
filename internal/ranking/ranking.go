@@ -40,6 +40,9 @@ type Team struct {
 	SOV           float64
 	SOVNorm       float64
 	SOVRank       int64
+	SOL           float64
+	SOLNorm       float64
+	SOLRank       int64
 	FinalRaw      float64
 	FinalRank     int64
 }
