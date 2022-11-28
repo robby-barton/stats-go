@@ -91,15 +91,16 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 }
 
 func (r *Ranker) finalRanking(teamList TeamList) error {
-	numWeeks, err := espn.GetWeeksInSeason(r.Year)
-	if err != nil {
-		return err
-	}
-
-	numWeeks -= 2
 	sharedPct := 0.2
 	compositePct := 0.0
+
 	if !r.postseason {
+		numWeeks, err := espn.GetWeeksInSeason(r.Year)
+		if err != nil {
+			return err
+		}
+
+		numWeeks -= 2
 		compositePct = (math.Max(float64(numWeeks-r.Week+1), 0.0) / float64(numWeeks)) * sharedPct
 	}
 	schedulePct := sharedPct - compositePct

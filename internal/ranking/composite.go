@@ -7,6 +7,10 @@ import (
 )
 
 func (r *Ranker) getComposites(teamList TeamList) error {
+	if r.postseason {
+		return nil
+	}
+
 	var composites []database.Composite
 	ids := make([]int64, len(teamList))
 	i := 0
