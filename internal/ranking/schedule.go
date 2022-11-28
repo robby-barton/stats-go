@@ -7,12 +7,12 @@ import (
 )
 
 type sosCalc struct {
-	games  []database.Game
-	oGames int64
-	oWins  int64
-	voGames int64
-	voWins int64
-	loGames int64
+	games    []database.Game
+	oGames   int64
+	oWins    int64
+	voGames  int64
+	voWins   int64
+	loGames  int64
 	loLosses int64
 }
 
@@ -93,8 +93,6 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 					sos.loLosses += opp.Losses
 					sos.loGames += (opp.Wins + opp.Losses)
 				}
-			// } else {
-			// 	sos.oGames += int64(len(sos.games))
 			}
 		}
 	}
@@ -127,8 +125,6 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 					looLosses += oppSosVals.loLosses
 					looGames += oppSosVals.loGames
 				}
-			// } else {
-			// 	ooGames += int64(len(sosVals.games))
 			}
 		}
 
@@ -139,8 +135,8 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 			team.SOV = float64((2*sosVals.voWins)+vooWins) / float64((2*sosVals.voGames)+vooGames)
 		}
 		if sosVals.loGames+looGames > 0 {
-			team.SOL = 1 - float64((2*sosVals.loLosses)+looLosses) /
-			float64((2*sosVals.loGames)+looGames)
+			team.SOL = 1 - float64((2*sosVals.loLosses)+looLosses)/
+				float64((2*sosVals.loGames)+looGames)
 		} else {
 			team.SOL = 1.00001
 		}
