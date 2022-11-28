@@ -32,6 +32,10 @@ type Team struct {
 	CompositeNorm float64
 	CompositeRank int64
 	SRS           float64
+	SRSHigh       float64
+	SRSHighNorm   float64
+	SRSLow        float64
+	SRSLowNorm    float64
 	SRSNorm       float64
 	SRSRank       int64
 	SOS           float64

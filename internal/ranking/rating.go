@@ -11,10 +11,8 @@ import (
 )
 
 const (
-	mov           int64 = 30
-	hfa           int64 = 3
-	requiredGames int   = 6
-	runs          int   = 10000
+	requiredGames int = 6
+	runs          int = 10000
 )
 
 type gameSpreadSOE struct {
@@ -305,50 +303,77 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	adjRatings := generateAdjRatings(teamList, games)
+	highRatings := generateAdjRatings(teamList, games, 30)
+	lowRatings := generateAdjRatings(teamList, games, 1)
 
-	for id, rating := range adjRatings {
-		teamList[id].SRS = rating
-	}
-
-	var ids []int64
 	for id := range teamList {
-		ids = append(ids, id)
+		teamList[id].SRSHigh = highRatings[id]
+		teamList[id].SRSLow = lowRatings[id]
 	}
-	sort.Slice(ids, func(i, j int) bool {
-		return teamList[ids[i]].SRS > teamList[ids[j]].SRS
-	})
 
-	max := teamList[ids[0]].SRS
-	min := teamList[ids[len(ids)-1]].SRS
+	var highOrder []int64
+	for id := range teamList {
+		highOrder = append(highOrder, id)
+	}
+	sort.Slice(highOrder, func(i, j int) bool {
+		return teamList[highOrder[i]].SRSHigh > teamList[highOrder[j]].SRSHigh
+	})
+	max := teamList[highOrder[0]].SRSHigh
+	min := teamList[highOrder[len(highOrder)-1]].SRSHigh
+	for _, id := range highOrder {
+		team := teamList[id]
+		if max-min != 0 {
+			team.SRSHighNorm = (team.SRSHigh - min) / (max - min)
+		}
+	}
+
+	var lowOrder []int64
+	for id := range teamList {
+		lowOrder = append(lowOrder, id)
+	}
+	sort.Slice(lowOrder, func(i, j int) bool {
+		return teamList[lowOrder[i]].SRSLow > teamList[lowOrder[j]].SRSLow
+	})
+	max = teamList[lowOrder[0]].SRSLow
+	min = teamList[lowOrder[len(lowOrder)-1]].SRSLow
+	for _, id := range lowOrder {
+		team := teamList[id]
+		if max-min != 0 {
+			team.SRSLowNorm = (team.SRSLow - min) / (max - min)
+		}
+	}
+
+	for _, team := range teamList {
+		team.SRSNorm = (team.SRSHighNorm + team.SRSLowNorm) / 2
+	}
+	var combinedOrder []int64
+	for id := range teamList {
+		combinedOrder = append(combinedOrder, id)
+	}
+	sort.Slice(combinedOrder, func(i, j int) bool {
+		return teamList[combinedOrder[i]].SRSNorm > teamList[combinedOrder[j]].SRSNorm
+	})
 	var prev float64
 	var prevRank int64
-	for rank, id := range ids {
+	for rank, id := range combinedOrder {
 		team := teamList[id]
 
-		if team.SRS == prev {
+		if team.SRSNorm == prev {
 			team.SRSRank = prevRank
 		} else {
 			team.SRSRank = int64(rank + 1)
-			prev = float64(team.SRS)
+			prev = float64(team.SRSNorm)
 			prevRank = team.SRSRank
-		}
-
-		if max-min != 0 {
-			team.SRSNorm = (team.SRS - min) / (max - min)
 		}
 	}
 
 	return nil
 }
 
-func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]float64 {
+func generateAdjRatings(teamList TeamList, games []database.Game, mov int64) map[int64]float64 {
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
-		if !game.Neutral {
-			spread -= hfa
-		}
 		if spread > mov {
 			spread = mov
 		} else if spread < -mov {
