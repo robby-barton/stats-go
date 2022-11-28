@@ -7,10 +7,13 @@ import (
 )
 
 type sosCalc struct {
-	games  []database.Game
-	oGames int64
-	oWins  int64
-	voWins int64
+	games    []database.Game
+	oGames   int64
+	oWins    int64
+	voGames  int64
+	voWins   int64
+	loGames  int64
+	loLosses int64
 }
 
 func (r *Ranker) recordAndSos(teamList TeamList) error {
@@ -85,9 +88,11 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 				sos.oGames += (opp.Wins + opp.Losses)
 				if won {
 					sos.voWins += opp.Wins
+					sos.voGames += (opp.Wins + opp.Losses)
+				} else {
+					sos.loLosses += opp.Losses
+					sos.loGames += (opp.Wins + opp.Losses)
 				}
-			} else {
-				sos.oGames += int64(len(sos.games))
 			}
 		}
 	}
@@ -98,7 +103,7 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 			continue
 		}
 
-		var ooWins, ooGames, vooWins int64
+		var ooWins, ooGames, vooWins, vooGames, looLosses, looGames int64
 		for _, game := range sosVals.games {
 			var oppId int64
 			var won bool
@@ -115,15 +120,25 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 				ooGames += oppSosVals.oGames
 				if won {
 					vooWins += oppSosVals.voWins
+					vooGames += oppSosVals.voGames
+				} else {
+					looLosses += oppSosVals.loLosses
+					looGames += oppSosVals.loGames
 				}
-			} else {
-				ooGames += int64(len(sosVals.games))
 			}
 		}
 
 		if sosVals.oGames+ooGames > 0 {
 			team.SOS = float64((2*sosVals.oWins)+ooWins) / float64((2*sosVals.oGames)+ooGames)
-			team.SOV = float64((2*sosVals.voWins)+vooWins) / float64((2*sosVals.oGames)+ooGames)
+		}
+		if sosVals.voGames+vooGames > 0 {
+			team.SOV = float64((2*sosVals.voWins)+vooWins) / float64((2*sosVals.voGames)+vooGames)
+		}
+		if sosVals.loGames+looGames > 0 {
+			team.SOL = 1 - float64((2*sosVals.loLosses)+looLosses)/
+				float64((2*sosVals.loGames)+looGames)
+		} else {
+			team.SOL = 1.00001
 		}
 	}
 
@@ -176,6 +191,32 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 		}
 		if max-min != 0 {
 			team.SOVNorm = (team.SOV - min) / (max - min)
+		}
+	}
+
+	ids = make([]int64, 0)
+	for id := range teamList {
+		ids = append(ids, id)
+	}
+	sort.SliceStable(ids, func(i, j int) bool {
+		return teamList[ids[i]].SOL > teamList[ids[j]].SOL
+	})
+
+	max = teamList[ids[0]].SOL
+	min = teamList[ids[len(ids)-1]].SOL
+	prev = 0
+	prevRank = 0
+	for rank, id := range ids {
+		team := teamList[id]
+		if team.SOL == prev {
+			team.SOLRank = prevRank
+		} else {
+			team.SOLRank = int64(rank + 1)
+			prev = team.SOL
+			prevRank = team.SOLRank
+		}
+		if max-min != 0 {
+			team.SOLNorm = (team.SOL - min) / (max - min)
 		}
 	}
 
