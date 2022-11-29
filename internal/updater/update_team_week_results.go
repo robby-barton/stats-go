@@ -7,8 +7,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var firstYear int = 2015
-
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	return u.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
@@ -95,12 +93,13 @@ func (u *Updater) UpdateAllRankings() error {
 	var teamWeekResults []database.TeamWeekResult
 
 	var yearInfo []struct {
-		Year  int64
-		Weeks int64
+		Year       int64
+		Weeks      int64
+		Postseason int64
 	}
 	if err := u.DB.Model(database.Game{}).
-		Select("season as year, max(week) as weeks").
-		Where("season >= ?", firstYear).
+		Select(`season as year, max(case when season in (select distinct year from composite)
+			then week else 0 end) as weeks, max(postseason) as postseason`).
 		Group("season").
 		Order("season").Find(&yearInfo).Error; err != nil {
 
@@ -117,7 +116,11 @@ func (u *Updater) UpdateAllRankings() error {
 			teamWeekResults = append(teamWeekResults, weekRankings...)
 		}
 		// postseason or current week
-		u.Logger.Infof("%d/Final", year.Year)
+		if year.Postseason == 1 {
+			u.Logger.Infof("%d/Final", year.Year)
+		} else {
+			u.Logger.Infof("%d/%d", year.Year, year.Weeks+1)
+		}
 		weekRankings, err := u.rankingForWeek(year.Year, 0)
 		if err != nil {
 			return err
