@@ -305,9 +305,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	var i int64
-	for i = 1; i <= 21; i++ {
-		ratings := generateAdjRatings(teamList, games, i)
+	movs := []int64{1,30}
+	for i, mov := range movs {
+		ratings := generateAdjRatings(teamList, games, mov)
 		max := math.Inf(-1)
 		min := math.Inf(1)
 		for _, rating := range ratings {
@@ -321,7 +321,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		for id, rating := range ratings {
 			team := teamList[id]
 			norm := (rating - min) / (max - min)
-			team.SRS = ((team.SRS * float64(i-1)) + norm) / float64(i)
+			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i + 1)
 		}
 	}
 
@@ -358,9 +358,6 @@ func generateAdjRatings(teamList TeamList, games []database.Game, mov int64) map
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
-		if !game.Neutral {
-			spread -= hfa
-		}
 		if spread > mov {
 			spread = mov
 		} else if spread < -mov {
