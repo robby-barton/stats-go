@@ -321,11 +321,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		for id, rating := range ratings {
 			team := teamList[id]
 			norm := (rating - min) / (max - min)
-			if i == 0 {
-				team.SRS = norm
-			} else {
-				team.SRS = ((team.SRS * float64(i-1)) + norm) / float64(i)
-			}
+			team.SRS = ((team.SRS * float64(i-1)) + norm) / float64(i)
 		}
 	}
 
@@ -336,6 +332,8 @@ func (r *Ranker) srs(teamList TeamList) error {
 	sort.Slice(teamIds, func(i, j int) bool {
 		return teamList[teamIds[i]].SRS > teamList[teamIds[j]].SRS
 	})
+	max := teamList[teamIds[0]].SRS
+	min := teamList[teamIds[len(teamIds)-1]].SRS
 	var prev float64
 	var prevRank int64
 	for rank, id := range teamIds {
@@ -347,6 +345,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 			team.SRSRank = int64(rank + 1)
 			prev = team.SRS
 			prevRank = team.SRSRank
+		}
+		if max-min > 0 {
+			team.SRSNorm = (team.SRS - min) / (max - min)
 		}
 	}
 
