@@ -1,6 +1,7 @@
 package ranking
 
 import (
+	"math"
 	"reflect"
 	"sort"
 
@@ -11,7 +12,6 @@ import (
 )
 
 const (
-	mov           int64 = 30
 	hfa           int64 = 3
 	requiredGames int   = 6
 	runs          int   = 10000
@@ -305,36 +305,48 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	adjRatings := generateAdjRatings(teamList, games)
-
-	for id, rating := range adjRatings {
-		teamList[id].SRS = rating
+	movs := []int64{1,30}
+	for i, mov := range movs {
+		ratings := generateAdjRatings(teamList, games, mov)
+		max := math.Inf(-1)
+		min := math.Inf(1)
+		for _, rating := range ratings {
+			if rating > max {
+				max = rating
+			}
+			if rating < min {
+				min = rating
+			}
+		}
+		for id, rating := range ratings {
+			team := teamList[id]
+			norm := (rating - min) / (max - min)
+			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i + 1)
+		}
 	}
 
-	var ids []int64
+	var teamIds []int64
 	for id := range teamList {
-		ids = append(ids, id)
+		teamIds = append(teamIds, id)
 	}
-	sort.Slice(ids, func(i, j int) bool {
-		return teamList[ids[i]].SRS > teamList[ids[j]].SRS
+	sort.Slice(teamIds, func(i, j int) bool {
+		return teamList[teamIds[i]].SRS > teamList[teamIds[j]].SRS
 	})
-
-	max := teamList[ids[0]].SRS
-	min := teamList[ids[len(ids)-1]].SRS
+	max := teamList[teamIds[0]].SRS
+	min := teamList[teamIds[len(teamIds)-1]].SRS
 	var prev float64
 	var prevRank int64
-	for rank, id := range ids {
+	for rank, id := range teamIds {
 		team := teamList[id]
 
 		if team.SRS == prev {
 			team.SRSRank = prevRank
 		} else {
 			team.SRSRank = int64(rank + 1)
-			prev = float64(team.SRS)
+			prev = team.SRS
 			prevRank = team.SRSRank
 		}
-
-		if max-min != 0 {
+		if max-min > 0 {
 			team.SRSNorm = (team.SRS - min) / (max - min)
 		}
 	}
@@ -342,13 +354,10 @@ func (r *Ranker) srs(teamList TeamList) error {
 	return nil
 }
 
-func generateAdjRatings(teamList TeamList, games []database.Game) map[int64]float64 {
+func generateAdjRatings(teamList TeamList, games []database.Game, mov int64) map[int64]float64 {
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
-		if !game.Neutral {
-			spread -= hfa
-		}
 		if spread > mov {
 			spread = mov
 		} else if spread < -mov {
