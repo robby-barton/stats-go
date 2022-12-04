@@ -40,6 +40,7 @@ type TeamWeekResult struct {
 	SRSRank    int64   `json:"srs_rank" gorm:"column:srs_rank"`
 	SOSRank    int64   `json:"sos_rank" gorm:"column:sos_rank"`
 	SOVRank    int64   `json:"sov_rank" gorm:"column:sov_rank"`
+	SOLRank    int64   `json:"sol_rank" gorm:"column:sol_rank"`
 	Fbs        bool    `json:"fbs" gorm:"column:fbs"`
 }
 
