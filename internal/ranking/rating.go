@@ -305,7 +305,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	movs := []int64{1,30}
+	movs := []int64{1, 30}
 	for i, mov := range movs {
 		ratings := generateAdjRatings(teamList, games, mov)
 		max := math.Inf(-1)
@@ -321,7 +321,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		for id, rating := range ratings {
 			team := teamList[id]
 			norm := (rating - min) / (max - min)
-			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i + 1)
+			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i+1)
 		}
 	}
 

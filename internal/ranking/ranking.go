@@ -95,7 +95,7 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 }
 
 func (r *Ranker) finalRanking(teamList TeamList) error {
-	sharedPct := 0.2
+	sharedPct := 0.20
 	compositePct := 0.0
 
 	if !r.postseason {
@@ -110,7 +110,7 @@ func (r *Ranker) finalRanking(teamList TeamList) error {
 	schedulePct := sharedPct - compositePct
 	for _, team := range teamList {
 		team.FinalRaw = (team.Record.Record * 0.50) + (team.SRSNorm * 0.30) +
-			(team.CompositeNorm * compositePct) + ((team.SOSNorm + team.SOVNorm) / 2 * schedulePct)
+			(team.CompositeNorm * compositePct) + ((team.SOVNorm + team.SOLNorm) / 2 * schedulePct)
 	}
 
 	var ids []int64
