@@ -17,7 +17,7 @@ const (
 	runs          int   = 10000
 )
 
-type gameSpreadSOE struct {
+type gameResults struct {
 	team     int64
 	won      bool
 	opponent int64
@@ -47,15 +47,15 @@ func (r *Ranker) soe(teamList TeamList) error {
 		return err
 	}
 
-	teamGameInfo := map[int64][]*gameSpreadSOE{}
+	teamGameInfo := map[int64][]*gameResults{}
 	for _, game := range gameList {
 		homeWon := game.HomeScore > game.AwayScore
-		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameSpreadSOE{
+		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameResults{
 			team:     game.HomeId,
 			won:      homeWon,
 			opponent: game.AwayId,
 		})
-		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameSpreadSOE{
+		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameResults{
 			team:     game.AwayId,
 			won:      !homeWon,
 			opponent: game.HomeId,
