@@ -2,11 +2,8 @@ package ranking
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"time"
-
-	"github.com/robby-barton/stats-go/internal/espn"
 
 	"gorm.io/gorm"
 )
@@ -75,15 +72,15 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 		return nil, err
 	}
 
-	if err = r.getComposites(teamList); err != nil {
-		return nil, err
-	}
-
 	if err = r.srs(teamList); err != nil {
 		return nil, err
 	}
 
 	if err = r.recordAndSos(teamList); err != nil {
+		return nil, err
+	}
+
+	if err = r.soe(teamList); err != nil {
 		return nil, err
 	}
 
@@ -95,22 +92,9 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 }
 
 func (r *Ranker) finalRanking(teamList TeamList) error {
-	sharedPct := 0.20
-	compositePct := 0.0
-
-	if !r.postseason {
-		numWeeks, err := espn.GetWeeksInSeason(r.Year)
-		if err != nil {
-			return err
-		}
-
-		numWeeks -= 2
-		compositePct = (math.Max(float64(numWeeks-r.Week+1), 0.0) / float64(numWeeks)) * sharedPct
-	}
-	schedulePct := sharedPct - compositePct
 	for _, team := range teamList {
 		team.FinalRaw = (team.Record.Record * 0.50) + (team.SRSNorm * 0.30) +
-			(team.CompositeNorm * compositePct) + ((team.SOVNorm + team.SOLNorm) / 2 * schedulePct)
+			(team.SOSNorm * 0.10) + ((team.SOVNorm + team.SOLNorm) / 2 * 0.10)
 	}
 
 	var ids []int64
