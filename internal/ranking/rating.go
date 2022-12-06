@@ -36,11 +36,12 @@ func (r *Ranker) soe(teamList TeamList) error {
 		teamOrderMap[team] = idx
 	}
 
-	// get games through last season
 	var gameList []database.Game
-	if err := r.DB.Where(
-		"season = ? and start_time <= ? and home_id in (?) and away_id in (?)",
-		r.Year, r.startTime, teamOrder, teamOrder).
+	if err := r.DB.
+		Where(
+			"season = ? and start_time <= ? and home_id in (?) and away_id in (?)",
+			r.Year, r.startTime, teamOrder, teamOrder,
+		).
 		Order("start_time desc").Find(&gameList).Error; err != nil {
 
 		return err
@@ -71,11 +72,7 @@ func (r *Ranker) soe(teamList TeamList) error {
 		wins := 0.0
 		losses := 0.0
 		for _, game := range gameSpreads {
-			oppIdx := teamOrderMap[game.opponent]
-			if _, ok := teamList[game.opponent]; !ok {
-				oppIdx = teamOrderMap[0]
-			}
-			teamRow[oppIdx] -= 1
+			teamRow[teamOrderMap[game.opponent]] -= 1
 			if game.won {
 				wins += 1
 			} else {
