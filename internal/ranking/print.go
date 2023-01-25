@@ -20,13 +20,13 @@ func (r *Ranker) PrintRankings(teamList TeamList, top int) {
 		fmt.Printf("%d Week %d\n", r.Year, r.Week)
 	}
 	fmt.Printf("Games up to %v\n", r.startTime)
-	fmt.Printf("%-5s %-25s %-7s %-8s %-5s %-5s %-5s %-5s %7s\n",
-		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "SoV", "SoL", "Total")
+	fmt.Printf("%-5s %-25s %-7s %-8s %-5s %-5s %7s\n",
+		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "Total")
 	for i := 0; i < top; i++ {
 		team := teamList[ids[i]]
-		fmt.Printf("%-5d %-25s %-7s %-8s %-5d %-5d %-5d %-5d %.5f\n",
+		fmt.Printf("%-5d %-25s %-7s %-8s %-5d %-5d %.5f\n",
 			team.FinalRank, team.Name, team.Conf, team.Record, team.SRSRank,
-			team.SOSRank, team.SOVRank, team.SOLRank, team.FinalRaw)
+			team.SOSRank, team.FinalRaw)
 	}
 }
 

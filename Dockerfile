@@ -6,7 +6,6 @@ RUN go mod download
 
 ADD cmd ./cmd
 ADD internal ./internal
-RUN go build -o server ./cmd/server
 RUN go build -o updater ./cmd/updater
 
 FROM alpine:latest as updater

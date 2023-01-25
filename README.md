@@ -8,7 +8,7 @@ Run `make modules` to sync modules with `go.mod`.
 ### Environment
 Copy `.env-sample` to `.env` and set the variables to the desired values.
 
-The services are currenlty set up to only connect to Postgres databases.
+The services are currently set up to only connect to PostgreSQL databases.
 
 ## Services
 ### Running and Building
@@ -30,7 +30,7 @@ Ranker will generate a ranking for the year/week requested and print the results
 | `-r` | `bool` | `false` | Print the SRS rating instead of full ranking |
 
 ### Updater
-Updater will update the database with missing game information.
+Updater will update the database with game information and new rankings.
 
 Updater can run on-demand updates or run as a service and update on a schedule.
 
@@ -42,5 +42,8 @@ Updater can run on-demand updates or run as a service and update on a schedule.
 | `-r` | `false` | Update current ranking now. Will run once and exit. |
 | `-a` | `false` | Update all games or rankings. Use with `-g` or `-r`. |
 
-### Server
-Server is an API server for a pending site to host rankings.
+#### Scheduler
+The updater can run in scheduled mode which will wake up and search for new games finished every 5 minutes. If a new game is found it will add the game info to the database and update the current rankings.
+
+### (deprecated) Server
+~~Server is an API server for a pending site to host rankings.~~ API server is no longer needed, see [stats-web](https://github.com/robby-barton/stats-web) repo for site implementation.
