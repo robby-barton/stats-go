@@ -93,8 +93,7 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 
 func (r *Ranker) finalRanking(teamList TeamList) error {
 	for _, team := range teamList {
-		team.FinalRaw = (team.Record.Record * 0.50) + (team.SRSNorm * 0.30) +
-			(team.SOSNorm * 0.10) + ((team.SOVNorm + team.SOLNorm) / 2 * 0.10)
+		team.FinalRaw = (team.Record.Record * 0.60) + (team.SRSNorm * 0.30) + (team.SOSNorm * 0.10)
 	}
 
 	var ids []int64
