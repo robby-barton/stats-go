@@ -9,7 +9,7 @@ on:
       - '.github/workflows/**' # GitHub Actions changes
       - 'Dockerfile'           # Dockerfile changes
       - 'go.*'                 # go.mod or go.sum changes
-      - 'cmd/**'               # binary changes
+      - 'cmd/**'               # command changes
       - 'internal/**'          # internal package changes
 
 jobs:
