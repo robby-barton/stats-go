@@ -72,15 +72,15 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 		return nil, err
 	}
 
+	if err = r.record(teamList); err != nil {
+		return nil, err
+	}
+
 	if err = r.srs(teamList); err != nil {
 		return nil, err
 	}
 
-	if err = r.recordAndSos(teamList); err != nil {
-		return nil, err
-	}
-
-	if err = r.soe(teamList); err != nil {
+	if err = r.sos(teamList); err != nil {
 		return nil, err
 	}
 

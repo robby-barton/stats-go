@@ -23,7 +23,7 @@ type gameResults struct {
 	opponent int64
 }
 
-func (r *Ranker) soe(teamList TeamList) error {
+func (r *Ranker) sos(teamList TeamList) error {
 	// range order over a map is not deterministic, so create a slice to ensure
 	// order when creating vectors/matrices for SoE
 	var teamOrder []int64

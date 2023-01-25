@@ -39,8 +39,6 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.Te
 			Losses:     result.Record.Losses,
 			SRSRank:    result.SRSRank,
 			SOSRank:    result.SOSRank,
-			SOVRank:    result.SOVRank,
-			SOLRank:    result.SOLRank,
 			Fbs:        fbs,
 		})
 	}
