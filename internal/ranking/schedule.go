@@ -49,8 +49,8 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 			} else if game.AwayScore > game.HomeScore {
 				homeRecord.Losses++
 			}
-			homeRecord.Record = float64(homeRecord.Wins) /
-				float64(homeRecord.Wins+homeRecord.Losses)
+			homeRecord.Record = (1 + float64(homeRecord.Wins)) /
+				(2 + float64(homeRecord.Wins+homeRecord.Losses))
 		}
 		if allowedTeam[game.AwayId] {
 			teamSOS[game.AwayId].games = append(teamSOS[game.AwayId].games, game)
@@ -60,8 +60,8 @@ func (r *Ranker) recordAndSos(teamList TeamList) error {
 			} else if game.AwayScore > game.HomeScore {
 				awayRecord.Wins++
 			}
-			awayRecord.Record = float64(awayRecord.Wins) /
-				float64(awayRecord.Wins+awayRecord.Losses)
+			awayRecord.Record = (1 + float64(awayRecord.Wins)) /
+				(2 + float64(awayRecord.Wins+awayRecord.Losses))
 		}
 	}
 
