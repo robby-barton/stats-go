@@ -97,8 +97,8 @@ func (u *Updater) UpdateAllRankings() error {
 		Postseason int64
 	}
 	if err := u.DB.Model(database.Game{}).
-		Select(`season as year, max(case when season in (select distinct year from composite)
-			then week else 0 end) as weeks, max(postseason) as postseason`).
+		Select(`season as year, max(week) as weeks, max(postseason) as postseason`).
+		Where("season >= ?", 1936). // first official year of AP poll
 		Group("season").
 		Order("season").Find(&yearInfo).Error; err != nil {
 
@@ -127,6 +127,7 @@ func (u *Updater) UpdateAllRankings() error {
 		teamWeekResults = append(teamWeekResults, weekRankings...)
 	}
 
+	return nil
 	if err := u.insertRankingsToDB(teamWeekResults); err != nil {
 		return err
 	}
