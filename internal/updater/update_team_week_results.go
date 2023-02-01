@@ -37,6 +37,7 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.Te
 			FinalRaw:   result.FinalRaw,
 			Wins:       result.Record.Wins,
 			Losses:     result.Record.Losses,
+			Ties:       result.Record.Ties,
 			SRSRank:    result.SRSRank,
 			SOSRank:    result.SOSRank,
 			Fbs:        fbs,
@@ -127,7 +128,6 @@ func (u *Updater) UpdateAllRankings() error {
 		teamWeekResults = append(teamWeekResults, weekRankings...)
 	}
 
-	return nil
 	if err := u.insertRankingsToDB(teamWeekResults); err != nil {
 		return err
 	}

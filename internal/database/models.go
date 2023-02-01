@@ -37,6 +37,7 @@ type TeamWeekResult struct {
 	FinalRaw   float64 `json:"final_raw" gorm:"column:final_raw"`
 	Wins       int64   `json:"wins" gorm:"column:wins"`
 	Losses     int64   `json:"losses" gorm:"column:losses"`
+	Ties       int64   `json:"ties" gorm:"column:ties"`
 	SRSRank    int64   `json:"srs_rank" gorm:"column:srs_rank"`
 	SOSRank    int64   `json:"sos_rank" gorm:"column:sos_rank"`
 	SOVRank    int64   `json:"sov_rank" gorm:"column:sov_rank"`

@@ -4,16 +4,6 @@ import (
 	"github.com/robby-barton/stats-go/internal/database"
 )
 
-type sosCalc struct {
-	games    []database.Game
-	oGames   int64
-	oWins    int64
-	voGames  int64
-	voWins   int64
-	loGames  int64
-	loLosses int64
-}
-
 func (r *Ranker) record(teamList TeamList) error {
 	var games []database.Game
 	if err := r.DB.Where("season = ? and start_time <= ?", r.Year, r.startTime).
@@ -43,9 +33,11 @@ func (r *Ranker) record(teamList TeamList) error {
 				homeRecord.Wins++
 			} else if game.AwayScore > game.HomeScore {
 				homeRecord.Losses++
+			} else {
+				homeRecord.Ties++
 			}
-			homeRecord.Record = (1 + float64(homeRecord.Wins)) /
-				(2 + float64(homeRecord.Wins+homeRecord.Losses))
+			homeRecord.Record = (1 + float64(homeRecord.Wins) + 0.5*float64(homeRecord.Ties)) /
+				(2 + float64(homeRecord.Wins+homeRecord.Losses+homeRecord.Ties))
 		}
 		if allowedTeam[game.AwayId] {
 			awayRecord := teamRecords[game.AwayId]
@@ -53,9 +45,11 @@ func (r *Ranker) record(teamList TeamList) error {
 				awayRecord.Losses++
 			} else if game.AwayScore > game.HomeScore {
 				awayRecord.Wins++
+			} else {
+				awayRecord.Ties++
 			}
-			awayRecord.Record = (1 + float64(awayRecord.Wins)) /
-				(2 + float64(awayRecord.Wins+awayRecord.Losses))
+			awayRecord.Record = (1 + float64(awayRecord.Wins) + 0.5*float64(awayRecord.Ties)) /
+				(2 + float64(awayRecord.Wins+awayRecord.Losses+awayRecord.Ties))
 		}
 	}
 
