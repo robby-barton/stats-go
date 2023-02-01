@@ -19,8 +19,9 @@ const (
 
 type gameResults struct {
 	team     int64
-	won      bool
+	score    int64
 	opponent int64
+	oScore   int64
 }
 
 func (r *Ranker) sos(teamList TeamList) error {
@@ -49,16 +50,17 @@ func (r *Ranker) sos(teamList TeamList) error {
 
 	teamGameInfo := map[int64][]*gameResults{}
 	for _, game := range gameList {
-		homeWon := game.HomeScore > game.AwayScore
 		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameResults{
 			team:     game.HomeId,
-			won:      homeWon,
+			score:    game.HomeScore,
 			opponent: game.AwayId,
+			oScore:   game.AwayScore,
 		})
 		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameResults{
 			team:     game.AwayId,
-			won:      !homeWon,
+			score:    game.AwayScore,
 			opponent: game.HomeId,
+			oScore:   game.HomeScore,
 		})
 	}
 
@@ -71,16 +73,19 @@ func (r *Ranker) sos(teamList TeamList) error {
 		// recounting wins and losses because we only care about intra-division play
 		wins := 0.0
 		losses := 0.0
+		ties := 0.0
 		for _, game := range gameSpreads {
 			teamRow[teamOrderMap[game.opponent]] -= 1
-			if game.won {
+			if game.score > game.oScore {
 				wins += 1
-			} else {
+			} else if game.oScore > game.score {
 				losses += 1
+			} else {
+				ties += 1
 			}
 		}
 
-		teamRow[teamOrderMap[team]] = wins + losses + 2
+		teamRow[teamOrderMap[team]] = wins + losses + ties + 2
 		terms = append(terms, teamRow...)
 		solutions = append(solutions, 1+(wins-losses)/2)
 	}

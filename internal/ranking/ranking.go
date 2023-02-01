@@ -51,11 +51,16 @@ type Team struct {
 type Record struct {
 	Wins   int64
 	Losses int64
+	Ties   int64
 	Record float64
 }
 
 func (r Record) String() string {
-	return fmt.Sprintf("%d-%d", r.Wins, r.Losses)
+	if r.Ties > 0 {
+		return fmt.Sprintf("%d-%d-%d", r.Wins, r.Losses, r.Ties)
+	} else {
+		return fmt.Sprintf("%d-%d", r.Wins, r.Losses)
+	}
 }
 
 type TeamList map[int64]*Team
