@@ -20,7 +20,7 @@ var (
 )
 
 type Responses interface {
-	GameInfoESPN | GameScheduleESPN
+	GameInfoESPN | GameScheduleESPN | TeamInfoESPN
 }
 
 func makeRequest[R Responses](endpoint string, data *R) error {

@@ -132,3 +132,13 @@ func GetGameStats(gameId int64) (*GameInfoESPN, error) {
 
 	return &res, nil
 }
+
+func GetTeamInfo() (*TeamInfoESPN, error) {
+	var res TeamInfoESPN
+	err := makeRequest(teamInfoUrl, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return &res, nil
+}
