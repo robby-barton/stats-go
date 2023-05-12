@@ -20,12 +20,13 @@ func main() {
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	var scheduled, games, rank, all bool
+	var scheduled, games, rank, all, team bool
 
 	flag.BoolVar(&scheduled, "s", false, "run scheduler")
 	flag.BoolVar(&games, "g", false, "one-time game update")
 	flag.BoolVar(&rank, "r", false, "one-time ranking update")
 	flag.BoolVar(&all, "a", false, "update all rankings or games")
+	flag.BoolVar(&team, "t", false, "update team info")
 	flag.Parse()
 
 	cfg := config.SetupConfig()
@@ -120,6 +121,14 @@ func main() {
 			}
 			if err != nil {
 				sugar.Error(err)
+			}
+		}
+		if team {
+			addedTeams, err := u.UpdateTeamInfo()
+			if err != nil {
+				sugar.Error(err)
+			} else {
+				sugar.Infof("Updated %d teams\n", addedTeams)
 			}
 		}
 	}

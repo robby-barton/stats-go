@@ -5,9 +5,21 @@ import (
 )
 
 type TeamName struct {
-	TeamId int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
-	Name   string `json:"name" gorm:"column:name;not null"`
-	Flair  string `json:"flair" gorm:"column:flair"`
+	TeamId           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
+	Name             string `json:"name" gorm:"column:name;not null"`
+	Flair            string `json:"flair" gorm:"column:flair"`
+	Abbreviation     string `json:"abbreviation" gorm:"column:abbreviation"`
+	AltColor         string `json:"altColor" gorm:"column:alt_color"`
+	Color            string `json:"color" gorm:"column:color"`
+	DisplayName      string `json:"displayName" gorm:"column:display_name"`
+	IsActive         bool   `json:"isActive" gorm:"column:is_active"`
+	IsAllStar        bool   `json:"isAllstar" gorm:"column:is_allstar"`
+	Location         string `json:"location" gorm:"column:location"`
+	Logo             string `json:"logo" gorm:"column:logo"`
+	LogoDark         string `json:"logoDark" gorm:"column:logo_dark"`
+	Nickname         string `json:"nickname" gorm:"column:nickname"`
+	ShortDisplayName string `json:"shortDisplayName" gorm:"column:short_display_name"`
+	Slug             string `json:"slug" gorm:"column:slug"`
 }
 
 func (TeamName) TableName() string {
