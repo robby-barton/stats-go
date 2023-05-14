@@ -21,7 +21,7 @@ func apiToDb(teams []team.ParsedTeamInfo) []database.TeamName {
 		// to get the school. Though AllStar teams don't do this so we need
 		// to actually check.
 		schoolEnd := strings.Index(team.DisplayName, team.Name) - 1
-		name := team.Name
+		name := team.DisplayName
 		if schoolEnd > 0 {
 			name = team.DisplayName[:schoolEnd]
 		}
