@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/robby-barton/stats-go/internal/database"
@@ -25,8 +24,7 @@ type ParsedGameInfo struct {
 func GetGameStats(gameIds []int64) ([]ParsedGameInfo, error) {
 	var parsedGameStats []ParsedGameInfo
 
-	for i, gameId := range gameIds {
-		fmt.Printf("%d/%d\n", i+1, len(gameIds))
+	for _, gameId := range gameIds {
 		res, err := espn.GetGameStats(gameId)
 		if err != nil {
 			return nil, err

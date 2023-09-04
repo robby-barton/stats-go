@@ -7,9 +7,11 @@ type GameScheduleESPN struct {
 }
 
 type Content struct {
-	Schedule   map[string]Day `json:"schedule"`
-	Parameters Parameters     `json:"parameters"`
-	Calendar   []Calendar     `json:"calendar"`
+	Schedule      map[string]Day `json:"schedule"`
+	Parameters    Parameters     `json:"parameters"`
+	Defaults      Parameters     `json:"defaults"`
+	Calendar      []Calendar     `json:"calendar"`
+	ConferenceAPI ConferenceAPI  `json:"conferenceAPI"`
 }
 
 type Day struct {
@@ -17,8 +19,23 @@ type Day struct {
 }
 
 type Game struct {
-	Id     int64  `json:"id,string"`
-	Status Status `json:"status"`
+	Id           int64         `json:"id,string"`
+	Status       Status        `json:"status"`
+	Competitions []Competition `json:"competitions"`
+}
+
+type Competition struct {
+	Competitors []Competitor `json:"competitors"`
+}
+
+type Competitor struct {
+	Id   int64        `json:"id,string"`
+	Team ScheduleTeam `json:"team"`
+}
+
+type ScheduleTeam struct {
+	Id           int64 `json:"id,string"`
+	ConferenceId int64 `json:"conferenceId,string"`
 }
 
 type Status struct {
@@ -34,18 +51,31 @@ type Parameters struct {
 	Week       int64 `json:"week"`
 	Year       int64 `json:"year"`
 	SeasonType int64 `json:"seasonType"`
-	Group      int64 `json:"group;string"`
+	Group      int64 `json:"group,string"`
 }
 
 type Calendar struct {
 	Weeks      []Week `json:"entries"`
 	StartDate  string `json:"startDate"`
 	EndDate    string `json:"endDate"`
-	SeasonType int64  `json:"value;string"`
+	SeasonType int64  `json:"value,string"`
 }
 
 type Week struct {
 	StartDate string `json:"startDate"`
 	EndDate   string `json:"endDate"`
-	Num       int64  `json:"value;string"`
+	Num       int64  `json:"value,string"`
+}
+
+type ConferenceAPI struct {
+	Conferences []Conference `json:"conferences"`
+}
+
+type Conference struct {
+	GroupId       int64    `json:"groupId,string"`
+	Name          string   `json:"name"`
+	SubGroups     []string `json:"subGroups"` // is an array of ints though
+	Logo          string   `json:"logo"`
+	ParentGroupId int64    `json:"parentGroupId,string"`
+	ShortName     string   `json:"shortName"`
 }
