@@ -39,3 +39,6 @@ build: build-server build-updater build-ranking
 
 clean:
 	@rm -rf server updater ranker > /dev/null 2>&1
+
+lint:
+	@golangci-lint run --config=.golangci.yml ./...

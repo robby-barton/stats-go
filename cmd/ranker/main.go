@@ -53,6 +53,6 @@ func main() {
 	} else {
 		r.PrintRankings(div, top)
 	}
-	fmt.Println(err)
-	fmt.Println(duration)
+	fmt.Println(err)      //nolint:forbidigo // allow
+	fmt.Println(duration) //nolint:forbidigo // allow
 }

@@ -24,8 +24,8 @@ type ParsedGameInfo struct {
 func GetGameStats(gameIds []int64) ([]ParsedGameInfo, error) {
 	var parsedGameStats []ParsedGameInfo
 
-	for _, gameId := range gameIds {
-		res, err := espn.GetGameStats(gameId)
+	for _, gameID := range gameIds {
+		res, err := espn.GetGameStats(gameID)
 		if err != nil {
 			return nil, err
 		}

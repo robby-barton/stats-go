@@ -44,22 +44,21 @@ func (r *Ranker) sos(teamList TeamList) error {
 			r.Year, r.startTime, teamOrder, teamOrder,
 		).
 		Order("start_time desc").Find(&gameList).Error; err != nil {
-
 		return err
 	}
 
 	teamGameInfo := map[int64][]*gameResults{}
 	for _, game := range gameList {
-		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameResults{
-			team:     game.HomeId,
+		teamGameInfo[game.HomeID] = append(teamGameInfo[game.HomeID], &gameResults{
+			team:     game.HomeID,
 			score:    game.HomeScore,
-			opponent: game.AwayId,
+			opponent: game.AwayID,
 			oScore:   game.AwayScore,
 		})
-		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameResults{
-			team:     game.AwayId,
+		teamGameInfo[game.AwayID] = append(teamGameInfo[game.AwayID], &gameResults{
+			team:     game.AwayID,
 			score:    game.AwayScore,
-			opponent: game.HomeId,
+			opponent: game.HomeID,
 			oScore:   game.HomeScore,
 		})
 	}
@@ -75,13 +74,14 @@ func (r *Ranker) sos(teamList TeamList) error {
 		losses := 0.0
 		ties := 0.0
 		for _, game := range gameSpreads {
-			teamRow[teamOrderMap[game.opponent]] -= 1
-			if game.score > game.oScore {
-				wins += 1
-			} else if game.oScore > game.score {
-				losses += 1
-			} else {
-				ties += 1
+			teamRow[teamOrderMap[game.opponent]]--
+			switch {
+			case game.score > game.oScore:
+				wins++
+			case game.oScore > game.score:
+				losses++
+			default:
+				ties++
 			}
 		}
 
@@ -105,7 +105,7 @@ func (r *Ranker) sos(teamList TeamList) error {
 	// Solve a * x = b for x
 	var x mat.VecDense
 	if err := chol.SolveVecTo(&x, b); err != nil {
-		return fmt.Errorf("matrix is near singular: (%v)", err)
+		return fmt.Errorf("matrix is near singular: (%w)", err)
 	}
 
 	for idx, team := range teamOrder {
@@ -127,7 +127,7 @@ func (r *Ranker) sos(teamList TeamList) error {
 			team.SOSRank = prevRank
 		} else {
 			team.SOSRank = int64(rank + 1)
-			prev = float64(team.SOS)
+			prev = team.SOS
 			prevRank = team.SOSRank
 		}
 
@@ -161,7 +161,6 @@ func (r *Ranker) srs(teamList TeamList) error {
 			allowedTeams,
 		).
 		Order("start_time desc").Find(&allGames).Error; err != nil {
-
 		return err
 	}
 
@@ -171,24 +170,22 @@ func (r *Ranker) srs(teamList TeamList) error {
 		divGames := 0
 		for _, game := range allGames {
 			if game.Season == r.Year {
-				if (game.HomeId == id && teamList.teamExists(game.AwayId)) ||
-					(game.AwayId == id && teamList.teamExists(game.HomeId)) {
-
+				if (game.HomeID == id && teamList.teamExists(game.AwayID)) ||
+					(game.AwayID == id && teamList.teamExists(game.HomeID)) {
 					divGames++
-					if !found[game.GameId] {
+					if !found[game.GameID] {
 						games = append(games, game)
-						found[game.GameId] = true
+						found[game.GameID] = true
 					}
 				}
 			} else {
 				if divGames < requiredGames {
-					if (game.HomeId == id && teamList.teamExists(game.AwayId)) ||
-						(game.AwayId == id && teamList.teamExists(game.HomeId)) {
-
+					if (game.HomeID == id && teamList.teamExists(game.AwayID)) ||
+						(game.AwayID == id && teamList.teamExists(game.HomeID)) {
 						divGames++
-						if !found[game.GameId] {
+						if !found[game.GameID] {
 							games = append(games, game)
-							found[game.GameId] = true
+							found[game.GameID] = true
 						}
 					}
 				} else {
@@ -218,13 +215,12 @@ func (r *Ranker) srs(teamList TeamList) error {
 					allowedTeams,
 				).Limit(requiredGames - divGames).Order("start_time desc").
 				Find(&remainingGames).Error; err != nil {
-
-				return nil
+				return err
 			}
 			for _, game := range remainingGames {
-				if !found[game.GameId] {
+				if !found[game.GameID] {
 					games = append(games, game)
-					found[game.GameId] = true
+					found[game.GameID] = true
 				}
 			}
 		}
@@ -232,7 +228,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 
 	movs := []int64{1, 30}
 	for i, mov := range movs {
-		ratings := generateAdjRatings(teamList, games, mov)
+		ratings := generateAdjRatings(games, mov)
 		max := math.Inf(-1)
 		min := math.Inf(1)
 		for _, rating := range ratings {
@@ -279,7 +275,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 	return nil
 }
 
-func generateAdjRatings(teamList TeamList, games []database.Game, mov int64) map[int64]float64 {
+func generateAdjRatings(games []database.Game, mov int64) map[int64]float64 {
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore
@@ -289,15 +285,15 @@ func generateAdjRatings(teamList TeamList, games []database.Game, mov int64) map
 			spread = -mov
 		}
 
-		teamGameInfo[game.HomeId] = append(teamGameInfo[game.HomeId], &gameSpreadSRS{
-			team:     game.HomeId,
+		teamGameInfo[game.HomeID] = append(teamGameInfo[game.HomeID], &gameSpreadSRS{
+			team:     game.HomeID,
 			spread:   spread,
-			opponent: game.AwayId,
+			opponent: game.AwayID,
 		})
-		teamGameInfo[game.AwayId] = append(teamGameInfo[game.AwayId], &gameSpreadSRS{
-			team:     game.AwayId,
+		teamGameInfo[game.AwayID] = append(teamGameInfo[game.AwayID], &gameSpreadSRS{
+			team:     game.AwayID,
 			spread:   -spread,
-			opponent: game.HomeId,
+			opponent: game.HomeID,
 		})
 	}
 

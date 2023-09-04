@@ -12,7 +12,6 @@ import (
 )
 
 func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
-
 	// ESPN occasionally throws in extra dashes into stats
 	var re = regexp.MustCompile(`\-+`)
 
@@ -63,25 +62,25 @@ func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
 		case "turnovers":
 
 		default:
-			fmt.Printf("Not found {%s}\n", statName)
+			fmt.Printf("Not found {%s}\n", statName) //nolint:forbidigo // allow for this case
 		}
 	}
 }
 
 func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN) {
 	homeTeam := database.TeamGameStats{
-		GameId: gameInfo.GamePackage.Header.Id,
+		GameID: gameInfo.GamePackage.Header.ID,
 	}
 	awayTeam := database.TeamGameStats{
-		GameId: gameInfo.GamePackage.Header.Id,
+		GameID: gameInfo.GamePackage.Header.ID,
 	}
 
 	for _, team := range gameInfo.GamePackage.Header.Competitions[0].Competitors {
 		if team.HomeAway == "home" {
-			homeTeam.TeamId = team.Id
+			homeTeam.TeamID = team.ID
 			homeTeam.Score = team.Score
 		} else if team.HomeAway == "away" {
-			awayTeam.TeamId = team.Id
+			awayTeam.TeamID = team.ID
 			awayTeam.Score = team.Score
 		}
 	}
@@ -91,11 +90,12 @@ func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN) {
 			continue
 		}
 
-		if teamStats.Team.Id == homeTeam.TeamId {
+		switch id := teamStats.Team.ID; id {
+		case homeTeam.TeamID:
 			parseTeamStats(teamStats.Statistics, &homeTeam)
-		} else if teamStats.Team.Id == awayTeam.TeamId {
+		case awayTeam.TeamID:
 			parseTeamStats(teamStats.Statistics, &awayTeam)
-		} else {
+		default:
 			continue
 		}
 	}

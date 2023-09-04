@@ -13,9 +13,13 @@ on:
       - 'internal/**'          # internal package changes
 
 jobs:
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yml
   deploy:
     name: Build and push
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
       - name: Checkout master
         uses: actions/checkout@v2

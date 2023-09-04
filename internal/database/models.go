@@ -5,10 +5,10 @@ import (
 )
 
 type Conference struct {
-	ConfId    int64  `json:"confId" gorm:"column:conf_id;primaryKey;not null;unique"`
+	ConfID    int64  `json:"confId" gorm:"column:conf_id;primaryKey;not null;unique"`
 	Name      string `json:"name" gorm:"column:name"`
 	Logo      string `json:"logo" gorm:"column:logo"`
-	ParentId  int64  `json:"parentId" gorm:"column:parent_id"`
+	ParentID  int64  `json:"parentId" gorm:"column:parent_id"`
 	ShortName string `json:"shortName" gorm:"column:short_name"`
 }
 
@@ -17,7 +17,7 @@ func (Conference) TableName() string {
 }
 
 type TeamName struct {
-	TeamId           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
+	TeamID           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
 	Name             string `json:"name" gorm:"column:name;not null"`
 	Flair            string `json:"flair" gorm:"column:flair"`
 	Abbreviation     string `json:"abbreviation" gorm:"column:abbreviation"`
@@ -39,7 +39,7 @@ func (TeamName) TableName() string {
 }
 
 type TeamSeason struct {
-	TeamId int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	TeamID int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Year   int64  `json:"year" gorm:"column:year;primaryKey"`
 	FBS    int64  `json:"fbs" gorm:"column:fbs"`
 	Conf   string `json:"conf" gorm:"column:conf"`
@@ -50,7 +50,7 @@ func (TeamSeason) TableName() string {
 }
 
 type TeamWeekResult struct {
-	TeamId     int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	TeamID     int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Name       string  `json:"name" gorm:"column:name;not null"`
 	Conf       string  `json:"conf" gorm:"column:conf"`
 	Year       int64   `json:"year" gorm:"column:year;primaryKey;not null"`
@@ -73,16 +73,16 @@ func (TeamWeekResult) TableName() string {
 }
 
 type Game struct {
-	GameId     int64     `json:"game_id" gorm:"column:game_id;primaryKey;not null;unique"`
+	GameID     int64     `json:"game_id" gorm:"column:game_id;primaryKey;not null;unique"`
 	StartTime  time.Time `json:"start_time" gorm:"column:start_time"`
 	Neutral    bool      `json:"neutral" gorm:"column:neutral"`
 	ConfGame   bool      `json:"conf_game" gorm:"column:conf_game"`
 	Season     int64     `json:"season" gorm:"column:season"`
 	Week       int64     `json:"week" gorm:"column:week"`
 	Postseason int64     `json:"postseason" gorm:"column:postseason"`
-	HomeId     int64     `json:"home_id" gorm:"column:home_id"`
+	HomeID     int64     `json:"home_id" gorm:"column:home_id"`
 	HomeScore  int64     `json:"home_score" gorm:"column:home_score"`
-	AwayId     int64     `json:"away_id" gorm:"column:away_id"`
+	AwayID     int64     `json:"away_id" gorm:"column:away_id"`
 	AwayScore  int64     `json:"away_score" gorm:"column:away_score"`
 	Retry      int64     `json:"retry" gorm:"column:retry"`
 }
@@ -92,8 +92,8 @@ func (Game) TableName() string {
 }
 
 type TeamGameStats struct {
-	GameId             int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
-	TeamId             int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID             int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	TeamID             int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Score              int64 `json:"score" gorm:"column:score"`
 	Drives             int64 `json:"drives" gorm:"column:drives"`
 	PassYards          int64 `json:"pass_yards" gorm:"column:pass_yards"`
@@ -118,7 +118,7 @@ func (TeamGameStats) TableName() string {
 }
 
 type Composite struct {
-	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
+	TeamID  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
 	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
 	Average float64 `json:"average" gorm:"column:average"`
 	Rating  float64 `json:"rating" gorm:"column:rating"`
@@ -129,7 +129,7 @@ func (Composite) TableName() string {
 }
 
 type Recruiting struct {
-	TeamId  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
+	TeamID  int64   `json:"team_id" gorm:"column:team_id;primaryKey"`
 	Year    int64   `json:"year" gorm:"column:year;primaryKey"`
 	Commits int64   `json:"commits" gorm:"column:commits"`
 	Rating  float64 `json:"rating" gorm:"column:rating"`
@@ -140,8 +140,8 @@ func (Recruiting) TableName() string {
 }
 
 type Roster struct {
-	PlayerId int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId   int64  `json:"team_id" gorm:"column:team_id;primaryKey"`
+	PlayerID int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID   int64  `json:"team_id" gorm:"column:team_id;primaryKey"`
 	Year     int64  `json:"year" gorm:"column:year;primaryKey"`
 	Name     string `json:"name" gorm:"column:name"`
 	Num      int64  `json:"num" gorm:"column:num"`
@@ -157,8 +157,8 @@ func (Roster) TableName() string {
 }
 
 type Player struct {
-	PlayerId int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId   int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	PlayerID int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID   int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Year     int64  `json:"year" gorm:"column:year;primaryKey;not null"`
 	Name     string `json:"name" gorm:"column:name;not null"`
 	Position string `json:"position" gorm:"column:position;not null"`
@@ -173,9 +173,9 @@ func (Player) TableName() string {
 }
 
 type PassingStats struct {
-	PlayerId      int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId        int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId        int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID      int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID        int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID        int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	Completions   int64 `json:"completions" gorm:"column:completions"`
 	Attempts      int64 `json:"attempts" gorm:"column:attempts"`
 	Yards         int64 `json:"yards" gorm:"column:yards"`
@@ -188,9 +188,9 @@ func (PassingStats) TableName() string {
 }
 
 type RushingStats struct {
-	PlayerId   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	Carries    int64 `json:"carries" gorm:"column:carries"`
 	RushYards  int64 `json:"rush_yards" gorm:"column:rush_yards"`
 	RushLong   int64 `json:"rush_long" gorm:"column:rush_long"`
@@ -202,9 +202,9 @@ func (RushingStats) TableName() string {
 }
 
 type ReceivingStats struct {
-	PlayerId   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	Receptions int64 `json:"receptions" gorm:"column:receptions"`
 	RecYards   int64 `json:"rec_yards" gorm:"column:rec_yards"`
 	RecLong    int64 `json:"rec_long" gorm:"column:rec_long"`
@@ -216,9 +216,9 @@ func (ReceivingStats) TableName() string {
 }
 
 type ReturnStats struct {
-	PlayerId   int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId     int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId     int64  `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID   int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID     int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID     int64  `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	PuntKick   string `json:"punt_kick" gorm:"column:punt_kick;not null"`
 	ReturnNo   int64  `json:"return_no" gorm:"column:return_no"`
 	Touchdowns int64  `json:"touchdowns" gorm:"column:touchdowns"`
@@ -231,9 +231,9 @@ func (ReturnStats) TableName() string {
 }
 
 type KickStats struct {
-	PlayerId int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId   int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId   int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID   int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID   int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	FGA      int64 `json:"fga" gorm:"column:fga"`
 	FGM      int64 `json:"fgm" gorm:"column:fgm"`
 	FGLong   int64 `json:"long" gorm:"column:fg_long"`
@@ -247,9 +247,9 @@ func (KickStats) TableName() string {
 }
 
 type PuntStats struct {
-	PlayerId   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID   int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID     int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID     int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	PuntLong   int64 `json:"punt_long" gorm:"column:punt_long"`
 	PuntNo     int64 `json:"punt_no" gorm:"column:punt_no"`
 	PuntYards  int64 `json:"punt_yards" gorm:"column:punt_yards"`
@@ -262,9 +262,9 @@ func (PuntStats) TableName() string {
 }
 
 type InterceptionStats struct {
-	PlayerId      int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId        int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId        int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID      int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID        int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID        int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	Interceptions int64 `json:"interceptions" gorm:"column:interceptions"`
 	Touchdowns    int64 `json:"touchdowns" gorm:"column:touchdowns"`
 	IntYards      int64 `json:"int_yards" gorm:"column:int_yards"`
@@ -275,9 +275,9 @@ func (InterceptionStats) TableName() string {
 }
 
 type FumbleStats struct {
-	PlayerId    int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId      int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId      int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID    int64 `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID      int64 `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID      int64 `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	Fumbles     int64 `json:"fumbles" gorm:"column:fumbles"`
 	FumblesLost int64 `json:"fumbles_lost" gorm:"column:fumbles_lost"`
 	FumblesRec  int64 `json:"fumbles_rec" gorm:"column:fumbles_rec"`
@@ -288,9 +288,9 @@ func (FumbleStats) TableName() string {
 }
 
 type DefensiveStats struct {
-	PlayerId       int64   `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
-	TeamId         int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	GameId         int64   `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
+	PlayerID       int64   `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
+	TeamID         int64   `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	GameID         int64   `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
 	PassesDef      int64   `json:"passes_def" gorm:"column:passes_def"`
 	QBHurries      int64   `json:"qb_hurries" gorm:"column:qb_hurries"`
 	Sacks          float64 `json:"sacks" gorm:"column:sacks"`

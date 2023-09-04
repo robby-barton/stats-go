@@ -58,9 +58,8 @@ type Record struct {
 func (r Record) String() string {
 	if r.Ties > 0 {
 		return fmt.Sprintf("%d-%d-%d", r.Wins, r.Losses, r.Ties)
-	} else {
-		return fmt.Sprintf("%d-%d", r.Wins, r.Losses)
 	}
+	return fmt.Sprintf("%d-%d", r.Wins, r.Losses)
 }
 
 type TeamList map[int64]*Team
@@ -89,14 +88,12 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 		return nil, err
 	}
 
-	if err = r.finalRanking(teamList); err != nil {
-		return nil, err
-	}
+	r.finalRanking(teamList)
 
 	return teamList, nil
 }
 
-func (r *Ranker) finalRanking(teamList TeamList) error {
+func (r *Ranker) finalRanking(teamList TeamList) {
 	for _, team := range teamList {
 		team.FinalRaw = (team.Record.Record * 0.60) + (team.SRSNorm * 0.30) + (team.SOSNorm * 0.10)
 	}
@@ -121,5 +118,4 @@ func (r *Ranker) finalRanking(teamList TeamList) error {
 			prevRank = team.FinalRank
 		}
 	}
-	return nil
 }

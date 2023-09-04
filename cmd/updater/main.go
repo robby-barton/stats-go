@@ -7,12 +7,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-co-op/gocron"
+
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
-
-	"github.com/go-co-op/gocron"
 )
 
 func main() {
@@ -81,7 +81,8 @@ func main() {
 				}
 			}()
 
-			addedGames, err := u.UpdateCurrentWeek()
+			var addedGames int
+			addedGames, err = u.UpdateCurrentWeek()
 
 			logger.Infof("Added %d games", addedGames)
 			if addedGames > 0 {
@@ -100,7 +101,8 @@ func main() {
 				}
 			}()
 
-			addedTeams, err := u.UpdateTeamInfo()
+			var addedTeams int
+			addedTeams, err = u.UpdateTeamInfo()
 			if err != nil {
 				logger.Error(err)
 			} else {
@@ -117,7 +119,8 @@ func main() {
 				}
 			}()
 
-			addedSeasons, err := u.UpdateTeamSeasons(false)
+			var addedSeasons int
+			addedSeasons, err = u.UpdateTeamSeasons(false)
 			if err != nil {
 				logger.Error(err)
 			} else {
@@ -134,7 +137,6 @@ func main() {
 		s.Stop()
 		stop <- true
 	} else {
-		var err error
 		if games {
 			var addedGames int
 			if all {
@@ -160,7 +162,8 @@ func main() {
 			}
 		}
 		if team {
-			addedTeams, err := u.UpdateTeamInfo()
+			var addedTeams int
+			addedTeams, err = u.UpdateTeamInfo()
 			if err != nil {
 				logger.Error(err)
 			} else {
@@ -168,7 +171,8 @@ func main() {
 			}
 		}
 		if season {
-			addedSeasons, err := u.UpdateTeamSeasons(true)
+			var addedSeasons int
+			addedSeasons, err = u.UpdateTeamSeasons(true)
 			if err != nil {
 				logger.Error(err)
 			} else {
