@@ -8,14 +8,12 @@ func (r *Ranker) record(teamList TeamList) error {
 	var games []database.Game
 	if err := r.DB.Where("season = ? and start_time <= ?", r.Year, r.startTime).
 		Find(&games).Error; err != nil {
-
 		return err
 	}
 
 	var allTeams []int64
 	if err := r.DB.Model(database.TeamSeason{}).Where("year = ?", r.Year).
 		Pluck("team_id", &allTeams).Error; err != nil {
-
 		return err
 	}
 
@@ -27,25 +25,27 @@ func (r *Ranker) record(teamList TeamList) error {
 	}
 
 	for _, game := range games {
-		if allowedTeam[game.HomeId] {
-			homeRecord := teamRecords[game.HomeId]
-			if game.HomeScore > game.AwayScore {
+		if allowedTeam[game.HomeID] {
+			homeRecord := teamRecords[game.HomeID]
+			switch {
+			case game.HomeScore > game.AwayScore:
 				homeRecord.Wins++
-			} else if game.AwayScore > game.HomeScore {
+			case game.AwayScore > game.HomeScore:
 				homeRecord.Losses++
-			} else {
+			default:
 				homeRecord.Ties++
 			}
 			homeRecord.Record = (1 + float64(homeRecord.Wins) + 0.5*float64(homeRecord.Ties)) /
 				(2 + float64(homeRecord.Wins+homeRecord.Losses+homeRecord.Ties))
 		}
-		if allowedTeam[game.AwayId] {
-			awayRecord := teamRecords[game.AwayId]
-			if game.HomeScore > game.AwayScore {
+		if allowedTeam[game.AwayID] {
+			awayRecord := teamRecords[game.AwayID]
+			switch {
+			case game.HomeScore > game.AwayScore:
 				awayRecord.Losses++
-			} else if game.AwayScore > game.HomeScore {
+			case game.AwayScore > game.HomeScore:
 				awayRecord.Wins++
-			} else {
+			default:
 				awayRecord.Ties++
 			}
 			awayRecord.Record = (1 + float64(awayRecord.Wins) + 0.5*float64(awayRecord.Ties)) /

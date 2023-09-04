@@ -10,7 +10,7 @@ import (
 func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) {
 	var game database.Game
 
-	game.GameId = gameInfo.GamePackage.Header.Id
+	game.GameID = gameInfo.GamePackage.Header.ID
 	game.StartTime, _ = time.Parse("2006-01-02T15:04Z",
 		gameInfo.GamePackage.Header.Competitions[0].Date)
 	game.Week = gameInfo.GamePackage.Header.Week
@@ -21,10 +21,10 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) {
 
 	for _, team := range gameInfo.GamePackage.Header.Competitions[0].Competitors {
 		if team.HomeAway == "home" {
-			game.HomeId = team.Id
+			game.HomeID = team.ID
 			game.HomeScore = team.Score
 		} else if team.HomeAway == "away" {
-			game.AwayId = team.Id
+			game.AwayID = team.ID
 			game.AwayScore = team.Score
 		}
 	}

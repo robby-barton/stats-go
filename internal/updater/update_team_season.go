@@ -5,7 +5,6 @@ import (
 
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -17,7 +16,6 @@ func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
 				UpdateAll: true, // upsert
 			}).
 			CreateInBatches(seasons, 1000).Error; err != nil {
-
 			return err
 		}
 
@@ -70,7 +68,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 			isFBS = 1
 		}
 		teamSeasons = append(teamSeasons, database.TeamSeason{
-			TeamId: team,
+			TeamID: team,
 			Conf:   confName,
 			Year:   currentSeason,
 			FBS:    isFBS,

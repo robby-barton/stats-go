@@ -1,6 +1,6 @@
 package espn
 
-const weekUrl = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18"
+const weekURL = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18"
 
 type GameScheduleESPN struct {
 	Content Content `json:"content"`
@@ -19,7 +19,7 @@ type Day struct {
 }
 
 type Game struct {
-	Id           int64         `json:"id,string"`
+	ID           int64         `json:"id,string"`
 	Status       Status        `json:"status"`
 	Competitions []Competition `json:"competitions"`
 }
@@ -29,13 +29,13 @@ type Competition struct {
 }
 
 type Competitor struct {
-	Id   int64        `json:"id,string"`
+	ID   int64        `json:"id,string"`
 	Team ScheduleTeam `json:"team"`
 }
 
 type ScheduleTeam struct {
-	Id           int64 `json:"id,string"`
-	ConferenceId int64 `json:"conferenceId,string"`
+	ID           int64 `json:"id,string"`
+	ConferenceID int64 `json:"conferenceId,string"`
 }
 
 type Status struct {
@@ -72,10 +72,10 @@ type ConferenceAPI struct {
 }
 
 type Conference struct {
-	GroupId       int64    `json:"groupId,string"`
+	GroupID       int64    `json:"groupId,string"`
 	Name          string   `json:"name"`
 	SubGroups     []string `json:"subGroups"` // is an array of ints though
 	Logo          string   `json:"logo"`
-	ParentGroupId int64    `json:"parentGroupId,string"`
+	ParentGroupID int64    `json:"parentGroupId,string"`
 	ShortName     string   `json:"shortName"`
 }

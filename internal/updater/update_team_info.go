@@ -5,13 +5,12 @@ import (
 
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/team"
-
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-func apiToDb(teams []team.ParsedTeamInfo) []database.TeamName {
+func apiToDB(teams []team.ParsedTeamInfo) []database.TeamName {
 	var ret []database.TeamName
 
 	for _, team := range teams {
@@ -26,7 +25,7 @@ func apiToDb(teams []team.ParsedTeamInfo) []database.TeamName {
 			name = team.DisplayName[:schoolEnd]
 		}
 
-		teamDB.TeamId = team.Id
+		teamDB.TeamID = team.ID
 		teamDB.Name = name
 		teamDB.Abbreviation = team.Abbreviation
 		teamDB.AltColor = team.AltColor
@@ -54,7 +53,6 @@ func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
 				UpdateAll: true, // upsert
 			}).
 			CreateInBatches(teams, 100).Error; err != nil {
-
 			return err
 		}
 
@@ -65,10 +63,10 @@ func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
 func (u *Updater) UpdateTeamInfo() (int, error) {
 	teamInfo, err := team.GetTeamInfo()
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 
-	if err = u.insertTeamsToDB(apiToDb(teamInfo)); err != nil {
+	if err = u.insertTeamsToDB(apiToDB(teamInfo)); err != nil {
 		return 0, err
 	}
 

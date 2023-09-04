@@ -3,7 +3,6 @@ package updater
 import (
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/ranking"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -15,7 +14,6 @@ func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 				UpdateAll: true, // upsert
 			}).
 			CreateInBatches(rankings, 1000).Error; err != nil {
-
 			return err
 		}
 
@@ -28,7 +26,7 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool) []database.Te
 
 	for id, result := range teamList {
 		retTWR = append(retTWR, database.TeamWeekResult{
-			TeamId:     id,
+			TeamID:     id,
 			Name:       result.Name,
 			Conf:       result.Conf,
 			Year:       result.Year,
@@ -83,11 +81,7 @@ func (u *Updater) UpdateRecentRankings() error {
 		return err
 	}
 
-	if err := u.insertRankingsToDB(weekRankings); err != nil {
-		return err
-	}
-
-	return nil
+	return u.insertRankingsToDB(weekRankings)
 }
 
 func (u *Updater) UpdateAllRankings() error {
@@ -103,7 +97,6 @@ func (u *Updater) UpdateAllRankings() error {
 		Where("season >= ?", 1936). // first official year of AP poll
 		Group("season").
 		Order("season").Find(&yearInfo).Error; err != nil {
-
 		return err
 	}
 
@@ -129,9 +122,5 @@ func (u *Updater) UpdateAllRankings() error {
 		teamWeekResults = append(teamWeekResults, weekRankings...)
 	}
 
-	if err := u.insertRankingsToDB(teamWeekResults); err != nil {
-		return err
-	}
-
-	return nil
+	return u.insertRankingsToDB(teamWeekResults)
 }

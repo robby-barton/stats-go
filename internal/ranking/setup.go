@@ -31,7 +31,6 @@ func (r *Ranker) setGlobals() error {
 		var year int64
 		if err := r.DB.Model(database.TeamSeason{}).
 			Select("max(year) as year").Pluck("year", &year).Error; err != nil {
-
 			return err
 		}
 		r.Year = year
@@ -44,7 +43,6 @@ func (r *Ranker) setGlobals() error {
 			Order("start_time asc").
 			Limit(1).
 			Find(&game).Error; err != nil {
-
 			return err
 		}
 		if game != (database.Game{}) {
@@ -62,7 +60,6 @@ func (r *Ranker) setGlobals() error {
 			Order("start_time desc").
 			Limit(1).
 			Find(&game).Error; err != nil {
-
 			return err
 		}
 	}
@@ -88,7 +85,7 @@ func (r *Ranker) setGlobals() error {
 
 func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 	teams := []struct {
-		TeamId int64
+		TeamID int64
 		Name   string
 		Conf   string
 	}{}
@@ -98,20 +95,19 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 		Joins("left join team_names on team_seasons.team_id = team_names.team_id").
 		Where("team_seasons.fbs = ? and team_seasons.year = ?", findFbs, r.Year).
 		Scan(&teams).Error; err != nil {
-
 		return nil, err
 	}
 
 	teamList := TeamList{}
 	for _, team := range teams {
-		teamList[team.TeamId] = &Team{
+		teamList[team.TeamID] = &Team{
 			Name: team.Name,
 			Conf: team.Conf,
 			Year: r.Year,
 			Week: r.Week,
 		}
 		if r.postseason {
-			teamList[team.TeamId].Postseason = 1
+			teamList[team.TeamID].Postseason = 1
 		}
 	}
 

@@ -4,9 +4,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/robby-barton/stats-go/internal/database"
-
 	"github.com/joho/godotenv"
+	"github.com/robby-barton/stats-go/internal/database"
 )
 
 type Config struct {
@@ -17,7 +16,7 @@ type Config struct {
 func SetupConfig() *Config {
 	env := os.Getenv("API_ENV")
 
-	if "" == env || "local" == env {
+	if env == "" || env == "local" {
 		godotenv.Load(".env")
 	}
 

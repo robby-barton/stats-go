@@ -1,8 +1,8 @@
 package espn
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,13 +10,6 @@ import (
 
 const (
 	timeout = 1 * time.Second
-)
-
-var (
-	headers = map[string]string{
-		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.90 Safari/537.36",
-		"Accept":     "application/json",
-	}
 )
 
 type Responses interface {
@@ -27,21 +20,30 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 	client := &http.Client{
 		Timeout: timeout,
 	}
-	req, _ := http.NewRequest("GET", endpoint, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
 
+	headers := map[string]string{
+		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+			"Chrome/54.0.2840.90 Safari/537.36",
+		"Accept": "application/json",
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 
-	res, err := client.Do(req)
-	count := 1
-	for count < 5 && err != nil {
+	var res *http.Response
+	var err error
+	count := 0
+	for ok := true; ok; ok = (count < 5 && err != nil) {
 		time.Sleep(1 * time.Second)
-		res, err = client.Do(req)
-		count += 1
+		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
+		if err == nil {
+			break
+		}
+		count++
 	}
 	if err != nil {
-		return errors.New(fmt.Sprintf("Error from \"%s\": %v", endpoint, err))
+		return fmt.Errorf("error from \"%s\": %w", endpoint, err)
 	}
 
 	defer res.Body.Close()

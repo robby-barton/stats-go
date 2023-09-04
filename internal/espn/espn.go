@@ -8,27 +8,23 @@ import (
 	"time"
 )
 
-type group int64
-type seasonType int64
+type Group int64
+type SeasonType int64
 
 const (
-	FBS  group = 80
-	FCS  group = 81
-	DII  group = 57
-	DIII group = 58
+	FBS  Group = 80
+	FCS  Group = 81
+	DII  Group = 57
+	DIII Group = 58
 
-	Regular    seasonType = 2
-	Postseason seasonType = 3
+	Regular    SeasonType = 2
+	Postseason SeasonType = 3
 )
 
-type ESPNResponses interface {
-	GameInfoESPN | GameScheduleESPN
-}
-
-func GetCurrentWeekGames(group group) ([]int64, error) {
+func GetCurrentWeekGames(group Group) ([]int64, error) {
 	var games []int64
 
-	url := weekUrl + fmt.Sprintf("&group=%d", group)
+	url := weekURL + fmt.Sprintf("&group=%d", group)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -38,9 +34,8 @@ func GetCurrentWeekGames(group group) ([]int64, error) {
 
 	for _, day := range res.Content.Schedule {
 		for _, event := range day.Games {
-
 			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event.Id)
+				games = append(games, event.ID)
 			}
 		}
 	}
@@ -48,8 +43,8 @@ func GetCurrentWeekGames(group group) ([]int64, error) {
 	return games, nil
 }
 
-func GetGamesByWeek(year int64, week int64, group group, seasonType seasonType) (*GameScheduleESPN, error) {
-	url := weekUrl +
+func GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) (*GameScheduleESPN, error) {
+	url := weekURL +
 		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
 
 	var res GameScheduleESPN
@@ -61,7 +56,7 @@ func GetGamesByWeek(year int64, week int64, group group, seasonType seasonType) 
 	return &res, nil
 }
 
-func GetCompletedGamesByWeek(year int64, week int64, group group, seasonType seasonType) ([]int64, error) {
+func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]int64, error) {
 	res, err := GetGamesByWeek(year, week, group, seasonType)
 	if err != nil {
 		return nil, err
@@ -70,9 +65,8 @@ func GetCompletedGamesByWeek(year int64, week int64, group group, seasonType sea
 	var games []int64
 	for _, day := range res.Content.Schedule {
 		for _, event := range day.Games {
-
 			if event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event.Id)
+				games = append(games, event.ID)
 			}
 		}
 	}
@@ -81,7 +75,7 @@ func GetCompletedGamesByWeek(year int64, week int64, group group, seasonType sea
 }
 
 func GetWeeksInSeason(year int64) (int64, error) {
-	url := weekUrl + fmt.Sprintf("&year=%d", year)
+	url := weekURL + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -93,7 +87,7 @@ func GetWeeksInSeason(year int64) (int64, error) {
 }
 
 func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
-	url := weekUrl + fmt.Sprintf("&year=%d", year)
+	url := weekURL + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := makeRequest(url, &res)
@@ -106,7 +100,7 @@ func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 	return postSeasonStart.Before(startTime), nil
 }
 
-func GetGamesBySeason(year int64, group group) ([]int64, error) {
+func GetGamesBySeason(year int64, group Group) ([]int64, error) {
 	var gameIds []int64
 
 	numWeeks, err := GetWeeksInSeason(year)
@@ -121,7 +115,6 @@ func GetGamesBySeason(year int64, group group) ([]int64, error) {
 		}
 
 		gameIds = append(gameIds, games...)
-
 	}
 
 	games, err := GetCompletedGamesByWeek(year, int64(1), group, Postseason)
@@ -134,8 +127,8 @@ func GetGamesBySeason(year int64, group group) ([]int64, error) {
 	return gameIds, nil
 }
 
-func GetGameStats(gameId int64) (*GameInfoESPN, error) {
-	url := fmt.Sprintf(gameStatsUrl, gameId)
+func GetGameStats(gameID int64) (*GameInfoESPN, error) {
+	url := fmt.Sprintf(gameStatsURL, gameID)
 
 	var res GameInfoESPN
 	err := makeRequest(url, &res)
@@ -148,7 +141,7 @@ func GetGameStats(gameId int64) (*GameInfoESPN, error) {
 
 func GetTeamInfo() (*TeamInfoESPN, error) {
 	var res TeamInfoESPN
-	err := makeRequest(teamInfoUrl, &res)
+	err := makeRequest(teamInfoURL, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +151,7 @@ func GetTeamInfo() (*TeamInfoESPN, error) {
 
 func DefaultSeason() (int64, error) {
 	var res GameScheduleESPN
-	err := makeRequest(weekUrl, &res)
+	err := makeRequest(weekURL, &res)
 	if err != nil {
 		return 0, err
 	}
@@ -166,9 +159,9 @@ func DefaultSeason() (int64, error) {
 	return res.Content.Defaults.Year, nil
 }
 
-func ConferenceMap() (map[group]interface{}, error) {
+func ConferenceMap() (map[Group]interface{}, error) {
 	var res GameScheduleESPN
-	err := makeRequest(weekUrl, &res)
+	err := makeRequest(weekURL, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +174,16 @@ func ConferenceMap() (map[group]interface{}, error) {
 	conferences := res.Content.ConferenceAPI.Conferences
 
 	for _, conference := range conferences {
-		switch conference.ParentGroupId {
+		switch conference.ParentGroupID {
 		case int64(FBS):
-			fbs[conference.GroupId] = conference.ShortName
+			fbs[conference.GroupID] = conference.ShortName
 		case int64(FCS):
-			fcs[conference.GroupId] = conference.ShortName
+			fcs[conference.GroupID] = conference.ShortName
 		default:
-			if slices.Contains([]int64{int64(DII), int64(DIII)}, conference.GroupId) {
+			if slices.Contains([]int64{int64(DII), int64(DIII)}, conference.GroupID) {
 				for _, conf := range conference.SubGroups {
 					group, _ := strconv.ParseInt(conf, 10, 64)
-					switch conference.GroupId {
+					switch conference.GroupID {
 					case int64(DII):
 						dii = append(dii, group)
 					case int64(DIII):
@@ -201,7 +194,7 @@ func ConferenceMap() (map[group]interface{}, error) {
 		}
 	}
 
-	return map[group]interface{}{
+	return map[Group]interface{}{
 		FBS:  fbs,
 		FCS:  fcs,
 		DII:  dii,
@@ -217,7 +210,7 @@ func TeamConferencesByYear(year int64) (map[int64]int64, error) {
 		return nil, err
 	}
 
-	for _, group := range []group{FBS, FCS} {
+	for _, group := range []Group{FBS, FCS} {
 		for i := int64(1); i < numWeeks; i++ {
 			games, err := GetGamesByWeek(year, i, group, Regular)
 			if err != nil {
@@ -242,7 +235,7 @@ func extractTeamConfs(games *GameScheduleESPN) map[int64]int64 {
 	for _, day := range games.Content.Schedule {
 		for _, event := range day.Games {
 			for _, team := range event.Competitions[0].Competitors {
-				teamConfs[team.Team.Id] = team.Team.ConferenceId
+				teamConfs[team.Team.ID] = team.Team.ConferenceID
 			}
 		}
 	}

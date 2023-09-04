@@ -1,6 +1,6 @@
 package espn
 
-const gameStatsUrl = "https://cdn.espn.com/core/college-football/playbyplay" +
+const gameStatsURL = "https://cdn.espn.com/core/college-football/playbyplay" +
 	"?gameId=%d&xhr=1&render=false&userab=18"
 
 type GameInfoESPN struct {
@@ -13,14 +13,14 @@ type GamePackage struct {
 }
 
 type Header struct {
-	Id           int64          `json:"id,string"`
+	ID           int64          `json:"id,string"`
 	Competitions []Competitions `json:"competitions"`
 	Season       Season         `json:"season"`
 	Week         int64          `json:"week"`
 }
 
 type Competitions struct {
-	Id          int64         `json:"id,string"`
+	ID          int64         `json:"id,string"`
 	Date        string        `json:"date"`
 	ConfGame    bool          `json:"conferenceCompetition"`
 	Neutral     bool          `json:"neutralSite"`
@@ -29,7 +29,7 @@ type Competitions struct {
 
 type Competitors struct {
 	HomeAway string `json:"homeAway"`
-	Id       int64  `json:"id,string"`
+	ID       int64  `json:"id,string"`
 	Score    int64  `json:"score,string"`
 }
 
@@ -55,7 +55,7 @@ type TeamStatistics struct {
 }
 
 type Team struct {
-	Id int64 `json:"id,string"`
+	ID int64 `json:"id,string"`
 }
 
 type Players struct {
@@ -76,7 +76,7 @@ type AthleteStats struct {
 }
 
 type Athlete struct {
-	Id        int64  `json:"id,string"`
+	ID        int64  `json:"id,string"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 }

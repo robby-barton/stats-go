@@ -1,13 +1,13 @@
 package espn
 
-const teamInfoUrl = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
+const teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 
 type TeamInfoESPN struct {
 	Sports []Sport `json:"sports"`
 }
 
 type Sport struct {
-	Id      int64    `json:"id,string"`
+	ID      int64    `json:"id,string"`
 	Leagues []League `json:"leagues"`
 	Name    string   `json:"name"`
 	Slug    string   `json:"slug"`
@@ -15,7 +15,7 @@ type Sport struct {
 
 type League struct {
 	Abbreviation string     `json:"abbreviation"`
-	Id           int64      `json:"id,string"`
+	ID           int64      `json:"id,string"`
 	Name         string     `json:"name"`
 	ShortName    string     `json:"shortName"`
 	Slug         string     `json:"slug"`
@@ -32,7 +32,7 @@ type TeamInfo struct {
 	AltColor         string `json:"alternateColor"`
 	Color            string `json:"color"`
 	DisplayName      string `json:"displayName"`
-	Id               int64  `json:"id,string"`
+	ID               int64  `json:"id,string"`
 	IsActive         bool   `json:"isActive"`
 	IsAllStar        bool   `json:"isAllStar"`
 	Links            []Link `json:"links"`

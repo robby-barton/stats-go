@@ -3,25 +3,8 @@ package updater
 import (
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/game"
-
 	"gorm.io/gorm"
 )
-
-func combineGames(gamesLists [][]int64) []int64 {
-	found := make(map[int64]bool)
-	var games []int64
-
-	for _, gamesList := range gamesLists {
-		for _, game := range gamesList {
-			if !found[game] {
-				found[game] = true
-				games = append(games, game)
-			}
-		}
-	}
-
-	return games
-}
 
 func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
 	var existing []int64
@@ -113,7 +96,6 @@ func (u *Updater) insertGameInfo(game game.ParsedGameInfo) error {
 
 		return nil
 	})
-
 }
 
 func (u *Updater) UpdateCurrentWeek() (int, error) {
@@ -128,6 +110,9 @@ func (u *Updater) UpdateCurrentWeek() (int, error) {
 	}
 
 	gameStats, err := game.GetGameStats(gameIds)
+	if err != nil {
+		return 0, err
+	}
 
 	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {
@@ -150,6 +135,9 @@ func (u *Updater) UpdateGamesForYear(year int64) (int, error) {
 	}
 
 	gameStats, err := game.GetGameStats(gameIds)
+	if err != nil {
+		return 0, err
+	}
 
 	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {

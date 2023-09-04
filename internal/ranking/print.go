@@ -1,3 +1,4 @@
+//nolint:forbidigo // ranker doesn't have a logger
 package ranking
 
 import (

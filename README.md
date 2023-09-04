@@ -12,7 +12,7 @@ The services are currently set up to only connect to PostgreSQL databases.
 
 ## Services
 ### Running and Building
-Each of the services can be run locally using `make {ranker,updater,server}`.
+Each of the services can be run locally using `make {ranker,updater}`.
 
 When running the services locally you can pass command line arguments by appending
 `OPTS="..."` to the make call: `make ranker OPTS="-t 25"`.
@@ -44,6 +44,3 @@ Updater can run on-demand updates or run as a service and update on a schedule.
 
 #### Scheduler
 The updater can run in scheduled mode which will wake up and search for new games finished every 5 minutes. If a new game is found it will add the game info to the database and update the current rankings.
-
-### (deprecated) Server
-~~Server is an API server for a pending site to host rankings.~~ API server is no longer needed, see [stats-web](https://github.com/robby-barton/stats-web) repo for site implementation.
