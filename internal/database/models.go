@@ -4,6 +4,18 @@ import (
 	"time"
 )
 
+type Conference struct {
+	ConfId    int64  `json:"confId" gorm:"column:conf_id;primaryKey;not null;unique"`
+	Name      string `json:"name" gorm:"column:name"`
+	Logo      string `json:"logo" gorm:"column:logo"`
+	ParentId  int64  `json:"parentId" gorm:"column:parent_id"`
+	ShortName string `json:"shortName" gorm:"column:short_name"`
+}
+
+func (Conference) TableName() string {
+	return "conferences"
+}
+
 type TeamName struct {
 	TeamId           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
 	Name             string `json:"name" gorm:"column:name;not null"`
@@ -27,11 +39,10 @@ func (TeamName) TableName() string {
 }
 
 type TeamSeason struct {
-	TeamId    int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
-	Year      int64  `json:"year" gorm:"column:year;primaryKey"`
-	FBS       int64  `json:"fbs" gorm:"column:fbs"`
-	PowerFive int64  `json:"power_five" gorm:"column:power_five"`
-	Conf      string `json:"conf" gorm:"column:conf"`
+	TeamId int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
+	Year   int64  `json:"year" gorm:"column:year;primaryKey"`
+	FBS    int64  `json:"fbs" gorm:"column:fbs"`
+	Conf   string `json:"conf" gorm:"column:conf"`
 }
 
 func (TeamSeason) TableName() string {

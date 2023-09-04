@@ -16,17 +16,17 @@ import (
 )
 
 func main() {
-	logger := logger.NewLogger()
+	logger := logger.NewLogger().Sugar()
 	defer logger.Sync()
-	sugar := logger.Sugar()
 
-	var scheduled, games, rank, all, team bool
+	var scheduled, games, rank, all, team, season bool
 
 	flag.BoolVar(&scheduled, "s", false, "run scheduler")
 	flag.BoolVar(&games, "g", false, "one-time game update")
 	flag.BoolVar(&rank, "r", false, "one-time ranking update")
 	flag.BoolVar(&all, "a", false, "update all rankings or games")
 	flag.BoolVar(&team, "t", false, "update team info")
+	flag.BoolVar(&season, "y", false, "update season info")
 	flag.Parse()
 
 	cfg := config.SetupConfig()
@@ -40,7 +40,7 @@ func main() {
 
 	u := updater.Updater{
 		DB:     db,
-		Logger: sugar,
+		Logger: logger,
 	}
 
 	if scheduled {
@@ -55,15 +55,15 @@ func main() {
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
-								sugar.Errorf("panic caught: %s", r)
+								logger.Errorf("panic caught: %s", r)
 							}
 						}()
 
 						err = u.UpdateRecentRankings()
 						if err != nil {
-							sugar.Error(err)
+							logger.Error(err)
 						} else {
-							sugar.Info("rankings updated")
+							logger.Info("rankings updated")
 						}
 					}()
 				case <-stop:
@@ -72,20 +72,56 @@ func main() {
 			}
 		}()
 
+		// Update completed games
+		// every 5 minutes from August through January
 		s.Cron("*/5 * * 1,8-12 *").Do(func() {
 			defer func() {
 				if r := recover(); r != nil {
-					sugar.Errorf("panic caught: %s", r)
+					logger.Errorf("panic caught: %s", r)
 				}
 			}()
 
 			addedGames, err := u.UpdateCurrentWeek()
 
-			sugar.Infof("Added %d games\n", addedGames)
+			logger.Infof("Added %d games", addedGames)
 			if addedGames > 0 {
 				update <- true
 			} else if err != nil {
-				sugar.Error(err)
+				logger.Error(err)
+			}
+		})
+
+		// Update team info
+		// 5 am Sunday from August through January
+		s.Cron("0 5 * 1,8-12 0").Do(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Errorf("panic caught: %s", r)
+				}
+			}()
+
+			addedTeams, err := u.UpdateTeamInfo()
+			if err != nil {
+				logger.Error(err)
+			} else {
+				logger.Infof("Updated %d teams", addedTeams)
+			}
+		})
+
+		// Add new season
+		// 6 am on August 10th
+		s.Cron("0 6 10 8 *").Do(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Errorf("panic caught: %s", r)
+				}
+			}()
+
+			addedSeasons, err := u.UpdateTeamSeasons(false)
+			if err != nil {
+				logger.Error(err)
+			} else {
+				logger.Infof("Added %d seasons", addedSeasons)
 			}
 		})
 
@@ -108,9 +144,9 @@ func main() {
 				addedGames, err = u.UpdateCurrentWeek()
 			}
 			if err != nil {
-				sugar.Error(err)
+				logger.Error(err)
 			} else {
-				sugar.Infof("Added %d games\n", addedGames)
+				logger.Infof("Added %d games", addedGames)
 			}
 		}
 		if rank {
@@ -120,15 +156,23 @@ func main() {
 				err = u.UpdateRecentRankings()
 			}
 			if err != nil {
-				sugar.Error(err)
+				logger.Error(err)
 			}
 		}
 		if team {
 			addedTeams, err := u.UpdateTeamInfo()
 			if err != nil {
-				sugar.Error(err)
+				logger.Error(err)
 			} else {
-				sugar.Infof("Updated %d teams\n", addedTeams)
+				logger.Infof("Updated %d teams", addedTeams)
+			}
+		}
+		if season {
+			addedSeasons, err := u.UpdateTeamSeasons(true)
+			if err != nil {
+				logger.Error(err)
+			} else {
+				logger.Infof("Added %d seasons", addedSeasons)
 			}
 		}
 	}
