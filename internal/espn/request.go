@@ -35,12 +35,12 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 	var err error
 	count := 0
 	for ok := true; ok; ok = (count < 5 && err != nil) {
-		time.Sleep(1 * time.Second)
 		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
 		if err == nil {
 			break
 		}
 		count++
+		time.Sleep(1 * time.Second)
 	}
 	if err != nil {
 		return fmt.Errorf("error from \"%s\": %w", endpoint, err)
