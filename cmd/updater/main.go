@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"os/signal"
@@ -8,11 +9,11 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
-
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
+	"github.com/robby-barton/stats-go/internal/web"
 )
 
 func main() {
@@ -42,6 +43,9 @@ func main() {
 		DB:     db,
 		Logger: logger,
 	}
+	webClient := &web.Client{
+		RevalidateSecret: cfg.RevalidateSecret,
+	}
 
 	if scheduled {
 		s := gocron.NewScheduler(time.Local)
@@ -64,6 +68,12 @@ func main() {
 							logger.Error(err)
 						} else {
 							logger.Info("rankings updated")
+							err := webClient.RevalidateWeb(context.Background())
+							if err != nil {
+								logger.Error(err)
+							} else {
+								logger.Info("successfully invalidated web cache")
+							}
 						}
 					}()
 				case <-stop:
@@ -85,10 +95,10 @@ func main() {
 			addedGames, err = u.UpdateCurrentWeek()
 
 			logger.Infof("Added %d games", addedGames)
-			if addedGames > 0 {
-				update <- true
-			} else if err != nil {
+			if err != nil {
 				logger.Error(err)
+			} else if addedGames > 0 {
+				update <- true
 			}
 		})
 
@@ -107,6 +117,12 @@ func main() {
 				logger.Error(err)
 			} else {
 				logger.Infof("Updated %d teams", addedTeams)
+				err := webClient.RevalidateWeb(context.Background())
+				if err != nil {
+					logger.Error(err)
+				} else {
+					logger.Info("successfully invalidated web cache")
+				}
 			}
 		})
 
@@ -121,10 +137,12 @@ func main() {
 
 			var addedSeasons int
 			addedSeasons, err = u.UpdateTeamSeasons(false)
+
+			logger.Infof("Added %d seasons", addedSeasons)
 			if err != nil {
 				logger.Error(err)
-			} else {
-				logger.Infof("Added %d seasons", addedSeasons)
+			} else if addedSeasons > 0 {
+				update <- true
 			}
 		})
 
