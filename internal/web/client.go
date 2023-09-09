@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,9 +17,7 @@ type Client struct {
 }
 
 func (c *Client) RevalidateWeb(ctx context.Context) error {
-	jsonBody := []byte(fmt.Sprintf("{\"secret\":\"%s\"}", c.RevalidateSecret))
-	bodyReader := bytes.NewReader(jsonBody)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://cfb.robbybarton.com/api/revalidate", bodyReader)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("https://cfb.robbybarton.com/api/revalidate?secret=%s", c.RevalidateSecret), nil)
 
 	client := &http.Client{
 		Timeout: timeout,
