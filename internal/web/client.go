@@ -17,18 +17,20 @@ type Client struct {
 }
 
 func (c *Client) RevalidateWeb(ctx context.Context) error {
-	req, _ := http.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
 		fmt.Sprintf("https://cfb.robbybarton.com/api/revalidate?secret=%s", c.RevalidateSecret),
 		nil,
 	)
+	if err != nil {
+		return err
+	}
 
 	client := &http.Client{
 		Timeout: timeout,
 	}
 	var res *http.Response
-	var err error
 	count := 0
 	for ok := true; ok; ok = (count < 5 && err != nil) {
 		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
