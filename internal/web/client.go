@@ -17,7 +17,12 @@ type Client struct {
 }
 
 func (c *Client) RevalidateWeb(ctx context.Context) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("https://cfb.robbybarton.com/api/revalidate?secret=%s", c.RevalidateSecret), nil)
+	req, _ := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("https://cfb.robbybarton.com/api/revalidate?secret=%s", c.RevalidateSecret),
+		nil,
+	)
 
 	client := &http.Client{
 		Timeout: timeout,
