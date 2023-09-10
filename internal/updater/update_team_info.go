@@ -3,11 +3,12 @@ package updater
 import (
 	"strings"
 
-	"github.com/robby-barton/stats-go/internal/database"
-	"github.com/robby-barton/stats-go/internal/team"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/team"
 )
 
 func apiToDB(teams []team.ParsedTeamInfo) []database.TeamName {

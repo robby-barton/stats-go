@@ -3,10 +3,11 @@ package updater
 import (
 	"maps"
 
-	"github.com/robby-barton/stats-go/internal/database"
-	"github.com/robby-barton/stats-go/internal/espn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 )
 
 func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {

@@ -11,7 +11,7 @@ updater:
 	@go run ./cmd/updater ${OPTS}
 
 update-all-rankings:
-	@go run ./cmd/updater -r -a
+	@go run ./cmd/updater -ranking -all
 
 ranker:
 	@go run ./cmd/ranker ${OPTS}

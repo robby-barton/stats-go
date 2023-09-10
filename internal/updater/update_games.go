@@ -1,9 +1,13 @@
 package updater
 
 import (
+	"errors"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/game"
-	"gorm.io/gorm"
 )
 
 func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
@@ -28,68 +32,117 @@ func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
 	return newGames, nil
 }
 
-func (u *Updater) insertGameInfo(game game.ParsedGameInfo) error {
+func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
+	if game == nil {
+		return errors.New("game nil")
+	}
+
 	return u.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&game.GameInfo).Error; err != nil {
+		if err := tx.
+			Clauses(clause.OnConflict{
+				UpdateAll: true, // upsert
+			}).
+			Create(&game.GameInfo).Error; err != nil {
 			return err
 		}
 
 		if len(game.TeamStats) > 0 {
-			if err := tx.Create(&game.TeamStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.TeamStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.PassingStats) > 0 {
-			if err := tx.Create(&game.PassingStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.PassingStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.RushingStats) > 0 {
-			if err := tx.Create(&game.RushingStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.RushingStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.ReceivingStats) > 0 {
-			if err := tx.Create(&game.ReceivingStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.ReceivingStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.FumbleStats) > 0 {
-			if err := tx.Create(&game.FumbleStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.FumbleStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.DefensiveStats) > 0 {
-			if err := tx.Create(&game.DefensiveStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.DefensiveStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.InterceptionStats) > 0 {
-			if err := tx.Create(&game.InterceptionStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.InterceptionStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.ReturnStats) > 0 {
-			if err := tx.Create(&game.ReturnStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll:    true, // upsert
+					OnConstraint: "return_stats_pkey",
+				}).
+				Create(&game.ReturnStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.KickStats) > 0 {
-			if err := tx.Create(&game.KickStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.KickStats).Error; err != nil {
 				return err
 			}
 		}
 
 		if len(game.PuntStats) > 0 {
-			if err := tx.Create(&game.PuntStats).Error; err != nil {
+			if err := tx.
+				Clauses(clause.OnConflict{
+					UpdateAll: true, // upsert
+				}).
+				Create(&game.PuntStats).Error; err != nil {
 				return err
 			}
 		}
@@ -146,4 +199,13 @@ func (u *Updater) UpdateGamesForYear(year int64) (int, error) {
 	}
 
 	return len(gameStats), nil
+}
+
+func (u *Updater) UpdateSingleGame(gameID int64) error {
+	gameStats, err := game.GetSingleGame(gameID)
+	if err != nil {
+		return err
+	}
+
+	return u.insertGameInfo(gameStats)
 }
