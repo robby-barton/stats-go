@@ -1,10 +1,11 @@
 package updater
 
 import (
-	"github.com/robby-barton/stats-go/internal/database"
-	"github.com/robby-barton/stats-go/internal/ranking"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/ranking"
 )
 
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {

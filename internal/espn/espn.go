@@ -65,7 +65,7 @@ func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType Sea
 	var games []int64
 	for _, day := range res.Content.Schedule {
 		for _, event := range day.Games {
-			if event.Status.StatusType.Name == "STATUS_FINAL" {
+			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
 				games = append(games, event.ID)
 			}
 		}

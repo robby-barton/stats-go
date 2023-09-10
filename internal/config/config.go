@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
+
 	"github.com/robby-barton/stats-go/internal/database"
 )
 

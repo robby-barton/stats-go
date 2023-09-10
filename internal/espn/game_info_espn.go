@@ -25,6 +25,7 @@ type Competitions struct {
 	ConfGame    bool          `json:"conferenceCompetition"`
 	Neutral     bool          `json:"neutralSite"`
 	Competitors []Competitors `json:"competitors"`
+	Status      Status        `json:"status"`
 }
 
 type Competitors struct {

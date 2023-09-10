@@ -7,8 +7,9 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/robby-barton/stats-go/internal/database"
 	"gonum.org/v1/gonum/mat"
+
+	"github.com/robby-barton/stats-go/internal/database"
 )
 
 const (

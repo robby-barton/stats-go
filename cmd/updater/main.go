@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
+
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/logger"
@@ -21,13 +22,15 @@ func main() {
 	defer logger.Sync()
 
 	var scheduled, games, rank, all, team, season bool
+	var singleGame int64
 
-	flag.BoolVar(&scheduled, "s", false, "run scheduler")
-	flag.BoolVar(&games, "g", false, "one-time game update")
-	flag.BoolVar(&rank, "r", false, "one-time ranking update")
-	flag.BoolVar(&all, "a", false, "update all rankings or games")
-	flag.BoolVar(&team, "t", false, "update team info")
-	flag.BoolVar(&season, "y", false, "update season info")
+	flag.BoolVar(&scheduled, "schedule", false, "run scheduler")
+	flag.BoolVar(&games, "games", false, "one-time game update")
+	flag.Int64Var(&singleGame, "single", 0, "force update one game")
+	flag.BoolVar(&rank, "ranking", false, "one-time ranking update")
+	flag.BoolVar(&all, "all", false, "update all rankings or games")
+	flag.BoolVar(&team, "teams", false, "update team info")
+	flag.BoolVar(&season, "season", false, "update season info")
 	flag.Parse()
 
 	cfg := config.SetupConfig()
@@ -167,6 +170,14 @@ func main() {
 				logger.Error(err)
 			} else {
 				logger.Infof("Added %d games", addedGames)
+			}
+		}
+		if singleGame > 0 {
+			err = u.UpdateSingleGame(singleGame)
+			if err != nil {
+				logger.Error(err)
+			} else {
+				logger.Infof("Game %d updated", singleGame)
 			}
 		}
 		if rank {

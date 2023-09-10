@@ -21,21 +21,16 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGameStats(gameIds []int64) ([]ParsedGameInfo, error) {
-	var parsedGameStats []ParsedGameInfo
+func GetGameStats(gameIds []int64) ([]*ParsedGameInfo, error) {
+	var parsedGameStats []*ParsedGameInfo
 
 	for _, gameID := range gameIds {
-		res, err := espn.GetGameStats(gameID)
+		gameStats, err := GetSingleGame(gameID)
 		if err != nil {
 			return nil, err
 		}
 
-		var parsedGame ParsedGameInfo
-		parsedGame.parseGameInfo(res)
-		parsedGame.parseTeamInfo(res)
-		parsedGame.parsePlayerStats(res)
-
-		parsedGameStats = append(parsedGameStats, parsedGame)
+		parsedGameStats = append(parsedGameStats, gameStats)
 
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -89,4 +84,18 @@ func GetGamesForSeason(year int64) ([]int64, error) {
 	gameIds := combineGames([][]int64{fbsGames, fcsGames})
 
 	return gameIds, nil
+}
+
+func GetSingleGame(gameID int64) (*ParsedGameInfo, error) {
+	res, err := espn.GetGameStats(gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedGame := &ParsedGameInfo{}
+	parsedGame.parseGameInfo(res)
+	parsedGame.parseTeamInfo(res)
+	parsedGame.parsePlayerStats(res)
+
+	return parsedGame, nil
 }
