@@ -2,25 +2,44 @@ package web
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
 )
 
 const (
-	timeout = 1 * time.Second
+	timeout        = 1 * time.Second
+	webDomain      = "https://cfb.robbybarton.com"
+	revalidateBase = "/api/revalidate"
 )
 
 type Client struct {
 	RevalidateSecret string
 }
 
-func (c *Client) RevalidateWeb(ctx context.Context) error {
+func (c *Client) RevalidateWeek(ctx context.Context) error {
+	err := c.revalidateRequest(ctx, fmt.Sprintf("%s%s/week", webDomain, revalidateBase))
+	if err != nil {
+		return fmt.Errorf("error trying to invalidate week: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) RevalidateAll(ctx context.Context) error {
+	err := c.revalidateRequest(ctx, fmt.Sprintf("%s%s/all", webDomain, revalidateBase))
+	if err != nil {
+		return fmt.Errorf("error trying to invalidate all: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) revalidateRequest(ctx context.Context, endpoint string) error {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("https://cfb.robbybarton.com/api/revalidate?secret=%s", c.RevalidateSecret),
+		fmt.Sprintf("%s?secret=%s", endpoint, c.RevalidateSecret),
 		nil,
 	)
 	if err != nil {
@@ -41,9 +60,11 @@ func (c *Client) RevalidateWeb(ctx context.Context) error {
 		time.Sleep(1 * time.Second)
 	}
 	if err != nil {
-		return fmt.Errorf("error trying to invalidate web: %w", err)
-	} else if res.StatusCode != http.StatusOK {
-		return errors.New("not 200")
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("non-OK status: %d", res.StatusCode)
 	}
 
 	return nil

@@ -68,7 +68,7 @@ func main() {
 							logger.Error(err)
 						} else {
 							logger.Info("rankings updated")
-							err := webClient.RevalidateWeb(context.Background())
+							err := webClient.RevalidateWeek(context.Background())
 							if err != nil {
 								logger.Error(err)
 							} else {
@@ -117,7 +117,7 @@ func main() {
 				logger.Error(err)
 			} else {
 				logger.Infof("Updated %d teams", addedTeams)
-				err := webClient.RevalidateWeb(context.Background())
+				err := webClient.RevalidateAll(context.Background())
 				if err != nil {
 					logger.Error(err)
 				} else {
