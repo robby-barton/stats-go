@@ -8,4 +8,5 @@ import (
 type Updater struct {
 	DB     *gorm.DB
 	Logger *zap.SugaredLogger
+	Writer Writer
 }

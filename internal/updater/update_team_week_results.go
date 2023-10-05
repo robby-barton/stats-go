@@ -8,6 +8,25 @@ import (
 	"github.com/robby-barton/stats-go/internal/ranking"
 )
 
+type yearInfo struct {
+	Year       int64
+	Weeks      int64
+	Postseason int64
+}
+
+func (u *Updater) getYearInfo() ([]yearInfo, error) {
+	var yearInfo []yearInfo
+	if err := u.DB.Model(database.Game{}).
+		Select(`season as year, max(week) as weeks, max(postseason) as postseason`).
+		Where("season >= ?", 1936). // first official year of AP poll
+		Group("season").
+		Order("season").Find(&yearInfo).Error; err != nil {
+		return nil, err
+	}
+
+	return yearInfo, nil
+}
+
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	return u.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
@@ -88,16 +107,8 @@ func (u *Updater) UpdateRecentRankings() error {
 func (u *Updater) UpdateAllRankings() error {
 	var teamWeekResults []database.TeamWeekResult
 
-	var yearInfo []struct {
-		Year       int64
-		Weeks      int64
-		Postseason int64
-	}
-	if err := u.DB.Model(database.Game{}).
-		Select(`season as year, max(week) as weeks, max(postseason) as postseason`).
-		Where("season >= ?", 1936). // first official year of AP poll
-		Group("season").
-		Order("season").Find(&yearInfo).Error; err != nil {
+	yearInfo, err := u.getYearInfo()
+	if err != nil {
 		return err
 	}
 

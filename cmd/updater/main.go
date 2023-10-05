@@ -21,7 +21,7 @@ func main() {
 	logger := logger.NewLogger().Sugar()
 	defer logger.Sync()
 
-	var scheduled, games, rank, all, team, season bool
+	var scheduled, games, rank, all, team, season, json bool
 	var singleGame int64
 
 	flag.BoolVar(&scheduled, "schedule", false, "run scheduler")
@@ -31,6 +31,7 @@ func main() {
 	flag.BoolVar(&all, "all", false, "update all rankings or games")
 	flag.BoolVar(&team, "teams", false, "update team info")
 	flag.BoolVar(&season, "season", false, "update season info")
+	flag.BoolVar(&json, "json", false, "rewrite json")
 	flag.Parse()
 
 	cfg := config.SetupConfig()
@@ -45,6 +46,7 @@ func main() {
 	u := updater.Updater{
 		DB:     db,
 		Logger: logger,
+		Writer: &updater.DefaultWriter{},
 	}
 	webClient := &web.Client{
 		RevalidateSecret: cfg.RevalidateSecret,
@@ -206,6 +208,12 @@ func main() {
 				logger.Error(err)
 			} else {
 				logger.Infof("Added %d seasons", addedSeasons)
+			}
+		}
+		if json {
+			err := u.UpdateAllJSON()
+			if err != nil {
+				logger.Error(err)
 			}
 		}
 	}
