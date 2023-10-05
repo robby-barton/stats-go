@@ -97,14 +97,16 @@ func (u *Updater) UpdateAllJSON() error {
 	for _, division := range []string{fbs, fcs} {
 		for _, year := range yearInfo {
 			for week := int64(1); week <= year.Weeks; week++ {
-				weekRankings := []database.TeamWeekResult{}
-				for _, ranking := range rankings {
-					if ranking.Fbs == (division == fbs) && ranking.Year == year.Year &&
-						ranking.Week == week && ranking.Postseason == 0 {
-						weekRankings = append(weekRankings, ranking)
-					}
+				var weekRankings []database.TeamWeekResult
+				if err := u.DB.Where(
+					"year = ? and fbs = ? and week = ? and postseason = ?",
+					year.Year, division == fbs, week, 0,
+				).
+					Order("final_rank").
+					Find(&weekRankings).Error; err != nil {
+					return err
 				}
-				err := u.UpdateRankJSON(&RankingsJSON{
+				err = u.UpdateRankJSON(&RankingsJSON{
 					Division:   division,
 					Year:       year.Year,
 					Week:       week,
@@ -117,12 +119,14 @@ func (u *Updater) UpdateAllJSON() error {
 			}
 
 			if year.Postseason > 0 {
-				weekRankings := []database.TeamWeekResult{}
-				for _, ranking := range rankings {
-					if ranking.Fbs == (division == fbs) && ranking.Year == year.Year &&
-						ranking.Postseason == 1 {
-						weekRankings = append(weekRankings, ranking)
-					}
+				var weekRankings []database.TeamWeekResult
+				if err := u.DB.Where(
+					"year = ? and fbs = ? and week = ? and postseason = ?",
+					year.Year, division == fbs, 1, 1,
+				).
+					Order("final_rank").
+					Find(&weekRankings).Error; err != nil {
+					return err
 				}
 
 				err := u.UpdateRankJSON(&RankingsJSON{
@@ -136,12 +140,14 @@ func (u *Updater) UpdateAllJSON() error {
 					return err
 				}
 			} else {
-				weekRankings := []database.TeamWeekResult{}
-				for _, ranking := range rankings {
-					if ranking.Fbs == (division == fbs) && ranking.Year == year.Year &&
-						ranking.Week == (year.Weeks+1) && ranking.Postseason == 0 {
-						weekRankings = append(weekRankings, ranking)
-					}
+				var weekRankings []database.TeamWeekResult
+				if err := u.DB.Where(
+					"year = ? and fbs = ? and week = ? and postseason = ?",
+					year.Year, division == fbs, year.Weeks+1, 0,
+				).
+					Order("final_rank").
+					Find(&weekRankings).Error; err != nil {
+					return err
 				}
 
 				err := u.UpdateRankJSON(&RankingsJSON{
