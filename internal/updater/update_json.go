@@ -121,8 +121,8 @@ func (u *Updater) UpdateAllJSON() error {
 			if year.Postseason > 0 {
 				var weekRankings []database.TeamWeekResult
 				if err := u.DB.Where(
-					"year = ? and fbs = ? and week = ? and postseason = ?",
-					year.Year, division == fbs, 1, 1,
+					"year = ? and fbs = ? and postseason = ?",
+					year.Year, division == fbs, 1,
 				).
 					Order("final_rank").
 					Find(&weekRankings).Error; err != nil {
