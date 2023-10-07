@@ -15,6 +15,7 @@ import (
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
 	"github.com/robby-barton/stats-go/internal/web"
+	"github.com/robby-barton/stats-go/internal/writer"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 	u := updater.Updater{
 		DB:     db,
 		Logger: logger,
-		Writer: &updater.DefaultWriter{},
+		Writer: &writer.DefaultWriter{},
 	}
 	webClient := &web.Client{
 		RevalidateSecret: cfg.RevalidateSecret,

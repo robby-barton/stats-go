@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/robby-barton/stats-go/internal/database"
@@ -16,27 +14,12 @@ const (
 	fcs = "fcs"
 )
 
-type Writer interface {
-	WriteData(ctx context.Context, fileName string, data []byte) error
-}
-
 type RankingsJSON struct {
 	Division   string                    `json:"division"`
 	Year       int64                     `json:"year"`
 	Week       int64                     `json:"week"`
 	Postseason bool                      `json:"postseason"`
 	Results    []database.TeamWeekResult `json:"results"`
-}
-
-type DefaultWriter struct{}
-
-func (*DefaultWriter) WriteData(_ context.Context, fileName string, data []byte) error {
-	err := os.MkdirAll(filepath.Dir(fileName), 0775)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(fileName, data, 0664) // #nosec G306
 }
 
 func (u *Updater) UpdateTeamJSON() error {
