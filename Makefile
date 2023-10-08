@@ -1,7 +1,7 @@
 .PHONY: fmt refresh-modules build-server build-ranker build-updater
 .PHONY: download-modules modules build clean server updater ranker
 
-fmt:
+format:
 	@go fmt ./...
 
 server:
@@ -39,6 +39,7 @@ build: build-server build-updater build-ranking
 
 clean:
 	@rm -rf server updater ranker > /dev/null 2>&1
+	@rm -rf ranking team teams.json availRanks.json latest.json gameCount.json > /dev/null 2>&1
 
 lint:
 	@golangci-lint run --config=.golangci.yml ./...
