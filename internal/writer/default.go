@@ -9,6 +9,8 @@ import (
 
 type DefaultWriter struct{}
 
+var _ Writer = (*DefaultWriter)(nil)
+
 func (*DefaultWriter) WriteData(_ context.Context, fileName string, input any) error {
 	err := os.MkdirAll(filepath.Dir(fileName), 0775)
 	if err != nil {
