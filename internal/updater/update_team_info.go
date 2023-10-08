@@ -3,7 +3,6 @@ package updater
 import (
 	"strings"
 
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -70,8 +69,6 @@ func (u *Updater) UpdateTeamInfo() (int, error) {
 	if err = u.insertTeamsToDB(apiToDB(teamInfo)); err != nil {
 		return 0, err
 	}
-
-	u.Logger.Info("team info", zap.Reflect("team info", teamInfo))
 
 	return len(teamInfo), nil
 }

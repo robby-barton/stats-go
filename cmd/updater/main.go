@@ -44,10 +44,19 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
+	doWriter, err := writer.NewDigitalOceanWriter(
+		cfg.S3Config.Key,
+		cfg.S3Config.Secret,
+		cfg.S3Config.Endpoint,
+		cfg.S3Config.Bucket,
+	)
+	if err != nil {
+		panic(err)
+	}
 	u := updater.Updater{
 		DB:     db,
 		Logger: logger,
-		Writer: &writer.DefaultWriter{},
+		Writer: doWriter,
 	}
 	webClient := &web.Client{
 		RevalidateSecret: cfg.RevalidateSecret,
@@ -176,8 +185,7 @@ func main() {
 			}
 		}
 		if singleGame > 0 {
-			err = u.UpdateSingleGame(singleGame)
-			if err != nil {
+			if err := u.UpdateSingleGame(singleGame); err != nil {
 				logger.Error(err)
 			} else {
 				logger.Infof("Game %d updated", singleGame)
@@ -212,8 +220,7 @@ func main() {
 			}
 		}
 		if json {
-			err := u.UpdateAllJSON()
-			if err != nil {
+			if err := u.UpdateAllJSON(); err != nil {
 				logger.Error(err)
 			}
 		}
