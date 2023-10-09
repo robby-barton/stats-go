@@ -90,9 +90,15 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 		return err
 	}
 
-	res, err := client.Do(req)
-	if err != nil {
-		return err
+	var res *http.Response
+	count := 0
+	for ok := true; ok; ok = (count < 5 && err != nil) {
+		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
+		if err == nil {
+			break
+		}
+		count++
+		time.Sleep(1 * time.Second)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {

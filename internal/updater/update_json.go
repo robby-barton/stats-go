@@ -71,7 +71,7 @@ func (u *Updater) UpdateRankJSON(week *rankingsJSON) error {
 	return u.Writer.WriteData(context.Background(), fileName, week.Results)
 }
 
-func (u *Updater) UpdateLatestRankJSON(week *rankingsJSON) error {
+func (u *Updater) UpdateIndexJSON(week *rankingsJSON) error {
 	return u.Writer.WriteData(context.Background(), "latest.json", week.Results)
 }
 
@@ -138,6 +138,90 @@ func (u *Updater) UpdateGameCountJSON() error {
 	}
 
 	return u.Writer.WriteData(context.Background(), "gameCount.json", results)
+}
+
+func (u *Updater) UpdateRecentJSON() error {
+	if err := u.UpdateAvailRanksJSON(); err != nil {
+		return err
+	}
+
+	if err := u.UpdateGameCountJSON(); err != nil {
+		return err
+	}
+
+	teams := []int64{}
+	if err := u.DB.Model(&database.TeamWeekResult{}).
+		Distinct("team_id").Pluck("team_id", &teams).Error; err != nil {
+		return err
+	}
+	for _, team := range teams {
+		if err := u.UpdateTeamRankJSON(team); err != nil {
+			return err
+		}
+	}
+
+	sql := `
+	select 
+		max(year) as year,
+		max(week) as week,
+		max(postseason) as postseason 
+	from team_week_results 
+	where 
+		year = (
+			select 
+				max(year) 
+			from team_week_results
+		)
+	`
+	yearInfo := &struct {
+		Year       int64
+		Week       int64
+		Postseason int64
+	}{}
+	if err := u.DB.Raw(sql).Scan(yearInfo).Error; err != nil {
+		return err
+	}
+
+	for _, division := range []string{fbs, fcs} {
+		weekRankings := []database.TeamWeekResult{}
+		if yearInfo.Postseason > 0 {
+			if err := u.DB.Where(
+				"year = ? and fbs = ? and postseason = 1",
+				yearInfo.Year, division == fbs,
+			).
+				Order("final_rank").
+				Find(&weekRankings).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := u.DB.Where(
+				"year = ? and fbs = ? and week = ? and postseason = 0",
+				yearInfo.Year, division == fbs, yearInfo.Week,
+			).
+				Order("final_rank").
+				Find(&weekRankings).Error; err != nil {
+				return err
+			}
+		}
+		json := &rankingsJSON{
+			Division:   division,
+			Year:       yearInfo.Year,
+			Week:       yearInfo.Week,
+			Postseason: yearInfo.Postseason > 0,
+			Results:    weekRankings,
+		}
+		if err := u.UpdateRankJSON(json); err != nil {
+			return err
+		}
+
+		if division == fbs {
+			if err := u.UpdateIndexJSON(json); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (u *Updater) UpdateAllJSON() error {
@@ -243,5 +327,5 @@ func (u *Updater) UpdateAllJSON() error {
 		}
 	}
 
-	return u.UpdateLatestRankJSON(latestRanking)
+	return u.UpdateIndexJSON(latestRanking)
 }
