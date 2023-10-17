@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	awsSigner "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/digitalocean/godo"
 )
 
 const (
@@ -21,6 +22,8 @@ const (
 type DigitalOceanWriter struct {
 	endpoint string
 	signer   *awsSigner.Signer
+	client   *godo.Client
+	cdnID    string
 }
 
 var _ Writer = (*DigitalOceanWriter)(nil)
@@ -30,17 +33,16 @@ type DOConfig struct {
 	Secret   string
 	Endpoint string
 	Bucket   string
+	APIToken string
+	CDNID    string
 }
 
-func NewDigitalOceanWriter(
-	key string,
-	secret string,
-	endpoint string,
-	bucket string,
-) (*DigitalOceanWriter, error) {
+func NewDigitalOceanWriter(cfg *DOConfig) (*DigitalOceanWriter, error) {
 	return &DigitalOceanWriter{
-		endpoint: fmt.Sprintf("https://%s.%s/", bucket, endpoint),
-		signer:   awsSigner.NewSigner(credentials.NewStaticCredentials(key, secret, "")),
+		endpoint: fmt.Sprintf("https://%s.%s/", cfg.Bucket, cfg.Endpoint),
+		signer:   awsSigner.NewSigner(credentials.NewStaticCredentials(cfg.Key, cfg.Secret, "")),
+		client:   godo.NewFromToken(cfg.APIToken),
+		cdnID:    cfg.CDNID,
 	}, nil
 }
 
@@ -74,7 +76,6 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 	}
 
 	headers := map[string]string{
-		"Cache-Control":       "max-age=60",
 		"Content-Disposition": "inline",
 		"Content-Encoding":    "gzip",
 		"Content-Length":      strconv.FormatInt(int64(len(compressedData)), 10),
@@ -106,4 +107,19 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 	}
 
 	return err
+}
+
+func (w *DigitalOceanWriter) PurgeCache(ctx context.Context) error {
+	flushRequest := &godo.CDNFlushCacheRequest{
+		Files: []string{"*"},
+	}
+
+	resp, err := w.client.CDNs.FlushCache(ctx, w.cdnID, flushRequest)
+	if err != nil {
+		return err
+	} else if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("non-204 status purging CDN: %s", resp.Status)
+	}
+
+	return nil
 }

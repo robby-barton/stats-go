@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"os/signal"
@@ -42,12 +43,7 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	doWriter, err := writer.NewDigitalOceanWriter(
-		cfg.DOConfig.Key,
-		cfg.DOConfig.Secret,
-		cfg.DOConfig.Endpoint,
-		cfg.DOConfig.Bucket,
-	)
+	doWriter, err := writer.NewDigitalOceanWriter(cfg.DOConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -127,6 +123,9 @@ func main() {
 
 			logger.Infof("Updated %d teams", addedTeams)
 			if err := u.UpdateTeamsJSON(); err != nil {
+				logger.Error(err)
+			}
+			if err := u.Writer.PurgeCache(context.Background()); err != nil {
 				logger.Error(err)
 			}
 		})

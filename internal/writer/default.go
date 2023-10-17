@@ -23,3 +23,7 @@ func (*DefaultWriter) WriteData(_ context.Context, fileName string, input any) e
 	}
 	return os.WriteFile(fileName, data, 0664) // #nosec G306
 }
+
+func (*DefaultWriter) PurgeCache(_ context.Context) error {
+	return nil
+}
