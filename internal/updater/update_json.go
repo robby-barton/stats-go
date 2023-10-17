@@ -253,7 +253,8 @@ func (u *Updater) UpdateRecentJSON() error {
 
 		weekJSON := []*resultJSON{}
 		for _, week := range weekRankings {
-			weekJSON = append(weekJSON, toJSON(&week))
+			temp := week
+			weekJSON = append(weekJSON, toJSON(&temp))
 		}
 		json := &rankingsJSON{
 			Division:   division,
@@ -322,7 +323,8 @@ func (u *Updater) UpdateAllJSON() error {
 
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
-					weekJSON = append(weekJSON, toJSON(&week))
+					temp := week
+					weekJSON = append(weekJSON, toJSON(&temp))
 				}
 				err = u.UpdateRankJSON(&rankingsJSON{
 					Division:   division,
@@ -350,7 +352,8 @@ func (u *Updater) UpdateAllJSON() error {
 
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
-					weekJSON = append(weekJSON, toJSON(&week))
+					temp := week
+					weekJSON = append(weekJSON, toJSON(&temp))
 				}
 				final = &rankingsJSON{
 					Division:   division,
@@ -372,7 +375,8 @@ func (u *Updater) UpdateAllJSON() error {
 
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
-					weekJSON = append(weekJSON, toJSON(&week))
+					temp := week
+					weekJSON = append(weekJSON, toJSON(&temp))
 				}
 				final = &rankingsJSON{
 					Division:   division,
