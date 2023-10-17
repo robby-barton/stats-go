@@ -25,7 +25,7 @@ type DigitalOceanWriter struct {
 
 var _ Writer = (*DigitalOceanWriter)(nil)
 
-type S3Config struct {
+type DOConfig struct {
 	Key      string
 	Secret   string
 	Endpoint string
