@@ -43,10 +43,10 @@ func main() {
 	defer sqlDB.Close()
 
 	doWriter, err := writer.NewDigitalOceanWriter(
-		cfg.S3Config.Key,
-		cfg.S3Config.Secret,
-		cfg.S3Config.Endpoint,
-		cfg.S3Config.Bucket,
+		cfg.DOConfig.Key,
+		cfg.DOConfig.Secret,
+		cfg.DOConfig.Endpoint,
+		cfg.DOConfig.Bucket,
 	)
 	if err != nil {
 		panic(err)

@@ -14,7 +14,7 @@ type Config struct {
 	Env              string
 	DBParams         *database.DBParams
 	RevalidateSecret string
-	S3Config         *writer.S3Config
+	DOConfig         *writer.DOConfig
 }
 
 func SetupConfig() *Config {
@@ -36,11 +36,11 @@ func SetupConfig() *Config {
 			DBName:   os.Getenv("PG_DBNAME"),
 			SSLMode:  os.Getenv("PG_SSLMODE"),
 		},
-		S3Config: &writer.S3Config{
-			Key:      os.Getenv("KEY"),
-			Secret:   os.Getenv("SECRET"),
-			Endpoint: os.Getenv("ENDPOINT"),
-			Bucket:   os.Getenv("BUCKET"),
+		DOConfig: &writer.DOConfig{
+			Key:      os.Getenv("DO_KEY"),
+			Secret:   os.Getenv("DO_SECRET"),
+			Endpoint: os.Getenv("DO_ENDPOINT"),
+			Bucket:   os.Getenv("DO_BUCKET"),
 		},
 		RevalidateSecret: os.Getenv("REVALIDATE_SECRET"),
 	}
