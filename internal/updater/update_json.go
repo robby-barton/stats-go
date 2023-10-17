@@ -274,7 +274,7 @@ func (u *Updater) UpdateRecentJSON() error {
 		}
 	}
 
-	return nil
+	return u.Writer.PurgeCache(context.Background())
 }
 
 func (u *Updater) UpdateAllJSON() error {
@@ -396,5 +396,9 @@ func (u *Updater) UpdateAllJSON() error {
 		}
 	}
 
-	return u.UpdateIndexJSON(latestRanking)
+	if err := u.UpdateIndexJSON(latestRanking); err != nil {
+		return err
+	}
+
+	return u.Writer.PurgeCache(context.Background())
 }

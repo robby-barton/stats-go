@@ -41,6 +41,8 @@ func SetupConfig() *Config {
 			Secret:   os.Getenv("DO_SECRET"),
 			Endpoint: os.Getenv("DO_ENDPOINT"),
 			Bucket:   os.Getenv("DO_BUCKET"),
+			APIToken: os.Getenv("DO_API_TOKEN"),
+			CDNID:    os.Getenv("DO_CDN_ID"),
 		},
 		RevalidateSecret: os.Getenv("REVALIDATE_SECRET"),
 	}
