@@ -34,10 +34,26 @@ func (u *Updater) UpdateAvailRanksJSON() error {
 }
 
 type teamJSON struct {
-	ID       int64  `json:"id"`
+	ID       int64  `json:"team_id"`
 	Name     string `json:"name"`
 	Logo     string `json:"logo"`
 	LogoDark string `json:"logo_dark"`
+}
+
+func (u *Updater) getTeamInfo() (map[int64]teamJSON, error) {
+	teams := []teamJSON{}
+	if err := u.DB.Model(&database.TeamName{}).
+		Select("team_id as id, name, logo, logo_dark").
+		Scan(&teams).Error; err != nil {
+		return nil, err
+	}
+
+	teamMap := map[int64]teamJSON{}
+	for _, team := range teams {
+		teamMap[team.ID] = team
+	}
+
+	return teamMap, nil
 }
 
 func (u *Updater) UpdateTeamsJSON() error {
@@ -65,22 +81,22 @@ type rankingsJSON struct {
 }
 
 type resultJSON struct {
-	TeamID    int64   `json:"team_id"`
-	FinalRank int64   `json:"final_rank"`
-	Conf      string  `json:"conf"`
-	Record    string  `json:"record"`
-	SRSRank   int64   `json:"srs_rank"`
-	SOSRank   int64   `json:"sos_rank"`
-	FinalRaw  float64 `json:"final_raw"`
+	Team      teamJSON `json:"team"`
+	FinalRank int64    `json:"final_rank"`
+	Conf      string   `json:"conf"`
+	Record    string   `json:"record"`
+	SRSRank   int64    `json:"srs_rank"`
+	SOSRank   int64    `json:"sos_rank"`
+	FinalRaw  float64  `json:"final_raw"`
 }
 
-func toJSON(rank *database.TeamWeekResult) *resultJSON {
+func toJSON(rank *database.TeamWeekResult, teamMap map[int64]teamJSON) *resultJSON {
 	record := fmt.Sprintf("%d-%d", rank.Wins, rank.Losses)
 	if rank.Ties > 0 {
 		record = fmt.Sprintf("%d-%d-%d", rank.Week, rank.Losses, rank.Ties)
 	}
 	return &resultJSON{
-		TeamID:    rank.TeamID,
+		Team:      teamMap[rank.TeamID],
 		FinalRank: rank.FinalRank,
 		Conf:      rank.Conf,
 		Record:    record,
@@ -188,6 +204,11 @@ func (u *Updater) UpdateGameCountJSON() error {
 }
 
 func (u *Updater) UpdateRecentJSON() error {
+	teamMap, err := u.getTeamInfo()
+	if err != nil {
+		return err
+	}
+
 	if err := u.UpdateAvailRanksJSON(); err != nil {
 		return err
 	}
@@ -254,7 +275,7 @@ func (u *Updater) UpdateRecentJSON() error {
 		weekJSON := []*resultJSON{}
 		for _, week := range weekRankings {
 			temp := week
-			weekJSON = append(weekJSON, toJSON(&temp))
+			weekJSON = append(weekJSON, toJSON(&temp, teamMap))
 		}
 		json := &rankingsJSON{
 			Division:   division,
@@ -278,6 +299,11 @@ func (u *Updater) UpdateRecentJSON() error {
 }
 
 func (u *Updater) UpdateAllJSON() error {
+	teamMap, err := u.getTeamInfo()
+	if err != nil {
+		return err
+	}
+
 	if err := u.UpdateAvailRanksJSON(); err != nil {
 		return err
 	}
@@ -324,7 +350,7 @@ func (u *Updater) UpdateAllJSON() error {
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
 					temp := week
-					weekJSON = append(weekJSON, toJSON(&temp))
+					weekJSON = append(weekJSON, toJSON(&temp, teamMap))
 				}
 				err = u.UpdateRankJSON(&rankingsJSON{
 					Division:   division,
@@ -353,7 +379,7 @@ func (u *Updater) UpdateAllJSON() error {
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
 					temp := week
-					weekJSON = append(weekJSON, toJSON(&temp))
+					weekJSON = append(weekJSON, toJSON(&temp, teamMap))
 				}
 				final = &rankingsJSON{
 					Division:   division,
@@ -376,7 +402,7 @@ func (u *Updater) UpdateAllJSON() error {
 				weekJSON := []*resultJSON{}
 				for _, week := range weekRankings {
 					temp := week
-					weekJSON = append(weekJSON, toJSON(&temp))
+					weekJSON = append(weekJSON, toJSON(&temp, teamMap))
 				}
 				final = &rankingsJSON{
 					Division:   division,
