@@ -3,6 +3,7 @@ package updater
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/robby-barton/stats-go/internal/database"
@@ -121,34 +122,50 @@ func (u *Updater) UpdateIndexJSON(week *rankingsJSON) error {
 }
 
 type teamRankJSON struct {
+	Team     teamJSON       `json:"team"`
+	RankList []teamRankList `json:"rank_list"`
+	Years    []int64        `json:"years"`
+}
+
+type teamRankList struct {
 	Week      string `json:"week"`
 	Rank      int64  `json:"rank"`
 	FillLevel int64  `json:"fill_level"`
 }
 
-func (u *Updater) UpdateTeamRankJSON(team int64) error {
+func (u *Updater) UpdateTeamRankJSON(team teamJSON) error {
 	teamRankings := []database.TeamWeekResult{}
 	if err := u.DB.Model(&database.TeamWeekResult{}).Where(
-		"team_id = ?", team,
-	).Order("year desc, postseason desc, week desc").Find(&teamRankings).Error; err != nil {
+		"team_id = ?", team.ID,
+	).Order("year, postseason, week").Find(&teamRankings).Error; err != nil {
 		return err
 	}
 
-	teamRanks := []*teamRankJSON{}
+	years := []int64{}
+	teamRanks := []teamRankList{}
 	for _, rank := range teamRankings {
+		if !slices.Contains(years, rank.Year) {
+			years = append(years, rank.Year)
+		}
 		week := fmt.Sprintf("%d Week %d", rank.Year, rank.Week)
 		if rank.Postseason > 0 {
 			week = fmt.Sprintf("%d Final", rank.Year)
 		}
-		teamRanks = append(teamRanks, &teamRankJSON{
+		teamRanks = append(teamRanks, teamRankList{
 			Week:      week,
 			Rank:      rank.FinalRank,
 			FillLevel: 150,
 		})
 	}
 
-	fileName := fmt.Sprintf("team/%d.json", team)
-	return u.Writer.WriteData(context.Background(), fileName, teamRanks)
+	results := &teamRankJSON{
+		Team:     team,
+		RankList: teamRanks,
+		Years:    years,
+	}
+
+	fileName := fmt.Sprintf("team/%d.json", team.ID)
+	return u.Writer.WriteData(context.Background(), fileName, results)
 }
 
 type gameCountJSON struct {
@@ -277,7 +294,7 @@ func (u *Updater) UpdateRecentJSON() error {
 		return err
 	}
 	for _, team := range teams {
-		if err := u.UpdateTeamRankJSON(team); err != nil {
+		if err := u.UpdateTeamRankJSON(teamMap[team]); err != nil {
 			return err
 		}
 	}
@@ -354,7 +371,7 @@ func (u *Updater) UpdateAllJSON() error {
 		return err
 	}
 	for _, team := range teams {
-		if err := u.UpdateTeamRankJSON(team); err != nil {
+		if err := u.UpdateTeamRankJSON(teamMap[team]); err != nil {
 			return err
 		}
 	}
