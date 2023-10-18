@@ -122,7 +122,7 @@ func main() {
 			}
 
 			logger.Infof("Updated %d teams", addedTeams)
-			if err := u.UpdateTeamsJSON(); err != nil {
+			if err := u.UpdateTeamsJSON(nil); err != nil {
 				logger.Error(err)
 			}
 			if err := u.Writer.PurgeCache(context.Background()); err != nil {

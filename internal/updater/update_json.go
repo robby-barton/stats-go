@@ -56,20 +56,21 @@ func (u *Updater) getTeamInfo() (map[int64]teamJSON, error) {
 	return teamMap, nil
 }
 
-func (u *Updater) UpdateTeamsJSON() error {
-	teams := []teamJSON{}
-	if err := u.DB.Model(&database.TeamName{}).
-		Select("team_id as id, name, logo, logo_dark").
-		Scan(&teams).Error; err != nil {
-		return err
+func (u *Updater) UpdateTeamsJSON(teamMap map[int64]teamJSON) error {
+	teamList := []teamJSON{}
+	if teamMap != nil {
+		for _, team := range teamMap {
+			teamList = append(teamList, team)
+		}
+	} else {
+		if err := u.DB.Model(&database.TeamName{}).
+			Select("team_id as id, name, logo, logo_dark").
+			Scan(&teamList).Error; err != nil {
+			return err
+		}
 	}
 
-	teamMap := map[int64]teamJSON{}
-	for _, team := range teams {
-		teamMap[team.ID] = team
-	}
-
-	return u.Writer.WriteData(context.Background(), "teams.json", teamMap)
+	return u.Writer.WriteData(context.Background(), "teams.json", teamList)
 }
 
 type rankingsJSON struct {
@@ -150,7 +151,19 @@ func (u *Updater) UpdateTeamRankJSON(team int64) error {
 	return u.Writer.WriteData(context.Background(), fileName, teamRanks)
 }
 
-func (u *Updater) UpdateGameCountJSON() error {
+type gameCountJSON struct {
+	Team  teamJSON `json:"team"`
+	Sun   int64    `json:"sun"`
+	Mon   int64    `json:"mon"`
+	Tue   int64    `json:"tue"`
+	Wed   int64    `json:"wed"`
+	Thu   int64    `json:"thu"`
+	Fri   int64    `json:"fri"`
+	Sat   int64    `json:"sat"`
+	Total int64    `json:"total"`
+}
+
+func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
 	sql := `
 	with gamesList as (
 		(
@@ -185,22 +198,41 @@ func (u *Updater) UpdateGameCountJSON() error {
 	`
 
 	results := []struct {
-		TeamID int64 `json:"team_id"`
-		Sun    int64 `json:"sun"`
-		Mon    int64 `json:"mon"`
-		Tue    int64 `json:"tue"`
-		Wed    int64 `json:"wed"`
-		Thu    int64 `json:"thu"`
-		Fri    int64 `json:"fri"`
-		Sat    int64 `json:"sat"`
-		Total  int64 `json:"total"`
+		TeamID int64
+		Sun    int64
+		Mon    int64
+		Tue    int64
+		Wed    int64
+		Thu    int64
+		Fri    int64
+		Sat    int64
+		Total  int64
 	}{}
 
 	if err := u.DB.Raw(sql).Scan(&results).Error; err != nil {
 		return err
 	}
 
-	return u.Writer.WriteData(context.Background(), "gameCount.json", results)
+	resultsJSON := []*gameCountJSON{}
+	for _, result := range results {
+		team, ok := teamMap[result.TeamID]
+		if !ok {
+			continue
+		}
+		resultsJSON = append(resultsJSON, &gameCountJSON{
+			Team:  team,
+			Sun:   result.Sun,
+			Mon:   result.Mon,
+			Tue:   result.Tue,
+			Wed:   result.Wed,
+			Thu:   result.Thu,
+			Fri:   result.Fri,
+			Sat:   result.Sat,
+			Total: result.Total,
+		})
+	}
+
+	return u.Writer.WriteData(context.Background(), "gameCount.json", resultsJSON)
 }
 
 func (u *Updater) UpdateRecentJSON() error {
@@ -213,19 +245,8 @@ func (u *Updater) UpdateRecentJSON() error {
 		return err
 	}
 
-	if err := u.UpdateGameCountJSON(); err != nil {
+	if err := u.UpdateGameCountJSON(teamMap); err != nil {
 		return err
-	}
-
-	teams := []int64{}
-	if err := u.DB.Model(&database.TeamWeekResult{}).
-		Distinct("team_id").Pluck("team_id", &teams).Error; err != nil {
-		return err
-	}
-	for _, team := range teams {
-		if err := u.UpdateTeamRankJSON(team); err != nil {
-			return err
-		}
 	}
 
 	sql := `
@@ -248,6 +269,17 @@ func (u *Updater) UpdateRecentJSON() error {
 	}{}
 	if err := u.DB.Raw(sql).Scan(yearInfo).Error; err != nil {
 		return err
+	}
+
+	teams := []int64{}
+	if err := u.DB.Model(&database.TeamWeekResult{}).
+		Distinct("team_id").Where("year = ?", yearInfo.Year).Pluck("team_id", &teams).Error; err != nil {
+		return err
+	}
+	for _, team := range teams {
+		if err := u.UpdateTeamRankJSON(team); err != nil {
+			return err
+		}
 	}
 
 	for _, division := range []string{fbs, fcs} {
@@ -308,11 +340,11 @@ func (u *Updater) UpdateAllJSON() error {
 		return err
 	}
 
-	if err := u.UpdateTeamsJSON(); err != nil {
+	if err := u.UpdateTeamsJSON(teamMap); err != nil {
 		return err
 	}
 
-	if err := u.UpdateGameCountJSON(); err != nil {
+	if err := u.UpdateGameCountJSON(teamMap); err != nil {
 		return err
 	}
 
