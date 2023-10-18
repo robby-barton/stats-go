@@ -76,6 +76,7 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 	}
 
 	headers := map[string]string{
+		"Cache-Control":       "s-maxage=604800",
 		"Content-Disposition": "inline",
 		"Content-Encoding":    "gzip",
 		"Content-Length":      strconv.FormatInt(int64(len(compressedData)), 10),
