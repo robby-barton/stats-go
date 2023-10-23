@@ -14,7 +14,8 @@ import (
 
 const (
 	hfa           int64 = 3
-	requiredGames int   = 6
+	requiredGames int   = 12
+	yearsBack     int64 = 2
 	runs          int   = 10000
 )
 
@@ -156,7 +157,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 	if err := r.DB.
 		Where(
 			"season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
-			r.Year-1,
+			r.Year-yearsBack,
 			r.startTime,
 			allowedTeams,
 			allowedTeams,
@@ -209,7 +210,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 				Where(
 					"season < ? and ((home_id = ? and away_id in (?)) or "+
 						"(away_id = ? and home_id in (?)))",
-					r.Year-1,
+					r.Year-yearsBack,
 					id,
 					allowedTeams,
 					id,
