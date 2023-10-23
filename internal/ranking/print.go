@@ -3,7 +3,10 @@ package ranking
 
 import (
 	"fmt"
+	"os"
 	"sort"
+
+	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 func (r *Ranker) PrintRankings(teamList TeamList, top int) {
@@ -21,14 +24,21 @@ func (r *Ranker) PrintRankings(teamList TeamList, top int) {
 		fmt.Printf("%d Week %d\n", r.Year, r.Week)
 	}
 	fmt.Printf("Games up to %v\n", r.startTime)
-	fmt.Printf("%-5s %-25s %-7s %-8s %-5s %-5s %7s\n",
-		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "Total")
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.SetStyle(table.StyleRounded)
+	t.AppendHeader(table.Row{
+		"Rank", "Team", "Conf", "Record", "SRS", "SoS", "Total",
+	})
 	for i := 0; i < top; i++ {
 		team := teamList[ids[i]]
-		fmt.Printf("%-5d %-25s %-7s %-8s %-5d %-5d %.5f\n",
+		t.AppendRow(table.Row{
 			team.FinalRank, team.Name, team.Conf, team.Record, team.SRSRank,
-			team.SOSRank, team.FinalRaw)
+			team.SOSRank, fmt.Sprintf("%.5f", team.FinalRaw),
+		})
 	}
+	t.Render()
 }
 
 func (r *Ranker) PrintSRS(teamList TeamList, top int) {
@@ -46,10 +56,16 @@ func (r *Ranker) PrintSRS(teamList TeamList, top int) {
 		fmt.Printf("%d Week %d\n", r.Year, r.Week)
 	}
 	fmt.Printf("Games up to %v\n", r.startTime)
-	fmt.Printf("%-5s %-25s %-7s %9s\n", "Rank", "Team", "Conf", "SRS")
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.SetStyle(table.StyleRounded)
+	t.AppendHeader(table.Row{"Rank", "Team", "Conf", "SRS"})
 	for i := 0; i < top; i++ {
 		team := teamList[ids[i]]
-		fmt.Printf("%-5d %-25s %-7s % 7.5f\n",
-			team.SRSRank, team.Name, team.Conf, team.SRS)
+		t.AppendRow(table.Row{
+			team.SRSRank, team.Name, team.Conf, team.SRS,
+		})
 	}
+	t.Render()
 }
