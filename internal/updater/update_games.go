@@ -7,25 +7,40 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/game"
 )
 
-func (u *Updater) checkGames(gameIds []int64) ([]int64, error) {
-	var existing []int64
-	err := u.DB.Model(database.Game{}).Select("game_id").Where("game_id in ?", gameIds).
-		Find(&existing).Error
-	if err != nil {
+func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
+	gameIds := []int64{}
+	for _, game := range games {
+		gameIds = append(gameIds, game.ID)
+	}
+	var existing []database.Game
+	if err := u.DB.Where("game_id in ?", gameIds).Find(&existing).Error; err != nil {
 		return nil, err
 	}
-	exists := map[int64]bool{}
+
+	existsMap := map[int64]database.Game{}
 	for _, x := range existing {
-		exists[x] = true
+		existsMap[x.GameID] = x
 	}
 
-	var newGames []int64
-	for _, game := range gameIds {
-		if !exists[game] {
+	var newGames []espn.Game
+	for _, game := range games {
+		existingGame, ok := existsMap[game.ID]
+		if !ok {
 			newGames = append(newGames, game)
+		} else {
+			teams := game.Competitions[0]
+			home := teams.Competitors[0]
+			away := teams.Competitors[1]
+			if home.HomeAway == "away" {
+				home, away = away, home
+			}
+			if existingGame.HomeScore != home.Score || existingGame.AwayScore != away.Score {
+				newGames = append(newGames, game)
+			}
 		}
 	}
 
@@ -152,17 +167,17 @@ func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
 }
 
 func (u *Updater) UpdateCurrentWeek() (int, error) {
-	gameIds, err := game.GetCurrentWeekGames()
+	games, err := game.GetCurrentWeekGames()
 	if err != nil {
 		return 0, err
 	}
 
-	gameIds, err = u.checkGames(gameIds)
+	games, err = u.checkGames(games)
 	if err != nil {
 		return 0, err
 	}
 
-	gameStats, err := game.GetGameStats(gameIds)
+	gameStats, err := game.GetGameStats(games)
 	if err != nil {
 		return 0, err
 	}
@@ -177,17 +192,17 @@ func (u *Updater) UpdateCurrentWeek() (int, error) {
 }
 
 func (u *Updater) UpdateGamesForYear(year int64) (int, error) {
-	gameIds, err := game.GetGamesForSeason(year)
+	games, err := game.GetGamesForSeason(year)
 	if err != nil {
 		return 0, err
 	}
 
-	gameIds, err = u.checkGames(gameIds)
+	games, err = u.checkGames(games)
 	if err != nil {
 		return 0, err
 	}
 
-	gameStats, err := game.GetGameStats(gameIds)
+	gameStats, err := game.GetGameStats(games)
 	if err != nil {
 		return 0, err
 	}

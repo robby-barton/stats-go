@@ -21,11 +21,11 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGameStats(gameIds []int64) ([]*ParsedGameInfo, error) {
+func GetGameStats(games []espn.Game) ([]*ParsedGameInfo, error) {
 	var parsedGameStats []*ParsedGameInfo
 
-	for _, gameID := range gameIds {
-		gameStats, err := GetSingleGame(gameID)
+	for _, game := range games {
+		gameStats, err := GetSingleGame(game.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -38,14 +38,14 @@ func GetGameStats(gameIds []int64) ([]*ParsedGameInfo, error) {
 	return parsedGameStats, nil
 }
 
-func combineGames(gamesLists [][]int64) []int64 {
+func combineGames(gamesLists [][]espn.Game) []espn.Game {
 	found := make(map[int64]bool)
-	var games []int64
+	var games []espn.Game
 
 	for _, gamesList := range gamesLists {
 		for _, game := range gamesList {
-			if !found[game] {
-				found[game] = true
+			if !found[game.ID] {
+				found[game.ID] = true
 				games = append(games, game)
 			}
 		}
@@ -54,7 +54,7 @@ func combineGames(gamesLists [][]int64) []int64 {
 	return games
 }
 
-func GetCurrentWeekGames() ([]int64, error) {
+func GetCurrentWeekGames() ([]espn.Game, error) {
 	fbsGames, err := espn.GetCurrentWeekGames(espn.FBS)
 	if err != nil {
 		return nil, err
@@ -65,12 +65,12 @@ func GetCurrentWeekGames() ([]int64, error) {
 		return nil, err
 	}
 
-	gameIds := combineGames([][]int64{fbsGames, fcsGames})
+	games := combineGames([][]espn.Game{fbsGames, fcsGames})
 
-	return gameIds, nil
+	return games, nil
 }
 
-func GetGamesForSeason(year int64) ([]int64, error) {
+func GetGamesForSeason(year int64) ([]espn.Game, error) {
 	fbsGames, err := espn.GetGamesBySeason(year, espn.FBS)
 	if err != nil {
 		return nil, err
@@ -81,9 +81,9 @@ func GetGamesForSeason(year int64) ([]int64, error) {
 		return nil, err
 	}
 
-	gameIds := combineGames([][]int64{fbsGames, fcsGames})
+	games := combineGames([][]espn.Game{fbsGames, fcsGames})
 
-	return gameIds, nil
+	return games, nil
 }
 
 func GetSingleGame(gameID int64) (*ParsedGameInfo, error) {
