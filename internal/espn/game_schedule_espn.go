@@ -29,8 +29,10 @@ type Competition struct {
 }
 
 type Competitor struct {
-	ID   int64        `json:"id,string"`
-	Team ScheduleTeam `json:"team"`
+	ID       int64        `json:"id,string"`
+	Team     ScheduleTeam `json:"team"`
+	Score    int64        `json:"score,string"`
+	HomeAway string       `json:"homeAway"`
 }
 
 type ScheduleTeam struct {

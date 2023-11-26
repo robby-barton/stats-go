@@ -21,8 +21,8 @@ const (
 	Postseason SeasonType = 3
 )
 
-func GetCurrentWeekGames(group Group) ([]int64, error) {
-	var games []int64
+func GetCurrentWeekGames(group Group) ([]Game, error) {
+	var games []Game
 
 	url := weekURL + fmt.Sprintf("&group=%d", group)
 
@@ -35,7 +35,7 @@ func GetCurrentWeekGames(group Group) ([]int64, error) {
 	for _, day := range res.Content.Schedule {
 		for _, event := range day.Games {
 			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event.ID)
+				games = append(games, event)
 			}
 		}
 	}
@@ -56,17 +56,17 @@ func GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) 
 	return &res, nil
 }
 
-func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]int64, error) {
+func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]Game, error) {
 	res, err := GetGamesByWeek(year, week, group, seasonType)
 	if err != nil {
 		return nil, err
 	}
 
-	var games []int64
+	var games []Game
 	for _, day := range res.Content.Schedule {
 		for _, event := range day.Games {
 			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event.ID)
+				games = append(games, event)
 			}
 		}
 	}
@@ -100,8 +100,8 @@ func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 	return postSeasonStart.Before(startTime), nil
 }
 
-func GetGamesBySeason(year int64, group Group) ([]int64, error) {
-	var gameIds []int64
+func GetGamesBySeason(year int64, group Group) ([]Game, error) {
+	var gameIds []Game
 
 	numWeeks, err := GetWeeksInSeason(year)
 	if err != nil {
