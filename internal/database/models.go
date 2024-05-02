@@ -219,7 +219,7 @@ type ReturnStats struct {
 	PlayerID   int64  `json:"player_id" gorm:"column:player_id;primaryKey;not null"`
 	TeamID     int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	GameID     int64  `json:"game_id" gorm:"column:game_id;primaryKey;not null"`
-	PuntKick   string `json:"punt_kick" gorm:"column:punt_kick;not null"`
+	PuntKick   string `json:"punt_kick" gorm:"column:punt_kick;primaryKey;not null"`
 	ReturnNo   int64  `json:"return_no" gorm:"column:return_no"`
 	Touchdowns int64  `json:"touchdowns" gorm:"column:touchdowns"`
 	RetYards   int64  `json:"ret_yards" gorm:"column:ret_yards"`
