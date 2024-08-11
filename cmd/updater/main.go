@@ -209,7 +209,12 @@ func main() {
 			}
 		}
 		if json {
-			if err := u.UpdateAllJSON(); err != nil {
+			if all {
+				err = u.UpdateAllJSON()
+			} else {
+				err = u.UpdateRecentJSON()
+			}
+			if err != nil {
 				logger.Error(err)
 			}
 		}
