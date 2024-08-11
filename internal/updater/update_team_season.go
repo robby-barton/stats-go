@@ -40,7 +40,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 		return 0, err
 	}
 
-	if !force && !u.seasonsExist(currentSeason) {
+	if !force && u.seasonsExist(currentSeason) {
 		u.Logger.Info("Not updating")
 		return 0, nil
 	}
