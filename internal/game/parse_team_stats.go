@@ -33,8 +33,8 @@ func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
 		case "netPassingYards":
 			tgs.PassYards, _ = strconv.ParseInt(statValue, 10, 64)
 		case "completionAttempts":
-			cleaned := re.ReplaceAllString(statValue, "-")
-			downsSplit := strings.Split(cleaned, "-")
+			cleaned := re.ReplaceAllString(statValue, "/")
+			downsSplit := strings.Split(cleaned, "/")
 			tgs.Completions, _ = strconv.ParseInt(downsSplit[0], 10, 64)
 			tgs.CompletionAttempts, _ = strconv.ParseInt(downsSplit[1], 10, 64)
 		case "rushingYards":
