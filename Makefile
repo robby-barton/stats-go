@@ -31,3 +31,6 @@ clean:
 
 lint:
 	@golangci-lint run --config=.golangci.yml ./cmd/... ./internal/...
+
+local-deploy:
+	docker compose up --detach --build --force-recreate updater
