@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	logger := logger.NewStructuredLogger().Sugar()
+	logger := logger.NewLogger().Sugar()
 	defer logger.Sync()
 
 	logger.Info("Start")
