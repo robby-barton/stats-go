@@ -12,12 +12,12 @@ import (
 )
 
 func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
-	gameIds := []int64{}
+	gameIDs := []int64{}
 	for _, game := range games {
-		gameIds = append(gameIds, game.ID)
+		gameIDs = append(gameIDs, game.ID)
 	}
 	var existing []database.Game
-	if err := u.DB.Where("game_id in ?", gameIds).Find(&existing).Error; err != nil {
+	if err := u.DB.Where("game_id in ?", gameIDs).Find(&existing).Error; err != nil {
 		return nil, err
 	}
 

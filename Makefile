@@ -1,11 +1,10 @@
-.PHONY: fmt refresh-modules build-server build-ranker build-updater
-.PHONY: download-modules modules build clean server updater ranker
+.PHONY: fmt refresh-module download-modules modules clean migrate updater ranker
 
 format:
 	@go fmt ./...
 
-server:
-	@go run ./cmd/server
+migrate:
+	@go run ./cmd/migrate
 
 updater:
 	@go run ./cmd/updater ${OPTS}
@@ -26,20 +25,12 @@ download-modules:
 modules:
 	@go mod tidy
 
-build-server:
-	@go build ./cmd/server
-
-build-updater:
-	@go build ./cmd/updater
-
-build-ranker:
-	@go build ./cmd/ranker
-
-build: build-server build-updater build-ranking
-
 clean:
-	@rm -rf server updater ranker > /dev/null 2>&1
+	@rm -rf migrate updater ranker > /dev/null 2>&1
 	@rm -rf ranking team teams.json availRanks.json latest.json gameCount.json > /dev/null 2>&1
 
 lint:
-	@golangci-lint run --config=.golangci.yml ./...
+	@golangci-lint run --config=.golangci.yml ./cmd/... ./internal/...
+
+local-deploy:
+	docker compose up --detach --build --force-recreate updater

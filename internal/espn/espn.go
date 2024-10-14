@@ -101,7 +101,7 @@ func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 }
 
 func GetGamesBySeason(year int64, group Group) ([]Game, error) {
-	var gameIds []Game
+	var gameIDs []Game
 
 	numWeeks, err := GetWeeksInSeason(year)
 	if err != nil {
@@ -114,7 +114,7 @@ func GetGamesBySeason(year int64, group Group) ([]Game, error) {
 			return nil, err
 		}
 
-		gameIds = append(gameIds, games...)
+		gameIDs = append(gameIDs, games...)
 	}
 
 	games, err := GetCompletedGamesByWeek(year, int64(1), group, Postseason)
@@ -122,9 +122,9 @@ func GetGamesBySeason(year int64, group Group) ([]Game, error) {
 		return nil, err
 	}
 
-	gameIds = append(gameIds, games...)
+	gameIDs = append(gameIDs, games...)
 
-	return gameIds, nil
+	return gameIDs, nil
 }
 
 func GetGameStats(gameID int64) (*GameInfoESPN, error) {
