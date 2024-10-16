@@ -75,8 +75,10 @@ func main() {
 						}
 						logger.Info("rankings updated")
 
-						if err := u.UpdateRecentJSON(); err != nil {
-							logger.Error(err)
+						if !cfg.Local {
+							if err := u.UpdateRecentJSON(); err != nil {
+								logger.Error(err)
+							}
 						}
 					}()
 				case <-stop:
