@@ -15,12 +15,14 @@ type Config struct {
 	DBParams         *database.DBParams
 	RevalidateSecret string
 	DOConfig         *writer.DOConfig
+	Local            bool
 }
 
 func SetupConfig() *Config {
 	env := os.Getenv("API_ENV")
+	local := env == "" || env == "local"
 
-	if env == "" || env == "local" {
+	if local {
 		godotenv.Load(".env")
 	}
 
@@ -45,5 +47,6 @@ func SetupConfig() *Config {
 			CDNID:    os.Getenv("DO_CDN_ID"),
 		},
 		RevalidateSecret: os.Getenv("REVALIDATE_SECRET"),
+		Local:            local,
 	}
 }
