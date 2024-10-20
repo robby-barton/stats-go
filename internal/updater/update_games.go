@@ -166,54 +166,58 @@ func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
 	})
 }
 
-func (u *Updater) UpdateCurrentWeek() (int, error) {
+func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
 	games, err := game.GetCurrentWeekGames()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	games, err = u.checkGames(games)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	gameStats, err := game.GetGameStats(games)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
+	var gameIDs []int64
 	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {
-			return 0, err
+			return nil, err
 		}
+		gameIDs = append(gameIDs, game.GameInfo.GameID)
 	}
 
-	return len(gameStats), nil
+	return gameIDs, nil
 }
 
-func (u *Updater) UpdateGamesForYear(year int64) (int, error) {
+func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
 	games, err := game.GetGamesForSeason(year)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	games, err = u.checkGames(games)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	gameStats, err := game.GetGameStats(games)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
+	var gameIDs []int64
 	for _, game := range gameStats {
 		if err := u.insertGameInfo(game); err != nil {
-			return 0, err
+			return nil, err
 		}
+		gameIDs = append(gameIDs, game.GameInfo.GameID)
 	}
 
-	return len(gameStats), nil
+	return gameIDs, nil
 }
 
 func (u *Updater) UpdateSingleGame(gameID int64) error {

@@ -96,13 +96,13 @@ func main() {
 				}
 			}()
 
-			var addedGames int
+			var addedGames []int64
 			addedGames, err = u.UpdateCurrentWeek()
 
-			logger.Infof("Added %d games", addedGames)
+			logger.Infof("Added %d games: %v", len(addedGames), addedGames)
 			if err != nil {
 				logger.Error(err)
-			} else if addedGames > 0 {
+			} else if len(addedGames) > 0 {
 				update <- true
 			}
 		})
@@ -124,11 +124,13 @@ func main() {
 			}
 
 			logger.Infof("Updated %d teams", addedTeams)
-			if err := u.UpdateTeamsJSON(nil); err != nil {
-				logger.Error(err)
-			}
-			if err := u.Writer.PurgeCache(context.Background()); err != nil {
-				logger.Error(err)
+			if !cfg.Local {
+				if err := u.UpdateTeamsJSON(nil); err != nil {
+					logger.Error(err)
+				}
+				if err := u.Writer.PurgeCache(context.Background()); err != nil {
+					logger.Error(err)
+				}
 			}
 		})
 
@@ -162,7 +164,7 @@ func main() {
 		stop <- true
 	} else {
 		if games {
-			var addedGames int
+			var addedGames []int64
 			if all {
 				year, _, _ := time.Now().Date()
 				addedGames, err = u.UpdateGamesForYear(int64(year))
@@ -172,7 +174,7 @@ func main() {
 			if err != nil {
 				logger.Error(err)
 			} else {
-				logger.Infof("Added %d games", addedGames)
+				logger.Infof("Added %d games: %v", len(addedGames), addedGames)
 			}
 		}
 		if singleGame > 0 {
