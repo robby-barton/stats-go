@@ -11,6 +11,7 @@ require (
 	go.uber.org/zap v1.23.0
 	gonum.org/v1/gonum v0.12.0
 	gorm.io/driver/postgres v1.4.5
+	gorm.io/driver/sqlite v1.5.5
 	gorm.io/gorm v1.25.7-0.20240204074919-46816ad31dde
 )
 
@@ -47,5 +48,4 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gorm.io/driver/sqlite v1.5.5 // indirect
 )

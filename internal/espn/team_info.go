@@ -1,6 +1,6 @@
 package espn
 
-const teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
+var teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 
 type TeamInfoESPN struct {
 	Sports []Sport `json:"sports"`
