@@ -1,5 +1,6 @@
 package espn
 
+//nolint:gochecknoglobals // overridden in tests
 var teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 
 type TeamInfoESPN struct {

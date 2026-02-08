@@ -14,9 +14,9 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(espn.GameScheduleESPN{
+		if err := json.NewEncoder(w).Encode(espn.GameScheduleESPN{
 			Content: espn.Content{
 				Schedule: map[string]espn.Day{
 					"2023-09-02": {
@@ -37,12 +37,14 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 					},
 				},
 			},
-		})
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 
-	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(espn.GameInfoESPN{
+		if err := json.NewEncoder(w).Encode(espn.GameInfoESPN{
 			GamePackage: espn.GamePackage{
 				Header: espn.Header{
 					ID: 1001,
@@ -61,7 +63,9 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 					Week:   1,
 				},
 			},
-		})
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 
 	ts := httptest.NewServer(mux)

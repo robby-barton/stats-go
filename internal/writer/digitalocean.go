@@ -95,7 +95,7 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 	var res *http.Response
 	count := 0
 	for ok := true; ok; ok = (count < 5 && err != nil) {
-		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
+		res, err = client.Do(req)
 		if err == nil {
 			break
 		}

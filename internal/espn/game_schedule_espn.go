@@ -1,5 +1,6 @@
 package espn
 
+//nolint:gochecknoglobals // overridden in tests
 var weekURL = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18"
 
 type GameScheduleESPN struct {

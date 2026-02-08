@@ -35,7 +35,7 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 	var err error
 	count := 0
 	for ok := true; ok; ok = (count < 5 && err != nil) {
-		res, err = client.Do(req) //nolint:bodyclose // allow since close is outside loop
+		res, err = client.Do(req)
 		if err == nil {
 			break
 		}

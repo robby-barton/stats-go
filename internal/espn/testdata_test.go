@@ -211,8 +211,14 @@ func testTeamInfoResponse() TeamInfoESPN {
 						Slug:         "college-football",
 						Year:         2023,
 						Teams: []TeamWrap{
-							{Team: TeamInfo{ID: 1, Name: "Crimson Tide", DisplayName: "Alabama Crimson Tide", Abbreviation: "ALA", Location: "Alabama", Slug: "alabama"}},
-							{Team: TeamInfo{ID: 2, Name: "Tigers", DisplayName: "Clemson Tigers", Abbreviation: "CLEM", Location: "Clemson", Slug: "clemson"}},
+							{Team: TeamInfo{
+								ID: 1, Name: "Crimson Tide", DisplayName: "Alabama Crimson Tide",
+								Abbreviation: "ALA", Location: "Alabama", Slug: "alabama",
+							}},
+							{Team: TeamInfo{
+								ID: 2, Name: "Tigers", DisplayName: "Clemson Tigers",
+								Abbreviation: "CLEM", Location: "Clemson", Slug: "clemson",
+							}},
 						},
 					},
 				},

@@ -14,21 +14,27 @@ func setupTestServer(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()
 
 	// Schedule endpoint — handles all weekURL-based requests
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testScheduleResponse())
+		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 
 	// Game stats endpoint
-	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testGameInfoResponse())
+		if err := json.NewEncoder(w).Encode(testGameInfoResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 
 	// Team info endpoint
-	mux.HandleFunc("/apis/site/v2/sports/football/college-football/teams", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/teams", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testTeamInfoResponse())
+		if err := json.NewEncoder(w).Encode(testTeamInfoResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 
 	ts := httptest.NewServer(mux)
