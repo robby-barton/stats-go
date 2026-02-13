@@ -40,8 +40,8 @@ rationale.
 Key patterns:
 - **Three independent CLI entry points** in `cmd/` — each wires its own deps
 - **Writer interface** (`internal/writer`) — pluggable output (DO Spaces vs local files)
-- **Updater struct** receives DB, Logger, and Writer via dependency injection
-- **ESPN package** is a pure HTTP client with no DB dependency
+- **Updater struct** receives DB, Logger, Writer, and ESPN client via dependency injection
+- **ESPN package** is a pure HTTP client (`espn.Client` struct) with no DB dependency
 - **Ranking package** takes a `*gorm.DB` and computes everything in-memory
 
 ## Conventions
@@ -52,8 +52,10 @@ Key patterns:
   of the ranker CLI output (enforced via `forbidigo` lint).
 - Errors are propagated up — panics are only recovered at the scheduler level
   in `cmd/updater`.
-- ESPN API calls use a 200ms sleep between requests for rate limiting (in `game/`).
-- The HTTP client in `espn/request.go` retries up to 5 times with 1s backoff.
+- ESPN API calls use `espn.Client.RateLimit` (default 200ms) between batch
+  requests (in `game/`).
+- The HTTP client in `espn/request.go` retries with exponential backoff
+  (`InitialBackoff * 2^attempt`, capped at 30s). Defaults: 5 retries, 1s initial backoff.
 - Test files use `_test.go` suffix. ESPN tests use a mock HTTP server pattern
   with fixture data.
 - `nolint` directives require both a specific linter and an explanation

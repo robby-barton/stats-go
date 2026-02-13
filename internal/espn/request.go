@@ -8,9 +8,25 @@ import (
 	"time"
 )
 
-const (
-	timeout = 1 * time.Second
-)
+const maxBackoff = 30 * time.Second
+
+// Client holds configuration for ESPN HTTP requests.
+type Client struct {
+	MaxRetries     int
+	InitialBackoff time.Duration
+	RequestTimeout time.Duration
+	RateLimit      time.Duration // delay between batch API calls
+}
+
+// NewClient returns a Client with sensible defaults.
+func NewClient() *Client {
+	return &Client{
+		MaxRetries:     5,
+		InitialBackoff: 1 * time.Second,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      200 * time.Millisecond,
+	}
+}
 
 type validatable interface {
 	validate() error
@@ -21,9 +37,9 @@ type Responses interface {
 	validatable
 }
 
-func makeRequest[R Responses](endpoint string, data *R) error {
-	client := &http.Client{
-		Timeout: timeout,
+func (c *Client) makeRequest(endpoint string, data any) error {
+	httpClient := &http.Client{
+		Timeout: c.RequestTimeout,
 	}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
 
@@ -38,21 +54,18 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 
 	var res *http.Response
 	var err error
-	count := 0
-	for ok := true; ok; ok = (count < 5 && err != nil) {
-		res, err = client.Do(req)
+	for attempt := range c.MaxRetries {
+		res, err = httpClient.Do(req)
 		if err == nil {
 			if res.StatusCode >= 500 {
 				res.Body.Close()
 				err = fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
-				count++
-				time.Sleep(1 * time.Second)
+				time.Sleep(c.backoff(attempt))
 				continue
 			}
 			break
 		}
-		count++
-		time.Sleep(1 * time.Second)
+		time.Sleep(c.backoff(attempt))
 	}
 	if err != nil {
 		return fmt.Errorf("error from %q: %w", endpoint, err)
@@ -64,9 +77,17 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 		return fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(data); err != nil {
 		return fmt.Errorf("decoding response from %q: %w", endpoint, err)
 	}
 
-	return (*data).validate()
+	return data.(validatable).validate()
+}
+
+func (c *Client) backoff(attempt int) time.Duration {
+	d := c.InitialBackoff << attempt
+	if d > maxBackoff {
+		return maxBackoff
+	}
+	return d
 }

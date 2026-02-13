@@ -53,11 +53,21 @@ func overrideURLs(t *testing.T, serverURL string) {
 	t.Cleanup(restore)
 }
 
+func newTestClient() *Client {
+	return &Client{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+	}
+}
+
 func TestGetCurrentWeekGames(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	games, err := GetCurrentWeekGames(FBS)
+	games, err := client.GetCurrentWeekGames(FBS)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}
@@ -82,8 +92,9 @@ func TestGetCurrentWeekGames(t *testing.T) {
 func TestGetGamesByWeek(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	res, err := GetGamesByWeek(2023, 1, FBS, Regular)
+	res, err := client.GetGamesByWeek(2023, 1, FBS, Regular)
 	if err != nil {
 		t.Fatalf("GetGamesByWeek: %v", err)
 	}
@@ -102,8 +113,9 @@ func TestGetGamesByWeek(t *testing.T) {
 func TestGetCompletedGamesByWeek(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	games, err := GetCompletedGamesByWeek(2023, 1, FBS, Regular)
+	games, err := client.GetCompletedGamesByWeek(2023, 1, FBS, Regular)
 	if err != nil {
 		t.Fatalf("GetCompletedGamesByWeek: %v", err)
 	}
@@ -116,8 +128,9 @@ func TestGetCompletedGamesByWeek(t *testing.T) {
 func TestGetWeeksInSeason(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	weeks, err := GetWeeksInSeason(2023)
+	weeks, err := client.GetWeeksInSeason(2023)
 	if err != nil {
 		t.Fatalf("GetWeeksInSeason: %v", err)
 	}
@@ -131,11 +144,12 @@ func TestGetWeeksInSeason(t *testing.T) {
 func TestHasPostseasonStarted(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
 	// Postseason starts 2023-12-16T08:00Z
 	// Test with time before postseason
 	before := time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
-	started, err := HasPostseasonStarted(2023, before)
+	started, err := client.HasPostseasonStarted(2023, before)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
@@ -145,7 +159,7 @@ func TestHasPostseasonStarted(t *testing.T) {
 
 	// Test with time after postseason
 	after := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	started, err = HasPostseasonStarted(2023, after)
+	started, err = client.HasPostseasonStarted(2023, after)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
@@ -157,8 +171,9 @@ func TestHasPostseasonStarted(t *testing.T) {
 func TestGetGameStats(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	res, err := GetGameStats(1001)
+	res, err := client.GetGameStats(1001)
 	if err != nil {
 		t.Fatalf("GetGameStats: %v", err)
 	}
@@ -187,8 +202,9 @@ func TestGetGameStats(t *testing.T) {
 func TestGetTeamInfo(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	res, err := GetTeamInfo()
+	res, err := client.GetTeamInfo()
 	if err != nil {
 		t.Fatalf("GetTeamInfo: %v", err)
 	}
@@ -214,8 +230,9 @@ func TestGetTeamInfo(t *testing.T) {
 func TestDefaultSeason(t *testing.T) {
 	ts := setupTestServer(t)
 	overrideURLs(t, ts.URL)
+	client := newTestClient()
 
-	year, err := DefaultSeason()
+	year, err := client.DefaultSeason()
 	if err != nil {
 		t.Fatalf("DefaultSeason: %v", err)
 	}
@@ -235,8 +252,9 @@ func TestMakeRequestNon2xx(t *testing.T) {
 
 	restore := SetTestURLs(ts.URL+"/schedule", "", "")
 	t.Cleanup(restore)
+	client := newTestClient()
 
-	_, err := DefaultSeason()
+	_, err := client.DefaultSeason()
 	if err == nil {
 		t.Fatal("expected error for 404 response, got nil")
 	}
@@ -256,8 +274,9 @@ func TestMakeRequestMalformedJSON(t *testing.T) {
 
 	restore := SetTestURLs(ts.URL+"/schedule", "", "")
 	t.Cleanup(restore)
+	client := newTestClient()
 
-	_, err := DefaultSeason()
+	_, err := client.DefaultSeason()
 	if err == nil {
 		t.Fatal("expected error for malformed JSON, got nil")
 	}
@@ -277,8 +296,9 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 
 	restore := SetTestURLs(ts.URL+"/schedule", "", "")
 	t.Cleanup(restore)
+	client := newTestClient()
 
-	_, err := DefaultSeason()
+	_, err := client.DefaultSeason()
 	if err == nil {
 		t.Fatal("expected validation error for empty response, got nil")
 	}

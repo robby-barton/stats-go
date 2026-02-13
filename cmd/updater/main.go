@@ -12,6 +12,7 @@ import (
 
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
 	"github.com/robby-barton/stats-go/internal/writer"
@@ -34,10 +35,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	espnClient := espn.NewClient()
 	u := updater.Updater{
 		DB:     db,
 		Logger: log,
 		Writer: doWriter,
+		ESPN:   espnClient,
 	}
 
 	rootCmd := &cobra.Command{

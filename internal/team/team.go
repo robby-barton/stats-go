@@ -25,10 +25,10 @@ type ParsedTeamInfo struct {
 	Slug             string
 }
 
-func GetTeamInfo() ([]ParsedTeamInfo, error) {
+func GetTeamInfo(client *espn.Client) ([]ParsedTeamInfo, error) {
 	var parsedTeamInfo []ParsedTeamInfo
 
-	res, err := espn.GetTeamInfo()
+	res, err := client.GetTeamInfo()
 	if err != nil {
 		return nil, err
 	}

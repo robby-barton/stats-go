@@ -21,18 +21,18 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGameStats(games []espn.Game) ([]*ParsedGameInfo, error) {
+func GetGameStats(client *espn.Client, games []espn.Game) ([]*ParsedGameInfo, error) {
 	var parsedGameStats []*ParsedGameInfo
 
 	for _, game := range games {
-		gameStats, err := GetSingleGame(game.ID)
+		gameStats, err := GetSingleGame(client, game.ID)
 		if err != nil {
 			return nil, err
 		}
 
 		parsedGameStats = append(parsedGameStats, gameStats)
 
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(client.RateLimit)
 	}
 
 	return parsedGameStats, nil
@@ -54,29 +54,13 @@ func combineGames(gamesLists [][]espn.Game) []espn.Game {
 	return games
 }
 
-func GetCurrentWeekGames() ([]espn.Game, error) {
-	fbsGames, err := espn.GetCurrentWeekGames(espn.FBS)
+func GetCurrentWeekGames(client *espn.Client) ([]espn.Game, error) {
+	fbsGames, err := client.GetCurrentWeekGames(espn.FBS)
 	if err != nil {
 		return nil, err
 	}
 
-	fcsGames, err := espn.GetCurrentWeekGames(espn.FCS)
-	if err != nil {
-		return nil, err
-	}
-
-	games := combineGames([][]espn.Game{fbsGames, fcsGames})
-
-	return games, nil
-}
-
-func GetGamesForSeason(year int64) ([]espn.Game, error) {
-	fbsGames, err := espn.GetGamesBySeason(year, espn.FBS)
-	if err != nil {
-		return nil, err
-	}
-
-	fcsGames, err := espn.GetGamesBySeason(year, espn.FCS)
+	fcsGames, err := client.GetCurrentWeekGames(espn.FCS)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +70,24 @@ func GetGamesForSeason(year int64) ([]espn.Game, error) {
 	return games, nil
 }
 
-func GetSingleGame(gameID int64) (*ParsedGameInfo, error) {
-	res, err := espn.GetGameStats(gameID)
+func GetGamesForSeason(client *espn.Client, year int64) ([]espn.Game, error) {
+	fbsGames, err := client.GetGamesBySeason(year, espn.FBS)
+	if err != nil {
+		return nil, err
+	}
+
+	fcsGames, err := client.GetGamesBySeason(year, espn.FCS)
+	if err != nil {
+		return nil, err
+	}
+
+	games := combineGames([][]espn.Game{fbsGames, fcsGames})
+
+	return games, nil
+}
+
+func GetSingleGame(client *espn.Client, gameID int64) (*ParsedGameInfo, error) {
+	res, err := client.GetGameStats(gameID)
 	if err != nil {
 		return nil, err
 	}

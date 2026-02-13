@@ -89,6 +89,7 @@ type Updater struct {
     DB     *gorm.DB
     Logger *zap.SugaredLogger
     Writer writer.Writer
+    ESPN   *espn.Client
 }
 ```
 
@@ -111,8 +112,11 @@ All computation happens in-memory after initial DB queries.
 
 ### ESPN Client
 
-Stateless HTTP client. All functions are package-level (no struct). URLs are
-package-level vars so tests can override them with a mock HTTP server.
+HTTP client backed by the `espn.Client` struct, which holds retry and
+rate-limit configuration (`MaxRetries`, `InitialBackoff`, `RequestTimeout`,
+`RateLimit`). Retries use exponential backoff capped at 30s. All ESPN
+functions are methods on `*Client`. URLs are package-level vars so tests can
+override them with a mock HTTP server.
 
 ## Database
 
