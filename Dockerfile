@@ -15,4 +15,4 @@ RUN apk add --no-cache tzdata
 ENV TZ=America/New_York
 
 COPY --from=builder /app/updater .
-ENTRYPOINT ["/updater", "-schedule"]
+ENTRYPOINT ["/updater", "schedule"]
