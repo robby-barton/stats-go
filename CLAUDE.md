@@ -59,6 +59,19 @@ Key patterns:
 - `nolint` directives require both a specific linter and an explanation
   (`require-explanation: true`, `require-specific: true`).
 
+## Golden Rule: Keep Documentation Up to Date
+
+Any change that alters architecture, package dependencies, public interfaces,
+ESPN API usage, conventions, or design rationale **must** include corresponding
+updates to the relevant docs (`CLAUDE.md`, `ARCHITECTURE.md`, or files in
+`docs/`). Documentation that contradicts the code is worse than no documentation
+at all — it actively misleads future work.
+
+When in doubt, update the docs. When adding a new package or changing how an
+existing one works, update `ARCHITECTURE.md`. When making a deliberate tradeoff,
+record it in `docs/design-decisions.md`. When discovering or resolving tech
+debt, update `docs/tech-debt.md`.
+
 ## Deeper Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — package dependencies and layering
