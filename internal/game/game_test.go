@@ -118,7 +118,8 @@ func TestGetSingleGame(t *testing.T) {
 	ts := setupGameTestServer(t)
 	overrideGameURLs(t, ts.URL)
 
-	parsed, err := GetSingleGame(1001)
+	client := espn.NewClient()
+	parsed, err := GetSingleGame(client, 1001)
 	if err != nil {
 		t.Fatalf("GetSingleGame: %v", err)
 	}
@@ -153,7 +154,8 @@ func TestGetCurrentWeekGames(t *testing.T) {
 	ts := setupGameTestServer(t)
 	overrideGameURLs(t, ts.URL)
 
-	games, err := GetCurrentWeekGames()
+	client := espn.NewClient()
+	games, err := GetCurrentWeekGames(client)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}

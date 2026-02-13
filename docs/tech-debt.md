@@ -13,9 +13,10 @@ decode errors with endpoint context, added `validate()` methods on all three
 response types (`GameScheduleESPN`, `GameInfoESPN`, `TeamInfoESPN`), and guarded
 remaining unprotected slice index accesses in `espn.go`.
 
-### Hard-coded rate limiting
-The 200ms sleep in `game/` and 1s retry backoff in `espn/request.go` are
-hard-coded. These could be configurable or use exponential backoff.
+### ~~Hard-coded rate limiting~~ (resolved 2026-02-13)
+Introduced `espn.Client` struct with configurable `MaxRetries`,
+`InitialBackoff`, `RequestTimeout`, and `RateLimit` fields. Retry logic now
+uses exponential backoff (`initialBackoff * 2^attempt`, capped at 30s).
 
 ## Resolved
 

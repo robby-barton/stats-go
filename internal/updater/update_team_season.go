@@ -35,7 +35,7 @@ func (u *Updater) seasonsExist(year int64) bool {
 }
 
 func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
-	currentSeason, err := espn.DefaultSeason()
+	currentSeason, err := u.ESPN.DefaultSeason()
 	if err != nil {
 		return 0, err
 	}
@@ -45,7 +45,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 		return 0, nil
 	}
 
-	conferences, err := espn.ConferenceMap()
+	conferences, err := u.ESPN.ConferenceMap()
 	if err != nil {
 		return 0, err
 	}
@@ -53,7 +53,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 	fbsfcs := maps.Clone(fbs)
 	maps.Copy(fbsfcs, conferences[espn.FCS].(map[int64]string))
 
-	teamConfs, err := espn.TeamConferencesByYear(currentSeason)
+	teamConfs, err := u.ESPN.TeamConferencesByYear(currentSeason)
 	if err != nil {
 		return 0, err
 	}

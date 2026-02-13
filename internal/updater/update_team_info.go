@@ -61,7 +61,7 @@ func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
 }
 
 func (u *Updater) UpdateTeamInfo() (int, error) {
-	teamInfo, err := team.GetTeamInfo()
+	teamInfo, err := team.GetTeamInfo(u.ESPN)
 	if err != nil {
 		return 0, err
 	}

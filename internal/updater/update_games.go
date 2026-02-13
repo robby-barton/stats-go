@@ -167,7 +167,7 @@ func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
 }
 
 func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
-	games, err := game.GetCurrentWeekGames()
+	games, err := game.GetCurrentWeekGames(u.ESPN)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
 		return nil, err
 	}
 
-	gameStats, err := game.GetGameStats(games)
+	gameStats, err := game.GetGameStats(u.ESPN, games)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
 }
 
 func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
-	games, err := game.GetGamesForSeason(year)
+	games, err := game.GetGamesForSeason(u.ESPN, year)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
 		return nil, err
 	}
 
-	gameStats, err := game.GetGameStats(games)
+	gameStats, err := game.GetGameStats(u.ESPN, games)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
 }
 
 func (u *Updater) UpdateSingleGame(gameID int64) error {
-	gameStats, err := game.GetSingleGame(gameID)
+	gameStats, err := game.GetSingleGame(u.ESPN, gameID)
 	if err != nil {
 		return err
 	}

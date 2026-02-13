@@ -21,13 +21,13 @@ const (
 	Postseason SeasonType = 3
 )
 
-func GetCurrentWeekGames(group Group) ([]Game, error) {
+func (c *Client) GetCurrentWeekGames(group Group) ([]Game, error) {
 	var games []Game
 
 	url := weekURL + fmt.Sprintf("&group=%d", group)
 
 	var res GameScheduleESPN
-	err := makeRequest(url, &res)
+	err := c.makeRequest(url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -43,12 +43,12 @@ func GetCurrentWeekGames(group Group) ([]Game, error) {
 	return games, nil
 }
 
-func GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) (*GameScheduleESPN, error) {
+func (c *Client) GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) (*GameScheduleESPN, error) {
 	url := weekURL +
 		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
 
 	var res GameScheduleESPN
-	err := makeRequest(url, &res)
+	err := c.makeRequest(url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +56,8 @@ func GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) 
 	return &res, nil
 }
 
-func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]Game, error) {
-	res, err := GetGamesByWeek(year, week, group, seasonType)
+func (c *Client) GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]Game, error) {
+	res, err := c.GetGamesByWeek(year, week, group, seasonType)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +74,11 @@ func GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType Sea
 	return games, nil
 }
 
-func GetWeeksInSeason(year int64) (int64, error) {
+func (c *Client) GetWeeksInSeason(year int64) (int64, error) {
 	url := weekURL + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
-	err := makeRequest(url, &res)
+	err := c.makeRequest(url, &res)
 	if err != nil {
 		return 0, err
 	}
@@ -86,11 +86,11 @@ func GetWeeksInSeason(year int64) (int64, error) {
 	return int64(len(res.Content.Calendar[0].Weeks)), nil
 }
 
-func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
+func (c *Client) HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 	url := weekURL + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
-	err := makeRequest(url, &res)
+	err := c.makeRequest(url, &res)
 	if err != nil {
 		return false, err
 	}
@@ -105,16 +105,16 @@ func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 	return postSeasonStart.Before(startTime), nil
 }
 
-func GetGamesBySeason(year int64, group Group) ([]Game, error) {
+func (c *Client) GetGamesBySeason(year int64, group Group) ([]Game, error) {
 	var gameIDs []Game
 
-	numWeeks, err := GetWeeksInSeason(year)
+	numWeeks, err := c.GetWeeksInSeason(year)
 	if err != nil {
 		return nil, err
 	}
 
 	for i := int64(1); i < numWeeks; i++ {
-		games, err := GetCompletedGamesByWeek(year, i, group, Regular)
+		games, err := c.GetCompletedGamesByWeek(year, i, group, Regular)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +122,7 @@ func GetGamesBySeason(year int64, group Group) ([]Game, error) {
 		gameIDs = append(gameIDs, games...)
 	}
 
-	games, err := GetCompletedGamesByWeek(year, int64(1), group, Postseason)
+	games, err := c.GetCompletedGamesByWeek(year, int64(1), group, Postseason)
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +132,11 @@ func GetGamesBySeason(year int64, group Group) ([]Game, error) {
 	return gameIDs, nil
 }
 
-func GetGameStats(gameID int64) (*GameInfoESPN, error) {
+func (c *Client) GetGameStats(gameID int64) (*GameInfoESPN, error) {
 	url := fmt.Sprintf(gameStatsURL, gameID)
 
 	var res GameInfoESPN
-	err := makeRequest(url, &res)
+	err := c.makeRequest(url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -144,9 +144,9 @@ func GetGameStats(gameID int64) (*GameInfoESPN, error) {
 	return &res, nil
 }
 
-func GetTeamInfo() (*TeamInfoESPN, error) {
+func (c *Client) GetTeamInfo() (*TeamInfoESPN, error) {
 	var res TeamInfoESPN
-	err := makeRequest(teamInfoURL, &res)
+	err := c.makeRequest(teamInfoURL, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +154,9 @@ func GetTeamInfo() (*TeamInfoESPN, error) {
 	return &res, nil
 }
 
-func DefaultSeason() (int64, error) {
+func (c *Client) DefaultSeason() (int64, error) {
 	var res GameScheduleESPN
-	err := makeRequest(weekURL, &res)
+	err := c.makeRequest(weekURL, &res)
 	if err != nil {
 		return 0, err
 	}
@@ -164,9 +164,9 @@ func DefaultSeason() (int64, error) {
 	return res.Content.Defaults.Year, nil
 }
 
-func ConferenceMap() (map[Group]interface{}, error) {
+func (c *Client) ConferenceMap() (map[Group]interface{}, error) {
 	var res GameScheduleESPN
-	err := makeRequest(weekURL, &res)
+	err := c.makeRequest(weekURL, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -207,24 +207,24 @@ func ConferenceMap() (map[Group]interface{}, error) {
 	}, nil
 }
 
-func TeamConferencesByYear(year int64) (map[int64]int64, error) {
+func (c *Client) TeamConferencesByYear(year int64) (map[int64]int64, error) {
 	teamConfs := map[int64]int64{}
 
-	numWeeks, err := GetWeeksInSeason(year)
+	numWeeks, err := c.GetWeeksInSeason(year)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, group := range []Group{FBS, FCS} {
 		for i := int64(1); i < numWeeks; i++ {
-			games, err := GetGamesByWeek(year, i, group, Regular)
+			games, err := c.GetGamesByWeek(year, i, group, Regular)
 			if err != nil {
 				return nil, err
 			}
 			maps.Copy(teamConfs, extractTeamConfs(games))
 		}
 
-		games, err := GetGamesByWeek(year, int64(1), group, Postseason)
+		games, err := c.GetGamesByWeek(year, int64(1), group, Postseason)
 		if err != nil {
 			return nil, err
 		}
