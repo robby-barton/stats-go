@@ -76,7 +76,7 @@ func (r *Ranker) setGlobals() error {
 		}
 	}
 
-	if r.startTime == (time.Time{}) {
+	if r.startTime.Equal((time.Time{})) {
 		r.startTime = game.StartTime
 	}
 

@@ -1,6 +1,7 @@
 package espn
 
-const gameStatsURL = "https://cdn.espn.com/core/college-football/playbyplay" +
+//nolint:gochecknoglobals // overridden in tests
+var gameStatsURL = "https://cdn.espn.com/core/college-football/playbyplay" +
 	"?gameId=%d&xhr=1&render=false&userab=18"
 
 type GameInfoESPN struct {

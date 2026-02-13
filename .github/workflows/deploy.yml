@@ -16,10 +16,13 @@ jobs:
   lint:
     name: Lint
     uses: ./.github/workflows/lint.yml
+  test:
+    name: Test
+    uses: ./.github/workflows/test.yml
   deploy:
     name: Build and push
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs: [lint, test]
     steps:
       - name: Checkout master
         uses: actions/checkout@v2
