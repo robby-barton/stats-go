@@ -7,11 +7,11 @@ Unit tests cover ESPN parsing, ranking math, and record formatting. There are no
 integration tests that exercise the full pipeline (fetch → parse → store →
 rank → export) against a real or in-memory database.
 
-### ESPN API fragility
-The ESPN endpoints are undocumented and could change at any time. There is no
-contract validation or schema checking on API responses — if ESPN changes a
-field name or nests data differently, it will fail at JSON decode time with a
-potentially unclear error.
+### ~~ESPN API fragility~~ (resolved 2026-02-13)
+Added HTTP status code validation and 5xx retry in `makeRequest`, wrapped JSON
+decode errors with endpoint context, added `validate()` methods on all three
+response types (`GameScheduleESPN`, `GameInfoESPN`, `TeamInfoESPN`), and guarded
+remaining unprotected slice index accesses in `espn.go`.
 
 ### Updater CLI flag surface area
 `cmd/updater/main.go` has grown to 8 boolean flags and a mix of scheduling and

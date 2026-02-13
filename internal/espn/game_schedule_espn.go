@@ -1,5 +1,7 @@
 package espn
 
+import "errors"
+
 //nolint:gochecknoglobals // overridden in tests
 var weekURL = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18"
 
@@ -81,4 +83,14 @@ type Conference struct {
 	Logo          string   `json:"logo"`
 	ParentGroupID int64    `json:"parentGroupId,string"`
 	ShortName     string   `json:"shortName"`
+}
+
+func (r GameScheduleESPN) validate() error {
+	if len(r.Content.Calendar) == 0 {
+		return errors.New("schedule response missing calendar entries")
+	}
+	if len(r.Content.Calendar[0].Weeks) == 0 {
+		return errors.New("schedule response has empty weeks in first calendar entry")
+	}
+	return nil
 }

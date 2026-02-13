@@ -1,5 +1,7 @@
 package espn
 
+import "errors"
+
 //nolint:gochecknoglobals // overridden in tests
 var gameStatsURL = "https://cdn.espn.com/core/college-football/playbyplay" +
 	"?gameId=%d&xhr=1&render=false&userab=18"
@@ -81,4 +83,17 @@ type Athlete struct {
 	ID        int64  `json:"id,string"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
+}
+
+func (r GameInfoESPN) validate() error {
+	if r.GamePackage.Header.ID == 0 {
+		return errors.New("game info response has zero header ID")
+	}
+	if len(r.GamePackage.Header.Competitions) == 0 {
+		return errors.New("game info response missing competitions")
+	}
+	if len(r.GamePackage.Header.Competitions[0].Competitors) < 2 {
+		return errors.New("game info response has fewer than 2 competitors")
+	}
+	return nil
 }

@@ -36,6 +36,9 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 						},
 					},
 				},
+				Calendar: []espn.Calendar{
+					{Weeks: []espn.Week{{Num: 1}}},
+				},
 			},
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -221,5 +222,176 @@ func TestDefaultSeason(t *testing.T) {
 
 	if year != 2023 {
 		t.Errorf("year = %d, want 2023", year)
+	}
+}
+
+func TestMakeRequestNon2xx(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	restore := SetTestURLs(ts.URL+"/schedule", "", "")
+	t.Cleanup(restore)
+
+	_, err := DefaultSeason()
+	if err == nil {
+		t.Fatal("expected error for 404 response, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected status 404") {
+		t.Errorf("error = %q, want it to contain 'unexpected status 404'", err)
+	}
+}
+
+func TestMakeRequestMalformedJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{invalid json`)) //nolint:errcheck // test helper
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	restore := SetTestURLs(ts.URL+"/schedule", "", "")
+	t.Cleanup(restore)
+
+	_, err := DefaultSeason()
+	if err == nil {
+		t.Fatal("expected error for malformed JSON, got nil")
+	}
+	if !strings.Contains(err.Error(), "decoding response") {
+		t.Errorf("error = %q, want it to contain 'decoding response'", err)
+	}
+}
+
+func TestMakeRequestEmptyResponse(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`)) //nolint:errcheck // test helper
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	restore := SetTestURLs(ts.URL+"/schedule", "", "")
+	t.Cleanup(restore)
+
+	_, err := DefaultSeason()
+	if err == nil {
+		t.Fatal("expected validation error for empty response, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing calendar") {
+		t.Errorf("error = %q, want it to contain 'missing calendar'", err)
+	}
+}
+
+func TestGameScheduleValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    GameScheduleESPN
+		wantErr string
+	}{
+		{
+			name:    "empty calendar",
+			resp:    GameScheduleESPN{},
+			wantErr: "missing calendar",
+		},
+		{
+			name: "empty weeks",
+			resp: GameScheduleESPN{
+				Content: Content{Calendar: []Calendar{{}}},
+			},
+			wantErr: "empty weeks",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.resp.validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestGameInfoValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    GameInfoESPN
+		wantErr string
+	}{
+		{
+			name:    "zero header ID",
+			resp:    GameInfoESPN{},
+			wantErr: "zero header ID",
+		},
+		{
+			name: "no competitions",
+			resp: GameInfoESPN{
+				GamePackage: GamePackage{Header: Header{ID: 1}},
+			},
+			wantErr: "missing competitions",
+		},
+		{
+			name: "too few competitors",
+			resp: GameInfoESPN{
+				GamePackage: GamePackage{Header: Header{
+					ID:           1,
+					Competitions: []Competitions{{Competitors: []Competitors{{ID: 1}}}},
+				}},
+			},
+			wantErr: "fewer than 2 competitors",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.resp.validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTeamInfoValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    TeamInfoESPN
+		wantErr string
+	}{
+		{
+			name:    "no sports",
+			resp:    TeamInfoESPN{},
+			wantErr: "missing sports",
+		},
+		{
+			name:    "no leagues",
+			resp:    TeamInfoESPN{Sports: []Sport{{}}},
+			wantErr: "missing leagues",
+		},
+		{
+			name:    "no teams",
+			resp:    TeamInfoESPN{Sports: []Sport{{Leagues: []League{{}}}}},
+			wantErr: "missing teams",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.resp.validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }
