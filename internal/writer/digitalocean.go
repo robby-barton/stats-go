@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	awsSigner "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsSigner "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/digitalocean/godo"
 )
 
@@ -22,6 +24,7 @@ const (
 type DigitalOceanWriter struct {
 	endpoint string
 	signer   *awsSigner.Signer
+	creds    aws.Credentials
 	client   *godo.Client
 	cdnID    string
 }
@@ -40,9 +43,13 @@ type DOConfig struct {
 func NewDigitalOceanWriter(cfg *DOConfig) (*DigitalOceanWriter, error) {
 	return &DigitalOceanWriter{
 		endpoint: fmt.Sprintf("https://%s.%s/", cfg.Bucket, cfg.Endpoint),
-		signer:   awsSigner.NewSigner(credentials.NewStaticCredentials(cfg.Key, cfg.Secret, "")),
-		client:   godo.NewFromToken(cfg.APIToken),
-		cdnID:    cfg.CDNID,
+		signer:   awsSigner.NewSigner(),
+		creds: aws.Credentials{
+			AccessKeyID:     cfg.Key,
+			SecretAccessKey: cfg.Secret,
+		},
+		client: godo.NewFromToken(cfg.APIToken),
+		cdnID:  cfg.CDNID,
 	}, nil
 }
 
@@ -87,7 +94,10 @@ func (w *DigitalOceanWriter) WriteData(ctx context.Context, fileName string, inp
 		req.Header.Set(k, v)
 	}
 
-	_, err = w.signer.Sign(req, bodyReader, "s3", "nyc3", time.Now())
+	hash := sha256.Sum256(compressedData)
+	payloadHash := hex.EncodeToString(hash[:])
+
+	err = w.signer.SignHTTP(ctx, w.creds, req, payloadHash, "s3", "nyc3", time.Now())
 	if err != nil {
 		return err
 	}

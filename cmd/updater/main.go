@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-co-op/gocron"
+	"github.com/go-co-op/gocron/v2"
 
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
@@ -54,7 +54,10 @@ func main() {
 	}
 
 	if scheduled {
-		s := gocron.NewScheduler(time.Local)
+		s, err := gocron.NewScheduler(gocron.WithLocation(time.Local))
+		if err != nil {
+			panic(err)
+		}
 
 		update := make(chan bool, 1)
 		stop := make(chan bool, 1)
@@ -89,7 +92,7 @@ func main() {
 
 		// Update completed games
 		// every 5 minutes from August through January
-		s.Cron("*/5 * * 1,8-12 *").Do(func() {
+		_, err = s.NewJob(gocron.CronJob("*/5 * * 1,8-12 *", false), gocron.NewTask(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					logger.Errorf("panic caught: %s", r)
@@ -105,11 +108,14 @@ func main() {
 			} else if len(addedGames) > 0 {
 				update <- true
 			}
-		})
+		}))
+		if err != nil {
+			panic(err)
+		}
 
 		// Update team info
 		// 5 am Sunday from August through January
-		s.Cron("0 5 * 1,8-12 0").Do(func() {
+		_, err = s.NewJob(gocron.CronJob("0 5 * 1,8-12 0", false), gocron.NewTask(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					logger.Errorf("panic caught: %s", r)
@@ -132,11 +138,14 @@ func main() {
 					logger.Error(err)
 				}
 			}
-		})
+		}))
+		if err != nil {
+			panic(err)
+		}
 
 		// Add new season
 		// 6 am on August 10th
-		s.Cron("0 6 10 8 *").Do(func() {
+		_, err = s.NewJob(gocron.CronJob("0 6 10 8 *", false), gocron.NewTask(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					logger.Errorf("panic caught: %s", r)
@@ -152,15 +161,20 @@ func main() {
 			} else if addedSeasons > 0 {
 				update <- true
 			}
-		})
+		}))
+		if err != nil {
+			panic(err)
+		}
 
-		s.StartAsync()
+		s.Start()
 
 		end := make(chan os.Signal, 1)
 		signal.Notify(end, syscall.SIGINT, syscall.SIGTERM)
 
 		<-end
-		s.Stop()
+		if err := s.Shutdown(); err != nil {
+			logger.Error(err)
+		}
 		stop <- true
 	} else {
 		if games {
