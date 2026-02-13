@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	hfa           int64 = 3
 	requiredGames int   = 12
 	yearsBack     int64 = 2
 	runs          int   = 10000

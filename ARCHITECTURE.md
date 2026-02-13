@@ -126,6 +126,6 @@ All models use composite primary keys for multi-dimensional lookups
 ## Deployment
 
 - **Docker:** Multi-stage build (`golang:1.26-alpine` → `alpine:latest`)
-- **Production:** `updater -schedule` running in a container alongside PostgreSQL
+- **Production:** `updater schedule` running in a container alongside PostgreSQL
 - **CI/CD:** GitHub Actions — lint and test on PR, build+push on merge to master
 - **Output:** JSON files served from DigitalOcean Spaces CDN
