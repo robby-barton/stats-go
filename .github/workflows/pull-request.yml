@@ -16,3 +16,6 @@ jobs:
   test:
     name: Test
     uses: ./.github/workflows/test.yml
+  integration-test:
+    name: Integration Test
+    uses: ./.github/workflows/integration-test.yml

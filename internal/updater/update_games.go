@@ -134,8 +134,13 @@ func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
 		if len(game.ReturnStats) > 0 {
 			if err := tx.
 				Clauses(clause.OnConflict{
-					UpdateAll:    true, // upsert
-					OnConstraint: "return_stats_pkey",
+					UpdateAll: true, // upsert
+					Columns: []clause.Column{
+						{Name: "player_id"},
+						{Name: "team_id"},
+						{Name: "game_id"},
+						{Name: "punt_kick"},
+					},
 				}).
 				Create(&game.ReturnStats).Error; err != nil {
 				return err

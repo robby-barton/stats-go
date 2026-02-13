@@ -181,21 +181,26 @@ type gameCountJSON struct {
 }
 
 func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
-	sql := `
+	// PostgreSQL: extract(dow from start_time) returns 0=Sun..6=Sat
+	// SQLite: strftime('%w', start_time) returns '0'=Sun..'6'=Sat
+	dowExpr := "extract(dow from start_time)"
+	if u.DB.Name() == "sqlite" {
+		dowExpr = "cast(strftime('%w', start_time) as integer)"
+	}
+
+	sql := fmt.Sprintf(`
 	with gamesList as (
-		(
-			select
-				home_id as team_id,
-				extract(dow from start_time) as dow,
-				game_id
-			from games
-		) union all (
-			select
-				away_id as team_id,
-				extract(dow from start_time) as dow,
-				game_id
-			from games
-		)
+		select
+			home_id as team_id,
+			%s as dow,
+			game_id
+		from games
+		union all
+		select
+			away_id as team_id,
+			%s as dow,
+			game_id
+		from games
 	)
 	select
 		team_id,
@@ -212,7 +217,7 @@ func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
 		team_id
 	order by
 		total desc
-	`
+	`, dowExpr, dowExpr)
 
 	results := []struct {
 		TeamID int64
