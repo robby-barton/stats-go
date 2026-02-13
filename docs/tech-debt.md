@@ -2,10 +2,11 @@
 
 ## Active
 
-### No integration tests
-Unit tests cover ESPN parsing, ranking math, and record formatting. There are no
-integration tests that exercise the full pipeline (fetch → parse → store →
-rank → export) against a real or in-memory database.
+### ~~No integration tests~~ (resolved 2026-02-13)
+Added integration tests in `internal/updater/` behind a `//go:build integration`
+tag. Tests exercise the full pipeline (fetch → parse → store → rank → export)
+against an in-memory SQLite database with a mock ESPN HTTP server and a
+capturing writer. CI runs integration tests as a separate job.
 
 ### ~~ESPN API fragility~~ (resolved 2026-02-13)
 Added HTTP status code validation and 5xx retry in `makeRequest`, wrapped JSON

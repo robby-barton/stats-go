@@ -1,4 +1,4 @@
-.PHONY: fmt refresh-module download-modules modules clean migrate updater ranker
+.PHONY: fmt refresh-module download-modules modules clean migrate updater ranker test test-integration test-all
 
 format:
 	@go fmt ./...
@@ -28,6 +28,15 @@ modules:
 clean:
 	@rm -rf migrate updater ranker > /dev/null 2>&1
 	@rm -rf ranking team teams.json availRanks.json latest.json gameCount.json > /dev/null 2>&1
+
+test:
+	@go test ./...
+
+test-integration:
+	@go test -tags=integration -count=1 ./...
+
+test-all:
+	@go test -tags=integration ./...
 
 lint:
 	@golangci-lint run --config=.golangci.yml ./cmd/... ./internal/...

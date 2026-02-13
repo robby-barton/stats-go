@@ -19,10 +19,13 @@ jobs:
   test:
     name: Test
     uses: ./.github/workflows/test.yml
+  integration-test:
+    name: Integration Test
+    uses: ./.github/workflows/integration-test.yml
   deploy:
     name: Build and push
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, integration-test]
     steps:
       - name: Checkout master
         uses: actions/checkout@v2
