@@ -2,12 +2,6 @@
 
 ## Active
 
-### Dependency versions are dated
-Go 1.21 and several dependencies (gorm, zap, aws-sdk-go v1, gocron v1) have
-newer major versions available. Upgrading would bring performance improvements
-and security patches. `aws-sdk-go` v1 is in maintenance mode; v2 is the
-supported path forward.
-
 ### No integration tests
 Unit tests cover ESPN parsing, ranking math, and record formatting. There are no
 integration tests that exercise the full pipeline (fetch → parse → store →
@@ -34,4 +28,6 @@ used in any calculation. Unclear if this is intentional or vestigial.
 
 ## Resolved
 
-_(None yet — add entries here as debt is paid down.)_
+### Dependency versions are dated (resolved 2026-02-13)
+Upgraded Go 1.21 → 1.26, aws-sdk-go v1 → v2, gocron v1 → v2, GORM
+drivers to pgx/v5, and zap to v1.27. All dependencies are now current.

@@ -6,7 +6,7 @@ DigitalOcean Spaces.
 
 ## Quick Reference
 
-- **Language:** Go 1.21
+- **Language:** Go 1.26
 - **Module:** `github.com/robby-barton/stats-go`
 - **Build/Run:** `make ranker`, `make updater`
 - **Test:** `go test ./...`

@@ -55,7 +55,6 @@ linters:
   settings:
     errcheck:
       exclude-functions:
-        - (*github.com/go-co-op/gocron.Scheduler).Do
         - github.com/joho/godotenv.Load
         - (*go.uber.org/zap.SugaredLogger).Sync
     exhaustive:
