@@ -13,20 +13,18 @@ decode errors with endpoint context, added `validate()` methods on all three
 response types (`GameScheduleESPN`, `GameInfoESPN`, `TeamInfoESPN`), and guarded
 remaining unprotected slice index accesses in `espn.go`.
 
-### Updater CLI flag surface area
-`cmd/updater/main.go` has grown to 8 boolean flags and a mix of scheduling and
-one-shot modes in a single `main()`. This could be clearer with subcommands
-(e.g., `updater schedule`, `updater games --all`).
-
 ### Hard-coded rate limiting
 The 200ms sleep in `game/` and 1s retry backoff in `espn/request.go` are
 hard-coded. These could be configurable or use exponential backoff.
 
-### Home field advantage constant unused in final ranking
-`rating.go` defines `hfa = 3` (home field advantage) but it is not currently
-used in any calculation. Unclear if this is intentional or vestigial.
-
 ## Resolved
+
+### Updater CLI flag surface area (resolved 2026-02-13)
+Replaced 8 flat boolean flags with cobra subcommands (`schedule`, `games`,
+`ranking`, `teams`, `season`, `json`). Each subcommand owns its own flags.
+
+### Home field advantage constant unused (resolved 2026-02-13)
+Removed the dead `hfa` constant from `internal/ranking/rating.go`.
 
 ### Dependency versions are dated (resolved 2026-02-13)
 Upgraded Go 1.21 → 1.26, aws-sdk-go v1 → v2, gocron v1 → v2, GORM
