@@ -3,6 +3,6 @@ data
 *.db
 
 # binaries
-ranker
-updater
-migrate
+/ranker
+/updater
+/migrate
