@@ -12,8 +12,13 @@ const (
 	timeout = 1 * time.Second
 )
 
+type validatable interface {
+	validate() error
+}
+
 type Responses interface {
 	GameInfoESPN | GameScheduleESPN | TeamInfoESPN
+	validatable
 }
 
 func makeRequest[R Responses](endpoint string, data *R) error {
@@ -37,16 +42,31 @@ func makeRequest[R Responses](endpoint string, data *R) error {
 	for ok := true; ok; ok = (count < 5 && err != nil) {
 		res, err = client.Do(req)
 		if err == nil {
+			if res.StatusCode >= 500 {
+				res.Body.Close()
+				err = fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
+				count++
+				time.Sleep(1 * time.Second)
+				continue
+			}
 			break
 		}
 		count++
 		time.Sleep(1 * time.Second)
 	}
 	if err != nil {
-		return fmt.Errorf("error from \"%s\": %w", endpoint, err)
+		return fmt.Errorf("error from %q: %w", endpoint, err)
 	}
 
 	defer res.Body.Close()
 
-	return json.NewDecoder(res.Body).Decode(&data)
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
+		return fmt.Errorf("decoding response from %q: %w", endpoint, err)
+	}
+
+	return (*data).validate()
 }

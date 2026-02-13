@@ -1,5 +1,7 @@
 package espn
 
+import "errors"
+
 //nolint:gochecknoglobals // overridden in tests
 var teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 
@@ -62,4 +64,17 @@ type Logo struct {
 	Href   string   `json:"href"`
 	Rel    []string `json:"rel"`
 	Width  int64    `json:"width"`
+}
+
+func (r TeamInfoESPN) validate() error {
+	if len(r.Sports) == 0 {
+		return errors.New("team info response missing sports")
+	}
+	if len(r.Sports[0].Leagues) == 0 {
+		return errors.New("team info response missing leagues")
+	}
+	if len(r.Sports[0].Leagues[0].Teams) == 0 {
+		return errors.New("team info response missing teams")
+	}
+	return nil
 }

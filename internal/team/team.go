@@ -1,7 +1,6 @@
 package team
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/robby-barton/stats-go/internal/espn"
@@ -32,15 +31,6 @@ func GetTeamInfo() ([]ParsedTeamInfo, error) {
 	res, err := espn.GetTeamInfo()
 	if err != nil {
 		return nil, err
-	}
-
-	//nolint:gocritic // need to check nesting parse
-	if len(res.Sports) == 0 {
-		return nil, errors.New("no sport")
-	} else if len(res.Sports[0].Leagues) == 0 {
-		return nil, errors.New("no league")
-	} else if len(res.Sports[0].Leagues[0].Teams) == 0 {
-		return nil, errors.New("no teams")
 	}
 
 	teams := res.Sports[0].Leagues[0].Teams

@@ -95,6 +95,11 @@ func HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
 		return false, err
 	}
 
+	if len(res.Content.Calendar) < 2 {
+		return false, fmt.Errorf("schedule response has %d calendar entries, need at least 2 for postseason",
+			len(res.Content.Calendar))
+	}
+
 	postSeasonStart, _ := time.Parse("2006-01-02T15:04Z",
 		res.Content.Calendar[1].StartDate)
 	return postSeasonStart.Before(startTime), nil
@@ -234,6 +239,9 @@ func extractTeamConfs(games *GameScheduleESPN) map[int64]int64 {
 
 	for _, day := range games.Content.Schedule {
 		for _, event := range day.Games {
+			if len(event.Competitions) == 0 {
+				continue
+			}
 			for _, team := range event.Competitions[0].Competitors {
 				teamConfs[team.Team.ID] = team.Team.ConferenceID
 			}
