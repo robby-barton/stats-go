@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/robby-barton/stats-go/internal/espn"
 )
@@ -84,6 +85,160 @@ func overrideGameURLs(t *testing.T, serverURL string) {
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 	)
 	t.Cleanup(restore)
+}
+
+func setupBasketballTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(espn.GameScheduleESPN{
+			Content: espn.Content{
+				Schedule: map[string]espn.Day{
+					"2024-01-06": {
+						Games: []espn.Game{
+							{
+								ID: 2001,
+								Status: espn.Status{
+									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
+								},
+							},
+							{
+								ID: 2002,
+								Status: espn.Status{
+									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
+								},
+							},
+						},
+					},
+				},
+				Calendar: []espn.Calendar{
+					{Weeks: []espn.Week{{Num: 1}}},
+				},
+			},
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	mux.HandleFunc("/core/mens-college-basketball/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(espn.GameInfoESPN{
+			GamePackage: espn.GamePackage{
+				Header: espn.Header{
+					ID: 2001,
+					Competitions: []espn.Competitions{
+						{
+							ID:       2001,
+							Date:     "2024-01-06T19:00Z",
+							ConfGame: true,
+							Competitors: []espn.Competitors{
+								{HomeAway: "home", ID: 30, Score: 78},
+								{HomeAway: "away", ID: 40, Score: 65},
+							},
+						},
+					},
+					Season: espn.Season{Year: 2024, Type: 2},
+					Week:   10,
+				},
+			},
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestGetSingleGame_Basketball(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	restore := espn.SetTestURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+	)
+	t.Cleanup(restore)
+
+	client := &espn.Client{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          espn.CollegeBasketball,
+	}
+
+	parsed, err := GetSingleGame(client, 2001)
+	if err != nil {
+		t.Fatalf("GetSingleGame: %v", err)
+	}
+
+	if parsed.GameInfo.Sport != "cbb" {
+		t.Errorf("Sport = %q, want %q", parsed.GameInfo.Sport, "cbb")
+	}
+	if parsed.GameInfo.GameID != 2001 {
+		t.Errorf("GameID = %d, want 2001", parsed.GameInfo.GameID)
+	}
+	if parsed.GameInfo.HomeID != 30 {
+		t.Errorf("HomeID = %d, want 30", parsed.GameInfo.HomeID)
+	}
+	if parsed.GameInfo.HomeScore != 78 {
+		t.Errorf("HomeScore = %d, want 78", parsed.GameInfo.HomeScore)
+	}
+	if parsed.GameInfo.AwayScore != 65 {
+		t.Errorf("AwayScore = %d, want 65", parsed.GameInfo.AwayScore)
+	}
+
+	// Basketball should not have player stats
+	if len(parsed.PassingStats) != 0 {
+		t.Errorf("len(PassingStats) = %d, want 0", len(parsed.PassingStats))
+	}
+	if len(parsed.RushingStats) != 0 {
+		t.Errorf("len(RushingStats) = %d, want 0", len(parsed.RushingStats))
+	}
+	if len(parsed.ReceivingStats) != 0 {
+		t.Errorf("len(ReceivingStats) = %d, want 0", len(parsed.ReceivingStats))
+	}
+}
+
+func TestGetCurrentWeekGames_Basketball(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	restore := espn.SetTestURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+	)
+	t.Cleanup(restore)
+
+	client := &espn.Client{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          espn.CollegeBasketball,
+	}
+
+	games, err := GetCurrentWeekGames(client)
+	if err != nil {
+		t.Fatalf("GetCurrentWeekGames: %v", err)
+	}
+
+	// Basketball has only 1 group (D1Basketball), so no dedup needed.
+	// Fixture returns 2 final games.
+	if len(games) != 2 {
+		t.Fatalf("len(games) = %d, want 2", len(games))
+	}
+
+	ids := map[int64]bool{}
+	for _, g := range games {
+		ids[g.ID] = true
+	}
+	if !ids[2001] || !ids[2002] {
+		t.Errorf("expected game IDs 2001 and 2002, got %v", ids)
+	}
 }
 
 func TestCombineGames(t *testing.T) {

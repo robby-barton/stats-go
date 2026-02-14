@@ -66,7 +66,12 @@ func (u *Updater) UpdateTeamInfo() (int, error) {
 		return 0, err
 	}
 
-	if err = u.insertTeamsToDB(apiToDB(teamInfo)); err != nil {
+	dbTeams := apiToDB(teamInfo)
+	for i := range dbTeams {
+		dbTeams[i].Sport = u.sportDB()
+	}
+
+	if err = u.insertTeamsToDB(dbTeams); err != nil {
 		return 0, err
 	}
 

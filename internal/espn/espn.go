@@ -8,6 +8,31 @@ import (
 	"time"
 )
 
+// Sport identifies a college sport for ESPN API parameterization.
+type Sport string
+
+const (
+	CollegeFootball   Sport = "college-football"
+	CollegeBasketball Sport = "college-basketball"
+)
+
+// Short database identifiers for each sport.
+const (
+	SportDBFootball   = "cfb"
+	SportDBBasketball = "cbb"
+)
+
+// SportDB returns the short database identifier for the sport.
+func (s Sport) SportDB() string {
+	switch s {
+	case CollegeBasketball:
+		return SportDBBasketball
+	case CollegeFootball:
+		return SportDBFootball
+	}
+	return SportDBFootball
+}
+
 type Group int64
 type SeasonType int64
 
@@ -17,14 +42,33 @@ const (
 	DII  Group = 57
 	DIII Group = 58
 
+	// Basketball D1 group on ESPN.
+	D1Basketball Group = 50
+
 	Regular    SeasonType = 2
 	Postseason SeasonType = 3
 )
 
+// Groups returns the division groups used for schedule fetching for a sport.
+func (s Sport) Groups() []Group {
+	switch s {
+	case CollegeBasketball:
+		return []Group{D1Basketball}
+	case CollegeFootball:
+		return []Group{FBS, FCS}
+	}
+	return []Group{FBS, FCS}
+}
+
+// HasDivisionSplit returns true if the sport distinguishes divisions (e.g. FBS/FCS).
+func (s Sport) HasDivisionSplit() bool {
+	return s == CollegeFootball
+}
+
 func (c *Client) GetCurrentWeekGames(group Group) ([]Game, error) {
 	var games []Game
 
-	url := weekURL + fmt.Sprintf("&group=%d", group)
+	url := c.WeekURL() + fmt.Sprintf("&group=%d", group)
 
 	var res GameScheduleESPN
 	err := c.makeRequest(url, &res)
@@ -44,7 +88,7 @@ func (c *Client) GetCurrentWeekGames(group Group) ([]Game, error) {
 }
 
 func (c *Client) GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) (*GameScheduleESPN, error) {
-	url := weekURL +
+	url := c.WeekURL() +
 		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
 
 	var res GameScheduleESPN
@@ -75,7 +119,7 @@ func (c *Client) GetCompletedGamesByWeek(year int64, week int64, group Group, se
 }
 
 func (c *Client) GetWeeksInSeason(year int64) (int64, error) {
-	url := weekURL + fmt.Sprintf("&year=%d", year)
+	url := c.WeekURL() + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := c.makeRequest(url, &res)
@@ -87,7 +131,7 @@ func (c *Client) GetWeeksInSeason(year int64) (int64, error) {
 }
 
 func (c *Client) HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
-	url := weekURL + fmt.Sprintf("&year=%d", year)
+	url := c.WeekURL() + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
 	err := c.makeRequest(url, &res)
@@ -133,7 +177,7 @@ func (c *Client) GetGamesBySeason(year int64, group Group) ([]Game, error) {
 }
 
 func (c *Client) GetGameStats(gameID int64) (*GameInfoESPN, error) {
-	url := fmt.Sprintf(gameStatsURL, gameID)
+	url := fmt.Sprintf(c.GameStatsURL(), gameID)
 
 	var res GameInfoESPN
 	err := c.makeRequest(url, &res)
@@ -146,7 +190,7 @@ func (c *Client) GetGameStats(gameID int64) (*GameInfoESPN, error) {
 
 func (c *Client) GetTeamInfo() (*TeamInfoESPN, error) {
 	var res TeamInfoESPN
-	err := c.makeRequest(teamInfoURL, &res)
+	err := c.makeRequest(c.TeamInfoURL(), &res)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +200,7 @@ func (c *Client) GetTeamInfo() (*TeamInfoESPN, error) {
 
 func (c *Client) DefaultSeason() (int64, error) {
 	var res GameScheduleESPN
-	err := c.makeRequest(weekURL, &res)
+	err := c.makeRequest(c.WeekURL(), &res)
 	if err != nil {
 		return 0, err
 	}
@@ -166,17 +210,29 @@ func (c *Client) DefaultSeason() (int64, error) {
 
 func (c *Client) ConferenceMap() (map[Group]interface{}, error) {
 	var res GameScheduleESPN
-	err := c.makeRequest(weekURL, &res)
+	err := c.makeRequest(c.WeekURL(), &res)
 	if err != nil {
 		return nil, err
+	}
+
+	conferences := res.Content.ConferenceAPI.Conferences
+
+	if c.Sport == CollegeBasketball {
+		d1 := map[int64]string{}
+		for _, conference := range conferences {
+			if conference.ParentGroupID == int64(D1Basketball) {
+				d1[conference.GroupID] = conference.ShortName
+			}
+		}
+		return map[Group]interface{}{ //nolint:exhaustive // basketball only has D1
+			D1Basketball: d1,
+		}, nil
 	}
 
 	fbs := map[int64]string{}
 	fcs := map[int64]string{}
 	dii := []int64{}
 	diii := []int64{}
-
-	conferences := res.Content.ConferenceAPI.Conferences
 
 	for _, conference := range conferences {
 		switch conference.ParentGroupID {
@@ -199,7 +255,7 @@ func (c *Client) ConferenceMap() (map[Group]interface{}, error) {
 		}
 	}
 
-	return map[Group]interface{}{
+	return map[Group]interface{}{ //nolint:exhaustive // football doesn't have D1Basketball
 		FBS:  fbs,
 		FCS:  fcs,
 		DII:  dii,
@@ -215,7 +271,7 @@ func (c *Client) TeamConferencesByYear(year int64) (map[int64]int64, error) {
 		return nil, err
 	}
 
-	for _, group := range []Group{FBS, FCS} {
+	for _, group := range c.Sport.Groups() {
 		for i := int64(1); i < numWeeks; i++ {
 			games, err := c.GetGamesByWeek(year, i, group, Regular)
 			if err != nil {

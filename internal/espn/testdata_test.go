@@ -197,7 +197,7 @@ func testGameInfoResponse() GameInfoESPN {
 // testTeamInfoResponse returns a populated TeamInfoESPN for testing.
 func testTeamInfoResponse() TeamInfoESPN {
 	return TeamInfoESPN{
-		Sports: []Sport{
+		Sports: []TeamInfoSport{
 			{
 				ID:   90,
 				Name: "Football",

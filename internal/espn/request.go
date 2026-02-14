@@ -16,16 +16,66 @@ type Client struct {
 	InitialBackoff time.Duration
 	RequestTimeout time.Duration
 	RateLimit      time.Duration // delay between batch API calls
+	Sport          Sport         // sport this client fetches data for
+
+	// Per-client URL overrides. When non-empty, these take precedence over
+	// the package-level vars. This allows multiple clients (one per sport) to
+	// coexist in the same process.
+	scheduleURL  string
+	gameStatsURL string
+	teamInfoURL  string
 }
 
-// NewClient returns a Client with sensible defaults.
+// NewClient returns a Client configured for college football with sensible defaults.
+// Per-client URL overrides are NOT set, so this client falls back to the
+// package-level vars (which can be overridden via SetTestURLs in tests).
 func NewClient() *Client {
 	return &Client{
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      200 * time.Millisecond,
+		Sport:          CollegeFootball,
 	}
+}
+
+// NewClientForSport returns a Client configured for the given sport.
+func NewClientForSport(sport Sport) *Client {
+	schedule, game, team := SportURLs(sport)
+	return &Client{
+		MaxRetries:     5,
+		InitialBackoff: 1 * time.Second,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      200 * time.Millisecond,
+		Sport:          sport,
+		scheduleURL:    schedule,
+		gameStatsURL:   game,
+		teamInfoURL:    team,
+	}
+}
+
+// WeekURL returns the schedule URL for this client.
+func (c *Client) WeekURL() string {
+	if c.scheduleURL != "" {
+		return c.scheduleURL
+	}
+	return weekURL
+}
+
+// GameStatsURL returns the game stats URL template for this client.
+func (c *Client) GameStatsURL() string {
+	if c.gameStatsURL != "" {
+		return c.gameStatsURL
+	}
+	return gameStatsURL
+}
+
+// TeamInfoURL returns the team info URL for this client.
+func (c *Client) TeamInfoURL() string {
+	if c.teamInfoURL != "" {
+		return c.teamInfoURL
+	}
+	return teamInfoURL
 }
 
 type validatable interface {

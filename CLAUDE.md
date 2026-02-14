@@ -1,8 +1,8 @@
 # stats-go
 
-College football computer ranking system written in Go. Collects game data from
-ESPN, computes rankings using a composite algorithm, and exports results to
-DigitalOcean Spaces.
+College sports computer ranking system written in Go. Collects game data from
+ESPN for football and basketball, computes rankings using a composite algorithm,
+and exports results to DigitalOcean Spaces.
 
 ## Quick Reference
 
@@ -38,11 +38,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency graph and design
 rationale.
 
 Key patterns:
+- **Multi-sport support** — Football (`cfb`) and basketball (`cbb`) via `espn.Sport` type
 - **Three independent CLI entry points** in `cmd/` — each wires its own deps
+- **Sport subcommands** — CLIs use `football`/`basketball` subcommands; `schedule` runs both
 - **Writer interface** (`internal/writer`) — pluggable output (DO Spaces vs local files)
-- **Updater struct** receives DB, Logger, Writer, and ESPN client via dependency injection
-- **ESPN package** is a pure HTTP client (`espn.Client` struct) with no DB dependency
-- **Ranking package** takes a `*gorm.DB` and computes everything in-memory
+- **Updater struct** receives DB, Logger, Writer, ESPN client, and Sport via dependency injection
+- **ESPN package** — per-client URLs via `NewClientForSport(sport)`, no DB dependency
+- **Ranking package** takes a `*gorm.DB` and sport, computes everything in-memory
+- **Sport column** on shared DB tables (`games`, `team_names`, `team_seasons`, `team_week_results`)
 
 ## Conventions
 

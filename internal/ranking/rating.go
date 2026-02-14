@@ -12,11 +12,7 @@ import (
 	"github.com/robby-barton/stats-go/internal/database"
 )
 
-const (
-	requiredGames int   = 12
-	yearsBack     int64 = 2
-	runs          int   = 10000
-)
+const runs int = 10000
 
 type gameResults struct {
 	team     int64
@@ -41,8 +37,8 @@ func (r *Ranker) sos(teamList TeamList) error {
 	var gameList []database.Game
 	if err := r.DB.
 		Where(
-			"season = ? and start_time <= ? and home_id in (?) and away_id in (?)",
-			r.Year, r.startTime, teamOrder, teamOrder,
+			"sport = ? and season = ? and start_time <= ? and home_id in (?) and away_id in (?)",
+			r.sportFilter(), r.Year, r.startTime, teamOrder, teamOrder,
 		).
 		Order("start_time desc").Find(&gameList).Error; err != nil {
 		return err
@@ -147,6 +143,9 @@ type gameSpreadSRS struct {
 }
 
 func (r *Ranker) srs(teamList TeamList) error {
+	reqGames, yrsBack, movs := r.sportConfig()
+	sport := r.sportFilter()
+
 	// get previous season games just to be ready
 	var allowedTeams []int64
 	for id := range teamList {
@@ -155,8 +154,9 @@ func (r *Ranker) srs(teamList TeamList) error {
 	var allGames []database.Game
 	if err := r.DB.
 		Where(
-			"season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
-			r.Year-yearsBack,
+			"sport = ? and season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
+			sport,
+			r.Year-yrsBack,
 			r.startTime,
 			allowedTeams,
 			allowedTeams,
@@ -180,7 +180,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 					}
 				}
 			} else {
-				if divGames < requiredGames {
+				if divGames < reqGames {
 					if (game.HomeID == id && teamList.teamExists(game.AwayID)) ||
 						(game.AwayID == id && teamList.teamExists(game.HomeID)) {
 						divGames++
@@ -203,18 +203,19 @@ func (r *Ranker) srs(teamList TeamList) error {
 			of games but all wins throwing off the rating scale. For teams in this situation
 			we can individually search for their remaining games against division-mates.
 		*/
-		if divGames < requiredGames {
+		if divGames < reqGames {
 			var remainingGames []database.Game
 			if err := r.DB.
 				Where(
-					"season < ? and ((home_id = ? and away_id in (?)) or "+
+					"sport = ? and season < ? and ((home_id = ? and away_id in (?)) or "+
 						"(away_id = ? and home_id in (?)))",
-					r.Year-yearsBack,
+					sport,
+					r.Year-yrsBack,
 					id,
 					allowedTeams,
 					id,
 					allowedTeams,
-				).Limit(requiredGames - divGames).Order("start_time desc").
+				).Limit(reqGames - divGames).Order("start_time desc").
 				Find(&remainingGames).Error; err != nil {
 				return err
 			}
@@ -227,7 +228,6 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	movs := []int64{1, 30}
 	for i, mov := range movs {
 		ratings := generateAdjRatings(games, mov)
 		maxMOV := math.Inf(-1)

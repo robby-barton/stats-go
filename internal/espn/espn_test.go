@@ -381,6 +381,42 @@ func TestGameInfoValidate(t *testing.T) {
 	}
 }
 
+func TestSportDB(t *testing.T) {
+	if got := CollegeFootball.SportDB(); got != "cfb" {
+		t.Errorf("CollegeFootball.SportDB() = %q, want %q", got, "cfb")
+	}
+	if got := CollegeBasketball.SportDB(); got != "cbb" {
+		t.Errorf("CollegeBasketball.SportDB() = %q, want %q", got, "cbb")
+	}
+}
+
+func TestGroups(t *testing.T) {
+	fbGroups := CollegeFootball.Groups()
+	if len(fbGroups) != 2 {
+		t.Fatalf("CollegeFootball.Groups() len = %d, want 2", len(fbGroups))
+	}
+	if fbGroups[0] != FBS || fbGroups[1] != FCS {
+		t.Errorf("CollegeFootball.Groups() = %v, want [FBS, FCS]", fbGroups)
+	}
+
+	bbGroups := CollegeBasketball.Groups()
+	if len(bbGroups) != 1 {
+		t.Fatalf("CollegeBasketball.Groups() len = %d, want 1", len(bbGroups))
+	}
+	if bbGroups[0] != D1Basketball {
+		t.Errorf("CollegeBasketball.Groups() = %v, want [D1Basketball]", bbGroups)
+	}
+}
+
+func TestHasDivisionSplit(t *testing.T) {
+	if !CollegeFootball.HasDivisionSplit() {
+		t.Error("CollegeFootball.HasDivisionSplit() = false, want true")
+	}
+	if CollegeBasketball.HasDivisionSplit() {
+		t.Error("CollegeBasketball.HasDivisionSplit() = true, want false")
+	}
+}
+
 func TestTeamInfoValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -394,12 +430,12 @@ func TestTeamInfoValidate(t *testing.T) {
 		},
 		{
 			name:    "no leagues",
-			resp:    TeamInfoESPN{Sports: []Sport{{}}},
+			resp:    TeamInfoESPN{Sports: []TeamInfoSport{{}}},
 			wantErr: "missing leagues",
 		},
 		{
 			name:    "no teams",
-			resp:    TeamInfoESPN{Sports: []Sport{{Leagues: []League{{}}}}},
+			resp:    TeamInfoESPN{Sports: []TeamInfoSport{{Leagues: []League{{}}}}},
 			wantErr: "missing teams",
 		},
 	}

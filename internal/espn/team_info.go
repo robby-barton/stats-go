@@ -6,10 +6,10 @@ import "errors"
 var teamInfoURL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 
 type TeamInfoESPN struct {
-	Sports []Sport `json:"sports"`
+	Sports []TeamInfoSport `json:"sports"`
 }
 
-type Sport struct {
+type TeamInfoSport struct {
 	ID      int64    `json:"id,string"`
 	Leagues []League `json:"leagues"`
 	Name    string   `json:"name"`
@@ -77,4 +77,22 @@ func (r TeamInfoESPN) validate() error {
 		return errors.New("team info response missing teams")
 	}
 	return nil
+}
+
+// SportURLs returns the ESPN URL templates for a given sport.
+func SportURLs(sport Sport) (string, string, string) {
+	switch sport {
+	case CollegeBasketball:
+		return "https://cdn.espn.com/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+			"https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000"
+	case CollegeFootball:
+		return "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
+			"https://cdn.espn.com/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			"https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
+	}
+	// Default to football.
+	return "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
+		"https://cdn.espn.com/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		"https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000"
 }
