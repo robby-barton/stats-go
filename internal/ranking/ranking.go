@@ -9,13 +9,31 @@ import (
 )
 
 type Ranker struct {
-	DB   *gorm.DB
-	Year int64
-	Week int64
-	Fcs  bool
+	DB    *gorm.DB
+	Year  int64
+	Week  int64
+	Fcs   bool
+	Sport string // "cfb" or "cbb"
 
 	startTime  time.Time
 	postseason bool
+}
+
+// sportConfig returns ranking constants appropriate for the sport.
+func (r *Ranker) sportConfig() (int, int64, []int64) {
+	switch r.Sport {
+	case "cbb":
+		return 25, 1, []int64{1, 20}
+	default: // cfb
+		return 12, 2, []int64{1, 30}
+	}
+}
+
+func (r *Ranker) sportFilter() string {
+	if r.Sport == "" {
+		return "cfb"
+	}
+	return r.Sport
 }
 
 type Team struct {

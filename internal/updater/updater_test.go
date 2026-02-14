@@ -258,9 +258,9 @@ func TestUpdateRecentJSON(t *testing.T) {
 
 	// Verify expected files were written
 	expectedFiles := []string{
-		"availRanks.json",
-		"gameCount.json",
-		"latest.json",
+		"cfb/availRanks.json",
+		"cfb/gameCount.json",
+		"cfb/latest.json",
 	}
 	for _, f := range expectedFiles {
 		if !cw.hasFile(f) {

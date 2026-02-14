@@ -17,7 +17,7 @@ func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 		gameIDs = append(gameIDs, game.ID)
 	}
 	var existing []database.Game
-	if err := u.DB.Where("game_id in ?", gameIDs).Find(&existing).Error; err != nil {
+	if err := u.DB.Where("game_id in ? and sport = ?", gameIDs, u.sportDB()).Find(&existing).Error; err != nil {
 		return nil, err
 	}
 

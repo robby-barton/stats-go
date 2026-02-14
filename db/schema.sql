@@ -87,6 +87,7 @@ CREATE TABLE public.games (
     game_id integer NOT NULL,
     neutral boolean DEFAULT false,
     conf_game boolean DEFAULT false,
+    sport text DEFAULT 'cfb',
     season integer DEFAULT 0,
     week integer DEFAULT 0,
     postseason integer DEFAULT 0,
@@ -313,6 +314,7 @@ ALTER TABLE public.team_game_stats OWNER TO stats;
 CREATE TABLE public.team_names (
     team_id integer NOT NULL,
     name text NOT NULL,
+    sport text DEFAULT 'cfb',
     flair text,
     abbreviation text,
     alt_color text,
@@ -338,6 +340,7 @@ ALTER TABLE public.team_names OWNER TO stats;
 CREATE TABLE public.team_seasons (
     team_id integer NOT NULL,
     year integer NOT NULL,
+    sport text DEFAULT 'cfb',
     fbs integer DEFAULT 0,
     power_five integer DEFAULT 0,
     conf text
@@ -355,6 +358,7 @@ CREATE TABLE public.team_week_results (
     year integer NOT NULL,
     week integer NOT NULL,
     postseason integer DEFAULT 0 NOT NULL,
+    sport text DEFAULT 'cfb' NOT NULL,
     final_rank integer DEFAULT 0,
     final_raw real DEFAULT 0,
     wins integer DEFAULT 0,
@@ -505,7 +509,7 @@ ALTER TABLE ONLY public.team_names
 --
 
 ALTER TABLE ONLY public.team_seasons
-    ADD CONSTRAINT team_season_pkey PRIMARY KEY (team_id, year);
+    ADD CONSTRAINT team_season_pkey PRIMARY KEY (team_id, year, sport);
 
 
 --
@@ -513,7 +517,7 @@ ALTER TABLE ONLY public.team_seasons
 --
 
 ALTER TABLE ONLY public.team_week_results
-    ADD CONSTRAINT team_week_result_pkey PRIMARY KEY (team_id, year, week, postseason);
+    ADD CONSTRAINT team_week_result_pkey PRIMARY KEY (team_id, year, week, postseason, sport);
 
 
 --

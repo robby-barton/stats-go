@@ -26,7 +26,7 @@ func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
 
 func (u *Updater) seasonsExist(year int64) bool {
 	var count int64
-	err := u.DB.Model(database.TeamSeason{}).Where("year = ?", year).Count(&count).Error
+	err := u.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
 	if err != nil {
 		u.Logger.Error(err)
 		return false
@@ -45,35 +45,70 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 		return 0, nil
 	}
 
-	conferences, err := u.ESPN.ConferenceMap()
-	if err != nil {
-		return 0, err
-	}
-	fbs := conferences[espn.FBS].(map[int64]string)
-	fbsfcs := maps.Clone(fbs)
-	maps.Copy(fbsfcs, conferences[espn.FCS].(map[int64]string))
+	sport := u.sportDB()
 
 	teamConfs, err := u.ESPN.TeamConferencesByYear(currentSeason)
 	if err != nil {
 		return 0, err
 	}
 
-	teamSeasons := []database.TeamSeason{}
-	for team, conf := range teamConfs {
-		confName, ok := fbsfcs[conf]
-		if !ok {
-			continue
+	var teamSeasons []database.TeamSeason
+
+	if u.Sport == espn.CollegeBasketball {
+		// Basketball: all D1 teams are top-division (FBS=1). Conference names
+		// come from the conference API but there's no FBS/FCS split.
+		conferences, err := u.ESPN.ConferenceMap()
+		if err != nil {
+			return 0, err
 		}
-		var isFBS int64
-		if _, ok := fbs[conf]; ok {
-			isFBS = 1
+		// For basketball, conferences are all under D1Basketball parent group.
+		// The ConferenceMap returns them under the D1Basketball key.
+		d1Confs := map[int64]string{}
+		if confMap, ok := conferences[espn.D1Basketball]; ok {
+			if cm, ok := confMap.(map[int64]string); ok {
+				d1Confs = cm
+			}
 		}
-		teamSeasons = append(teamSeasons, database.TeamSeason{
-			TeamID: team,
-			Conf:   confName,
-			Year:   currentSeason,
-			FBS:    isFBS,
-		})
+
+		for team, conf := range teamConfs {
+			confName := d1Confs[conf]
+			if confName == "" {
+				confName = "D1"
+			}
+			teamSeasons = append(teamSeasons, database.TeamSeason{
+				TeamID: team,
+				Conf:   confName,
+				Year:   currentSeason,
+				Sport:  sport,
+				FBS:    1, // all D1 basketball teams treated as top-division
+			})
+		}
+	} else {
+		conferences, err := u.ESPN.ConferenceMap()
+		if err != nil {
+			return 0, err
+		}
+		fbs := conferences[espn.FBS].(map[int64]string)
+		fbsfcs := maps.Clone(fbs)
+		maps.Copy(fbsfcs, conferences[espn.FCS].(map[int64]string))
+
+		for team, conf := range teamConfs {
+			confName, ok := fbsfcs[conf]
+			if !ok {
+				continue
+			}
+			var isFBS int64
+			if _, ok := fbs[conf]; ok {
+				isFBS = 1
+			}
+			teamSeasons = append(teamSeasons, database.TeamSeason{
+				TeamID: team,
+				Conf:   confName,
+				Year:   currentSeason,
+				Sport:  sport,
+				FBS:    isFBS,
+			})
+		}
 	}
 
 	if err := u.insertSeasonToDB(teamSeasons); err != nil {

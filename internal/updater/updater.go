@@ -13,4 +13,10 @@ type Updater struct {
 	Logger *zap.SugaredLogger
 	Writer writer.Writer
 	ESPN   *espn.Client
+	Sport  espn.Sport // CollegeFootball or CollegeBasketball
+}
+
+// sportDB returns the short database identifier for the updater's sport.
+func (u *Updater) sportDB() string {
+	return u.Sport.SportDB()
 }
