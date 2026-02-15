@@ -8,9 +8,11 @@ BEGIN;
 ALTER TABLE games ADD COLUMN IF NOT EXISTS sport text DEFAULT 'cfb';
 UPDATE games SET sport = 'cfb' WHERE sport IS NULL;
 
--- 2. Add sport column to team_names
+-- 2. Add sport column to team_names and update PK
 ALTER TABLE team_names ADD COLUMN IF NOT EXISTS sport text DEFAULT 'cfb';
 UPDATE team_names SET sport = 'cfb' WHERE sport IS NULL;
+ALTER TABLE team_names DROP CONSTRAINT IF EXISTS team_name_pkey;
+ALTER TABLE team_names ADD CONSTRAINT team_name_pkey PRIMARY KEY (team_id, sport);
 
 -- 3. Add sport column to team_seasons and update PK
 ALTER TABLE team_seasons ADD COLUMN IF NOT EXISTS sport text DEFAULT 'cfb';

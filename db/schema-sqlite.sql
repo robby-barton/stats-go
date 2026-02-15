@@ -229,7 +229,7 @@ CREATE TABLE team_names (
     nickname text,
     short_display_name text,
     slug text,
-	PRIMARY KEY (team_id)
+	PRIMARY KEY (team_id, sport)
 );
 
 

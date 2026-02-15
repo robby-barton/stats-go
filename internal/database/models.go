@@ -17,9 +17,9 @@ func (Conference) TableName() string {
 }
 
 type TeamName struct {
-	TeamID           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
+	TeamID           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Name             string `json:"name" gorm:"column:name;not null"`
-	Sport            string `json:"sport" gorm:"column:sport;default:cfb"`
+	Sport            string `json:"sport" gorm:"column:sport;primaryKey;default:cfb"`
 	Flair            string `json:"flair" gorm:"column:flair"`
 	Abbreviation     string `json:"abbreviation" gorm:"column:abbreviation"`
 	AltColor         string `json:"altColor" gorm:"column:alt_color"`

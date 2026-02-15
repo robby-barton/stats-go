@@ -41,16 +41,16 @@ func NewClient() *Client {
 
 // NewClientForSport returns a Client configured for the given sport.
 func NewClientForSport(sport Sport) *Client {
-	schedule, game, team := SportURLs(sport)
+	urls := SportURLs(sport)
 	return &Client{
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      200 * time.Millisecond,
 		Sport:          sport,
-		scheduleURL:    schedule,
-		gameStatsURL:   game,
-		teamInfoURL:    team,
+		scheduleURL:    urls.Schedule,
+		gameStatsURL:   urls.GameStats,
+		teamInfoURL:    urls.TeamInfo,
 	}
 }
 

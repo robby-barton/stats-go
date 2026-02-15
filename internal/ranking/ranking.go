@@ -8,32 +8,49 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	sportFootball   = "cfb"
+	sportBasketball = "cbb"
+)
+
 type Ranker struct {
 	DB    *gorm.DB
 	Year  int64
 	Week  int64
 	Fcs   bool
-	Sport string // "cfb" or "cbb"
+	Sport string // sportFootball or sportBasketball
 
 	startTime  time.Time
 	postseason bool
 }
 
+type sportParams struct {
+	RequiredGames int
+	YearsBack     int64
+	MOVCaps       []int64
+}
+
 // sportConfig returns ranking constants appropriate for the sport.
-func (r *Ranker) sportConfig() (int, int64, []int64) {
+func (r *Ranker) sportConfig() sportParams {
 	switch r.Sport {
-	case "cbb":
-		return 25, 1, []int64{1, 20}
-	default: // cfb
-		return 12, 2, []int64{1, 30}
+	case sportBasketball:
+		return sportParams{RequiredGames: 25, YearsBack: 1, MOVCaps: []int64{1, 20}}
+	case sportFootball, "":
+		return sportParams{RequiredGames: 12, YearsBack: 2, MOVCaps: []int64{1, 30}}
+	default:
+		panic(fmt.Sprintf("unknown sport: %q", r.Sport))
 	}
 }
 
 func (r *Ranker) sportFilter() string {
-	if r.Sport == "" {
-		return "cfb"
+	switch r.Sport {
+	case sportFootball, sportBasketball:
+		return r.Sport
+	case "":
+		return sportFootball
+	default:
+		panic(fmt.Sprintf("unknown sport: %q", r.Sport))
 	}
-	return r.Sport
 }
 
 type Team struct {

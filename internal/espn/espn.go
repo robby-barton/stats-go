@@ -29,8 +29,9 @@ func (s Sport) SportDB() string {
 		return SportDBBasketball
 	case CollegeFootball:
 		return SportDBFootball
+	default:
+		panic(fmt.Sprintf("unknown sport: %q", s))
 	}
-	return SportDBFootball
 }
 
 type Group int64
@@ -56,8 +57,9 @@ func (s Sport) Groups() []Group {
 		return []Group{D1Basketball}
 	case CollegeFootball:
 		return []Group{FBS, FCS}
+	default:
+		panic(fmt.Sprintf("unknown sport: %q", s))
 	}
-	return []Group{FBS, FCS}
 }
 
 // HasDivisionSplit returns true if the sport distinguishes divisions (e.g. FBS/FCS).

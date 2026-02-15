@@ -53,7 +53,10 @@ per sport) was rejected because the data models are identical and separate
 tables would mean duplicating every query and migration.
 
 The `sport` column defaults to `"cfb"` for backward compatibility with existing
-football-only data.
+football-only data. ESPN uses the same team IDs for a school across sports
+(e.g., Alabama's team_id is identical in football and basketball), so
+`team_names` requires `(team_id, sport)` as its primary key to store per-sport
+metadata without overwriting.
 
 ## Per-Client ESPN URLs (Not Package-Level Vars)
 

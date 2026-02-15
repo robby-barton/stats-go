@@ -151,7 +151,9 @@ by whether `DBParams` is nil (nil → SQLite).
 All models use composite primary keys for multi-dimensional lookups
 (team+year, game+team, etc.). Shared tables (`games`, `team_names`,
 `team_seasons`, `team_week_results`) include a `sport` column with a default of
-`"cfb"`. The `team_seasons` and `team_week_results` primary keys include `sport`.
+`"cfb"`. The `team_names`, `team_seasons`, and `team_week_results` primary keys
+include `sport`. ESPN uses the same team IDs across sports for the same school,
+so `team_names` requires `(team_id, sport)` to store per-sport team metadata.
 
 ## Deployment
 

@@ -501,7 +501,7 @@ ALTER TABLE ONLY public.team_game_stats
 --
 
 ALTER TABLE ONLY public.team_names
-    ADD CONSTRAINT team_name_pkey PRIMARY KEY (team_id);
+    ADD CONSTRAINT team_name_pkey PRIMARY KEY (team_id, sport);
 
 
 --

@@ -143,7 +143,7 @@ type gameSpreadSRS struct {
 }
 
 func (r *Ranker) srs(teamList TeamList) error {
-	reqGames, yrsBack, movs := r.sportConfig()
+	cfg := r.sportConfig()
 	sport := r.sportFilter()
 
 	// get previous season games just to be ready
@@ -156,7 +156,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		Where(
 			"sport = ? and season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
 			sport,
-			r.Year-yrsBack,
+			r.Year-cfg.YearsBack,
 			r.startTime,
 			allowedTeams,
 			allowedTeams,
@@ -180,7 +180,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 					}
 				}
 			} else {
-				if divGames < reqGames {
+				if divGames < cfg.RequiredGames {
 					if (game.HomeID == id && teamList.teamExists(game.AwayID)) ||
 						(game.AwayID == id && teamList.teamExists(game.HomeID)) {
 						divGames++
@@ -203,19 +203,19 @@ func (r *Ranker) srs(teamList TeamList) error {
 			of games but all wins throwing off the rating scale. For teams in this situation
 			we can individually search for their remaining games against division-mates.
 		*/
-		if divGames < reqGames {
+		if divGames < cfg.RequiredGames {
 			var remainingGames []database.Game
 			if err := r.DB.
 				Where(
 					"sport = ? and season < ? and ((home_id = ? and away_id in (?)) or "+
 						"(away_id = ? and home_id in (?)))",
 					sport,
-					r.Year-yrsBack,
+					r.Year-cfg.YearsBack,
 					id,
 					allowedTeams,
 					id,
 					allowedTeams,
-				).Limit(reqGames - divGames).Order("start_time desc").
+				).Limit(cfg.RequiredGames - divGames).Order("start_time desc").
 				Find(&remainingGames).Error; err != nil {
 				return err
 			}
@@ -228,7 +228,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 	}
 
-	for i, mov := range movs {
+	for i, mov := range cfg.MOVCaps {
 		ratings := generateAdjRatings(games, mov)
 		maxMOV := math.Inf(-1)
 		minMOV := math.Inf(1)

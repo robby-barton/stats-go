@@ -14,13 +14,10 @@ func (r *Ranker) setup() (TeamList, error) {
 	var teamList TeamList
 	var err error
 
-	// Basketball has no FBS/FCS split — all D1 teams are FBS=1
-	switch {
-	case r.Sport == "cbb":
-		teamList, err = r.createTeamList(1)
-	case r.Fcs:
+	// FCS ranking only applies to football; basketball has no division split.
+	if r.Fcs && r.Sport != sportBasketball {
 		teamList, err = r.createTeamList(0)
-	default:
+	} else {
 		teamList, err = r.createTeamList(1)
 	}
 	if err != nil {
@@ -99,7 +96,7 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 
 	if err := r.DB.Model(&database.TeamSeason{}).
 		Select("team_names.team_id, team_names.name, team_seasons.conf").
-		Joins("left join team_names on team_seasons.team_id = team_names.team_id").
+		Joins("left join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
 		Where("team_seasons.fbs = ? and team_seasons.year = ? and team_seasons.sport = ?",
 			findFbs, r.Year, r.sportFilter()).
 		Scan(&teams).Error; err != nil {
