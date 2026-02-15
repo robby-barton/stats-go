@@ -71,9 +71,9 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 		}
 
 		for team, conf := range teamConfs {
-			confName := d1Confs[conf]
-			if confName == "" {
-				confName = "D1"
+			confName, ok := d1Confs[conf]
+			if !ok {
+				continue // skip non-D1 teams (e.g. D2/D3/NAIA opponents)
 			}
 			teamSeasons = append(teamSeasons, database.TeamSeason{
 				TeamID: team,

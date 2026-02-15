@@ -11,6 +11,16 @@ Format rules:
 
 ## Active
 
+### ESPN teams endpoint missing some D1 basketball teams
+
+The `/teams?limit=1000` endpoint doesn't return all D1 basketball teams. At
+least 3 teams (IDs 2511, 88, 2815) appear in schedule data with D1 conference
+IDs but are absent from the teams response. These teams get `team_seasons` rows
+but no `team_names` entry, so they show up in rankings with empty names/logos.
+
+May need to increase the limit, paginate, or backfill missing teams from game
+data.
+
 ### `FBS` column overloaded as "top division" flag
 
 The `fbs` column in `team_seasons` means "FBS" for football but "D1" for
