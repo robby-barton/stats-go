@@ -21,7 +21,7 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGameStats(client *espn.Client, games []espn.Game) ([]*ParsedGameInfo, error) {
+func GetGameStats(client espn.SportClient, games []espn.Game) ([]*ParsedGameInfo, error) {
 	var parsedGameStats []*ParsedGameInfo
 
 	for _, game := range games {
@@ -32,7 +32,7 @@ func GetGameStats(client *espn.Client, games []espn.Game) ([]*ParsedGameInfo, er
 
 		parsedGameStats = append(parsedGameStats, gameStats)
 
-		time.Sleep(client.RateLimit)
+		time.Sleep(client.RateLimitDuration())
 	}
 
 	return parsedGameStats, nil
@@ -56,9 +56,9 @@ func combineGames(gamesLists [][]espn.Game) []espn.Game {
 
 // GetCurrentWeekGames fetches completed games for the current week across all
 // groups defined for the client's sport.
-func GetCurrentWeekGames(client *espn.Client) ([]espn.Game, error) {
+func GetCurrentWeekGames(client espn.SportClient) ([]espn.Game, error) {
 	var allGames [][]espn.Game
-	for _, group := range client.Sport.Groups() {
+	for _, group := range client.SportInfo().Groups() {
 		games, err := client.GetCurrentWeekGames(group)
 		if err != nil {
 			return nil, err
@@ -71,9 +71,9 @@ func GetCurrentWeekGames(client *espn.Client) ([]espn.Game, error) {
 
 // GetGamesForSeason fetches all completed games for a season across all groups
 // defined for the client's sport.
-func GetGamesForSeason(client *espn.Client, year int64) ([]espn.Game, error) {
+func GetGamesForSeason(client espn.SportClient, year int64) ([]espn.Game, error) {
 	var allGames [][]espn.Game
-	for _, group := range client.Sport.Groups() {
+	for _, group := range client.SportInfo().Groups() {
 		games, err := client.GetGamesBySeason(year, group)
 		if err != nil {
 			return nil, err
@@ -84,7 +84,7 @@ func GetGamesForSeason(client *espn.Client, year int64) ([]espn.Game, error) {
 	return combineGames(allGames), nil
 }
 
-func GetSingleGame(client *espn.Client, gameID int64) (*ParsedGameInfo, error) {
+func GetSingleGame(client espn.SportClient, gameID int64) (*ParsedGameInfo, error) {
 	res, err := client.GetGameStats(gameID)
 	if err != nil {
 		return nil, err
@@ -92,9 +92,9 @@ func GetSingleGame(client *espn.Client, gameID int64) (*ParsedGameInfo, error) {
 
 	parsedGame := &ParsedGameInfo{}
 	parsedGame.parseGameInfo(res)
-	parsedGame.GameInfo.Sport = client.Sport.SportDB()
+	parsedGame.GameInfo.Sport = client.SportInfo().SportDB()
 	parsedGame.parseTeamInfo(res)
-	if client.Sport == espn.CollegeFootball {
+	if client.SportInfo() == espn.CollegeFootball {
 		parsedGame.parsePlayerStats(res)
 	}
 

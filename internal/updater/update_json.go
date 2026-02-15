@@ -18,7 +18,7 @@ const (
 
 // divisions returns the division names used for ranking output for this sport.
 func (u *Updater) divisions() []string {
-	if u.Sport == espn.CollegeBasketball {
+	if u.ESPN.SportInfo() == espn.CollegeBasketball {
 		return []string{d1}
 	}
 	return []string{fbs, fcs}
@@ -364,7 +364,7 @@ func (u *Updater) UpdateRecentJSON() error {
 			return err
 		}
 
-		if division == fbs || (u.Sport == espn.CollegeBasketball && division == d1) {
+		if division == fbs || (u.ESPN.SportInfo() == espn.CollegeBasketball && division == d1) {
 			if err := u.UpdateIndexJSON(json); err != nil {
 				return err
 			}

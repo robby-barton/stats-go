@@ -54,7 +54,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 
 	var teamSeasons []database.TeamSeason
 
-	if u.Sport == espn.CollegeBasketball {
+	if u.ESPN.SportInfo() == espn.CollegeBasketball {
 		// Basketball: all D1 teams are top-division (FBS=1). Conference names
 		// come from the conference API but there's no FBS/FCS split.
 		conferences, err := u.ESPN.ConferenceMap()

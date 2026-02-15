@@ -148,8 +148,8 @@ func fixtureScheduleResponse() espn.GameScheduleESPN {
 					},
 				},
 			},
-			Parameters: espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: 80},
-			Defaults:   espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: 80},
+			Parameters: espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
+			Defaults:   espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
 			Calendar: []espn.Calendar{
 				{
 					StartDate:  "2023-08-26T07:00Z",
@@ -171,9 +171,9 @@ func fixtureScheduleResponse() espn.GameScheduleESPN {
 			},
 			ConferenceAPI: espn.ConferenceAPI{
 				Conferences: []espn.Conference{
-					{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: 80},
-					{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: 80},
-					{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: 81},
+					{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: espn.FlexInt64(80)},
+					{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: espn.FlexInt64(80)},
+					{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: espn.FlexInt64(81)},
 				},
 			},
 		},
@@ -473,20 +473,19 @@ func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) (*Updater, *
 	)
 	t.Cleanup(restore)
 
-	client := &espn.Client{
+	client := &espn.FootballClient{Client: &espn.Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeFootball,
-	}
+	}}
 
 	u := &Updater{
 		DB:     db,
 		Logger: zap.NewNop().Sugar(),
 		Writer: cw,
 		ESPN:   client,
-		Sport:  espn.CollegeFootball,
 	}
 
 	return u, cw

@@ -21,28 +21,29 @@ type Client struct {
 	// Per-client URL overrides. When non-empty, these take precedence over
 	// the package-level vars. This allows multiple clients (one per sport) to
 	// coexist in the same process.
-	scheduleURL  string
-	gameStatsURL string
-	teamInfoURL  string
+	scheduleURL   string
+	gameStatsURL  string
+	teamInfoURL   string
+	scoreboardURL string
 }
 
-// NewClient returns a Client configured for college football with sensible defaults.
+// NewClient returns a SportClient configured for college football with sensible defaults.
 // Per-client URL overrides are NOT set, so this client falls back to the
 // package-level vars (which can be overridden via SetTestURLs in tests).
-func NewClient() *Client {
-	return &Client{
+func NewClient() SportClient {
+	return &FootballClient{Client: &Client{
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      200 * time.Millisecond,
 		Sport:          CollegeFootball,
-	}
+	}}
 }
 
-// NewClientForSport returns a Client configured for the given sport.
-func NewClientForSport(sport Sport) *Client {
+// NewClientForSport returns a SportClient configured for the given sport.
+func NewClientForSport(sport Sport) SportClient {
 	urls := SportURLs(sport)
-	return &Client{
+	c := &Client{
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
@@ -51,6 +52,20 @@ func NewClientForSport(sport Sport) *Client {
 		scheduleURL:    urls.Schedule,
 		gameStatsURL:   urls.GameStats,
 		teamInfoURL:    urls.TeamInfo,
+		scoreboardURL:  urls.Scoreboard,
+	}
+	return wrapClient(c)
+}
+
+// wrapClient wraps a *Client in the appropriate sport-specific struct.
+func wrapClient(c *Client) SportClient {
+	switch c.Sport {
+	case CollegeBasketball:
+		return &BasketballClient{Client: c}
+	case CollegeFootball:
+		return &FootballClient{Client: c}
+	default:
+		return &FootballClient{Client: c}
 	}
 }
 
@@ -78,12 +93,17 @@ func (c *Client) TeamInfoURL() string {
 	return teamInfoURL
 }
 
+// ScoreboardURL returns the scoreboard URL for this client.
+func (c *Client) ScoreboardURL() string {
+	return c.scoreboardURL
+}
+
 type validatable interface {
 	validate() error
 }
 
 type Responses interface {
-	GameInfoESPN | GameScheduleESPN | TeamInfoESPN
+	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN
 	validatable
 }
 

@@ -53,13 +53,14 @@ func overrideURLs(t *testing.T, serverURL string) {
 	t.Cleanup(restore)
 }
 
-func newTestClient() *Client {
-	return &Client{
+func newTestClient() *FootballClient {
+	return &FootballClient{Client: &Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
-	}
+		Sport:          CollegeFootball,
+	}}
 }
 
 func TestGetCurrentWeekGames(t *testing.T) {
@@ -298,42 +299,31 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	t.Cleanup(restore)
 	client := newTestClient()
 
-	_, err := client.DefaultSeason()
-	if err == nil {
-		t.Fatal("expected validation error for empty response, got nil")
+	// Empty response parses fine (validate is a no-op for schedule), but Year will be zero
+	year, err := client.DefaultSeason()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "missing calendar") {
-		t.Errorf("error = %q, want it to contain 'missing calendar'", err)
+	if year != 0 {
+		t.Errorf("year = %d, want 0 for empty response", year)
 	}
 }
 
 func TestGameScheduleValidate(t *testing.T) {
+	// validate() is a no-op — calendar is football-specific and basketball
+	// schedule responses omit it. Methods that need calendar data guard
+	// themselves.
 	tests := []struct {
-		name    string
-		resp    GameScheduleESPN
-		wantErr string
+		name string
+		resp GameScheduleESPN
 	}{
-		{
-			name:    "empty calendar",
-			resp:    GameScheduleESPN{},
-			wantErr: "missing calendar",
-		},
-		{
-			name: "empty weeks",
-			resp: GameScheduleESPN{
-				Content: Content{Calendar: []Calendar{{}}},
-			},
-			wantErr: "empty weeks",
-		},
+		{name: "empty response", resp: GameScheduleESPN{}},
+		{name: "empty calendar", resp: GameScheduleESPN{Content: Content{Calendar: []Calendar{{}}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.resp.validate()
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			if err := tt.resp.validate(); err != nil {
+				t.Errorf("validate() returned unexpected error: %v", err)
 			}
 		})
 	}
@@ -414,6 +404,153 @@ func TestHasDivisionSplit(t *testing.T) {
 	}
 	if CollegeBasketball.HasDivisionSplit() {
 		t.Error("CollegeBasketball.HasDivisionSplit() = true, want false")
+	}
+}
+
+func TestScoreboardValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    ScoreboardESPN
+		wantErr string
+	}{
+		{
+			name:    "no leagues",
+			resp:    ScoreboardESPN{},
+			wantErr: "missing leagues",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.resp.validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Basketball tests using scoreboard endpoint
+// ---------------------------------------------------------------------------
+
+func testScoreboardResponse() ScoreboardESPN {
+	return ScoreboardESPN{
+		Leagues: []ScoreboardLeague{{
+			Season: ScoreboardSeason{
+				Year:      2024,
+				StartDate: "2023-11-06T08:00Z",
+				EndDate:   "2024-04-08T06:59Z",
+				Type:      ScoreboardSeasonType{ID: 2, Name: "Regular Season"},
+			},
+			Calendar: []string{"2023-11-06T08:00Z", "2023-11-07T08:00Z"},
+		}},
+	}
+}
+
+func setupBasketballTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Basketball schedule has no calendar — just schedule + conferences
+		resp := GameScheduleESPN{
+			Content: Content{
+				Schedule: map[string]Day{
+					"2024-01-06": {Games: []Game{{
+						ID:     2001,
+						Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}},
+					}}},
+				},
+				Defaults: Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: FlexInt64(50)},
+				ConferenceAPI: ConferenceAPI{
+					Conferences: []Conference{
+						{GroupID: 300, Name: "Big East", ShortName: "Big East", ParentGroupID: FlexInt64(50)},
+					},
+				},
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	scoreboardPath := "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(testScoreboardResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
+	t.Helper()
+
+	restore := SetTestURLs(
+		serverURL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+	)
+	t.Cleanup(restore)
+
+	return &BasketballClient{Client: &Client{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          CollegeBasketball,
+		scoreboardURL:  serverURL + "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+	}}
+}
+
+func TestBasketball_DefaultSeason(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	year, err := client.DefaultSeason()
+	if err != nil {
+		t.Fatalf("DefaultSeason: %v", err)
+	}
+	if year != 2024 {
+		t.Errorf("year = %d, want 2024", year)
+	}
+}
+
+func TestBasketball_GetWeeksInSeason(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	weeks, err := client.GetWeeksInSeason(2024)
+	if err != nil {
+		t.Fatalf("GetWeeksInSeason: %v", err)
+	}
+
+	// Season: 2023-11-06 to 2024-04-08 ≈ 154 days ≈ 22 weeks + 1 = 23
+	if weeks < 20 || weeks > 25 {
+		t.Errorf("weeks = %d, expected roughly 22-23", weeks)
+	}
+}
+
+func TestBasketball_HasPostseasonStarted(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	// Scoreboard fixture has season type 2 (regular), so postseason has not started
+	started, err := client.HasPostseasonStarted(2024, time.Now())
+	if err != nil {
+		t.Fatalf("HasPostseasonStarted: %v", err)
+	}
+	if started {
+		t.Error("postseason should not have started (season type = 2)")
 	}
 }
 

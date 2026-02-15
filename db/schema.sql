@@ -689,7 +689,7 @@ ALTER TABLE ONLY public.team_game_stats
 --
 
 ALTER TABLE ONLY public.team_week_results
-    ADD CONSTRAINT team_week_result_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.team_names(team_id) ON DELETE CASCADE;
+    ADD CONSTRAINT team_week_result_team_id_fkey FOREIGN KEY (team_id, sport) REFERENCES public.team_names(team_id, sport) ON DELETE CASCADE;
 
 
 --

@@ -163,13 +163,13 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 	)
 	t.Cleanup(restore)
 
-	client := &espn.Client{
+	client := &espn.BasketballClient{Client: &espn.Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
-	}
+	}}
 
 	parsed, err := GetSingleGame(client, 2001)
 	if err != nil {
@@ -213,13 +213,13 @@ func TestGetCurrentWeekGames_Basketball(t *testing.T) {
 	)
 	t.Cleanup(restore)
 
-	client := &espn.Client{
+	client := &espn.BasketballClient{Client: &espn.Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
-	}
+	}}
 
 	games, err := GetCurrentWeekGames(client)
 	if err != nil {

@@ -72,7 +72,7 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 	sport := u.sportDB()
 	var teamWeekResults []database.TeamWeekResult
 
-	if u.Sport == espn.CollegeBasketball {
+	if u.ESPN.SportInfo() == espn.CollegeBasketball {
 		// Basketball: single D1 ranking, no FBS/FCS split
 		ranker := ranking.Ranker{
 			DB:    u.DB,

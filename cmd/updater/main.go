@@ -64,7 +64,6 @@ func newUpdater(
 		Logger: log,
 		Writer: w,
 		ESPN:   espn.NewClientForSport(sport),
-		Sport:  sport,
 	}
 }
 

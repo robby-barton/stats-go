@@ -85,9 +85,10 @@ func (r TeamInfoESPN) validate() error {
 // SportURLs returns the ESPN URL templates for a given sport.
 // SportURLConfig holds ESPN URL templates for a sport.
 type SportURLConfig struct {
-	Schedule  string
-	GameStats string
-	TeamInfo  string
+	Schedule   string
+	GameStats  string
+	TeamInfo   string
+	Scoreboard string
 }
 
 // SportURLs returns the ESPN URL templates for a given sport.
@@ -95,15 +96,17 @@ func SportURLs(sport Sport) SportURLConfig {
 	switch sport {
 	case CollegeBasketball:
 		return SportURLConfig{
-			Schedule:  "https://cdn.espn.com/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-			GameStats: "https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-			TeamInfo:  "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+			Schedule:   "https://cdn.espn.com/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+			GameStats:  "https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 		}
 	case CollegeFootball:
 		return SportURLConfig{
-			Schedule:  "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
-			GameStats: "https://cdn.espn.com/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-			TeamInfo:  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
+			Schedule:   "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
+			GameStats:  "https://cdn.espn.com/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
+			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
 		}
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", sport))

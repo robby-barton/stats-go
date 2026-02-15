@@ -45,34 +45,31 @@ func bbFixtureScheduleResponse() espn.GameScheduleESPN {
 					},
 				},
 			},
-			Parameters: espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: 50},
-			Defaults:   espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: 50},
-			Calendar: []espn.Calendar{
-				{
-					StartDate:  "2023-11-06T08:00Z",
-					EndDate:    "2024-03-10T07:59Z",
-					SeasonType: 2,
-					Weeks: []espn.Week{
-						{Num: 1, StartDate: "2023-11-06T08:00Z", EndDate: "2023-11-13T07:59Z"},
-						{Num: 2, StartDate: "2023-11-13T08:00Z", EndDate: "2023-11-20T07:59Z"},
-					},
-				},
-				{
-					StartDate:  "2024-03-17T07:00Z",
-					EndDate:    "2024-04-08T06:59Z",
-					SeasonType: 3,
-					Weeks: []espn.Week{
-						{Num: 1, StartDate: "2024-03-17T07:00Z", EndDate: "2024-04-08T06:59Z"},
-					},
-				},
-			},
+			Parameters: espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: espn.FlexInt64(50)},
+			Defaults:   espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: espn.FlexInt64(50)},
+			// Basketball schedule responses have no Calendar — season
+			// metadata comes from the scoreboard endpoint instead.
 			ConferenceAPI: espn.ConferenceAPI{
 				Conferences: []espn.Conference{
-					{GroupID: 300, Name: "Big East Conference", ShortName: "Big East", ParentGroupID: 50},
-					{GroupID: 400, Name: "Atlantic Coast Conference", ShortName: "ACC", ParentGroupID: 50},
+					{GroupID: 300, Name: "Big East Conference", ShortName: "Big East", ParentGroupID: espn.FlexInt64(50)},
+					{GroupID: 400, Name: "Atlantic Coast Conference", ShortName: "ACC", ParentGroupID: espn.FlexInt64(50)},
 				},
 			},
 		},
+	}
+}
+
+func bbFixtureScoreboardResponse() espn.ScoreboardESPN {
+	return espn.ScoreboardESPN{
+		Leagues: []espn.ScoreboardLeague{{
+			Season: espn.ScoreboardSeason{
+				Year:      2024,
+				StartDate: "2023-11-06T08:00Z",
+				EndDate:   "2024-04-08T06:59Z",
+				Type:      espn.ScoreboardSeasonType{ID: 2, Name: "Regular Season"},
+			},
+			Calendar: []string{"2024-01-06T08:00Z", "2024-01-13T08:00Z"},
+		}},
 	}
 }
 
@@ -189,9 +186,22 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(bbFixtureScheduleResponse()); err != nil {
+		resp := bbFixtureScheduleResponse()
+
+		// If a date param is provided, filter schedule to only that date.
+		if dateParam := r.URL.Query().Get("date"); dateParam != "" {
+			// Convert "20240106" → "2024-01-06"
+			key := dateParam[:4] + "-" + dateParam[4:6] + "-" + dateParam[6:8]
+			filtered := map[string]espn.Day{}
+			if day, ok := resp.Content.Schedule[key]; ok {
+				filtered[key] = day
+			}
+			resp.Content.Schedule = filtered
+		}
+
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -210,6 +220,13 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/teams", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(bbFixtureTeamInfoResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(bbFixtureScoreboardResponse()); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -237,20 +254,24 @@ func newBasketballTestUpdater(t *testing.T) (*Updater, *capturingWriter) {
 	)
 	t.Cleanup(restore)
 
-	client := &espn.Client{
+	client := &espn.BasketballClient{Client: &espn.Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
-	}
+	}}
+
+	restoreSB := espn.SetTestScoreboardURL(client.Client,
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+	)
+	t.Cleanup(restoreSB)
 
 	u := &Updater{
 		DB:     db,
 		Logger: zap.NewNop().Sugar(),
 		Writer: cw,
 		ESPN:   client,
-		Sport:  espn.CollegeBasketball,
 	}
 
 	return u, cw
