@@ -148,8 +148,8 @@ func fixtureScheduleResponse() espn.GameScheduleESPN {
 					},
 				},
 			},
-			Parameters: espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: 80},
-			Defaults:   espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: 80},
+			Parameters: espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
+			Defaults:   espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
 			Calendar: []espn.Calendar{
 				{
 					StartDate:  "2023-08-26T07:00Z",
@@ -171,9 +171,9 @@ func fixtureScheduleResponse() espn.GameScheduleESPN {
 			},
 			ConferenceAPI: espn.ConferenceAPI{
 				Conferences: []espn.Conference{
-					{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: 80},
-					{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: 80},
-					{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: 81},
+					{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: espn.FlexInt64(80)},
+					{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: espn.FlexInt64(80)},
+					{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: espn.FlexInt64(81)},
 				},
 			},
 		},
@@ -341,7 +341,7 @@ func newGameInfo(
 
 func fixtureTeamInfoResponse() espn.TeamInfoESPN {
 	return espn.TeamInfoESPN{
-		Sports: []espn.Sport{{
+		Sports: []espn.TeamInfoSport{{
 			ID:   90,
 			Name: "Football",
 			Slug: "football",
@@ -473,12 +473,13 @@ func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) (*Updater, *
 	)
 	t.Cleanup(restore)
 
-	client := &espn.Client{
+	client := &espn.FootballClient{Client: &espn.Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
 		RateLimit:      0,
-	}
+		Sport:          espn.CollegeFootball,
+	}}
 
 	u := &Updater{
 		DB:     db,
@@ -497,24 +498,24 @@ func seedTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide", Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true},
-		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers", Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true},
-		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats", Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true},
-		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs", Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true},
-		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles", Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true},
-		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons", Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true},
+		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide", Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true, Sport: "cfb"},
+		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers", Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true, Sport: "cfb"},
+		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats", Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true, Sport: "cfb"},
+		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs", Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true, Sport: "cfb"},
+		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles", Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true, Sport: "cfb"},
+		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons", Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true, Sport: "cfb"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed team_names: %v", err)
 	}
 
 	teamSeasons := []database.TeamSeason{
-		{TeamID: 1, Year: 2023, FBS: 1, Conf: "SEC"},
-		{TeamID: 2, Year: 2023, FBS: 1, Conf: "SEC"},
-		{TeamID: 3, Year: 2023, FBS: 1, Conf: "Big Ten"},
-		{TeamID: 4, Year: 2023, FBS: 1, Conf: "Big Ten"},
-		{TeamID: 5, Year: 2023, FBS: 0, Conf: "MVFC"},
-		{TeamID: 6, Year: 2023, FBS: 0, Conf: "MVFC"},
+		{TeamID: 1, Year: 2023, FBS: 1, Conf: "SEC", Sport: "cfb"},
+		{TeamID: 2, Year: 2023, FBS: 1, Conf: "SEC", Sport: "cfb"},
+		{TeamID: 3, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "cfb"},
+		{TeamID: 4, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "cfb"},
+		{TeamID: 5, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "cfb"},
+		{TeamID: 6, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "cfb"},
 	}
 	if err := db.Create(&teamSeasons).Error; err != nil {
 		t.Fatalf("seed team_seasons: %v", err)
@@ -531,36 +532,38 @@ func seedGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: fixtureGameID1, Season: 2023, Week: 1,
 			HomeID: 1, AwayID: 2, HomeScore: 28, AwayScore: 14,
-			ConfGame: true,
+			ConfGame: true, Sport: "cfb",
 			StartTime: time.Date(2023, 9, 2, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID2, Season: 2023, Week: 1,
 			HomeID: 3, AwayID: 4, HomeScore: 21, AwayScore: 10,
-			ConfGame: true,
+			ConfGame: true, Sport: "cfb",
 			StartTime: time.Date(2023, 9, 2, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID4, Season: 2023, Week: 2,
 			HomeID: 1, AwayID: 3, HomeScore: 35, AwayScore: 17,
+			Sport: "cfb",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID5, Season: 2023, Week: 2,
 			HomeID: 2, AwayID: 4, HomeScore: 24, AwayScore: 21,
+			Sport: "cfb",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		// FCS games
 		{
 			GameID: 501001, Season: 2023, Week: 1,
 			HomeID: 5, AwayID: 6, HomeScore: 17, AwayScore: 10,
-			ConfGame: true,
+			ConfGame: true, Sport: "cfb",
 			StartTime: time.Date(2023, 9, 2, 20, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: 501002, Season: 2023, Week: 2,
 			HomeID: 6, AwayID: 5, HomeScore: 14, AwayScore: 21,
-			ConfGame: true,
+			ConfGame: true, Sport: "cfb",
 			StartTime: time.Date(2023, 9, 9, 20, 0, 0, 0, time.UTC),
 		},
 	}

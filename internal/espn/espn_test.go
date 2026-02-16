@@ -53,13 +53,14 @@ func overrideURLs(t *testing.T, serverURL string) {
 	t.Cleanup(restore)
 }
 
-func newTestClient() *Client {
-	return &Client{
+func newTestClient() *FootballClient {
+	return &FootballClient{Client: &Client{
 		MaxRetries:     2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
-	}
+		Sport:          CollegeFootball,
+	}}
 }
 
 func TestGetCurrentWeekGames(t *testing.T) {
@@ -298,12 +299,10 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	t.Cleanup(restore)
 	client := newTestClient()
 
+	// Empty response fails validation because schedule data is missing.
 	_, err := client.DefaultSeason()
 	if err == nil {
-		t.Fatal("expected validation error for empty response, got nil")
-	}
-	if !strings.Contains(err.Error(), "missing calendar") {
-		t.Errorf("error = %q, want it to contain 'missing calendar'", err)
+		t.Fatal("expected error for empty response, got nil")
 	}
 }
 
@@ -311,29 +310,23 @@ func TestGameScheduleValidate(t *testing.T) {
 	tests := []struct {
 		name    string
 		resp    GameScheduleESPN
-		wantErr string
+		wantErr bool
 	}{
+		{name: "empty response", resp: GameScheduleESPN{}, wantErr: true},
+		{name: "empty calendar", resp: GameScheduleESPN{Content: Content{Calendar: []Calendar{{}}}}, wantErr: true},
 		{
-			name:    "empty calendar",
-			resp:    GameScheduleESPN{},
-			wantErr: "missing calendar",
-		},
-		{
-			name: "empty weeks",
-			resp: GameScheduleESPN{
-				Content: Content{Calendar: []Calendar{{}}},
-			},
-			wantErr: "empty weeks",
+			name: "valid schedule",
+			resp: GameScheduleESPN{Content: Content{Schedule: map[string]Day{"2026-01-01": {}}}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.resp.validate()
-			if err == nil {
-				t.Fatal("expected error, got nil")
+			if tt.wantErr && err == nil {
+				t.Error("validate() expected error, got nil")
 			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			if !tt.wantErr && err != nil {
+				t.Errorf("validate() returned unexpected error: %v", err)
 			}
 		})
 	}
@@ -381,6 +374,189 @@ func TestGameInfoValidate(t *testing.T) {
 	}
 }
 
+func TestSportDB(t *testing.T) {
+	if got := CollegeFootball.SportDB(); got != "cfb" {
+		t.Errorf("CollegeFootball.SportDB() = %q, want %q", got, "cfb")
+	}
+	if got := CollegeBasketball.SportDB(); got != "cbb" {
+		t.Errorf("CollegeBasketball.SportDB() = %q, want %q", got, "cbb")
+	}
+}
+
+func TestGroups(t *testing.T) {
+	fbGroups := CollegeFootball.Groups()
+	if len(fbGroups) != 2 {
+		t.Fatalf("CollegeFootball.Groups() len = %d, want 2", len(fbGroups))
+	}
+	if fbGroups[0] != FBS || fbGroups[1] != FCS {
+		t.Errorf("CollegeFootball.Groups() = %v, want [FBS, FCS]", fbGroups)
+	}
+
+	bbGroups := CollegeBasketball.Groups()
+	if len(bbGroups) != 1 {
+		t.Fatalf("CollegeBasketball.Groups() len = %d, want 1", len(bbGroups))
+	}
+	if bbGroups[0] != D1Basketball {
+		t.Errorf("CollegeBasketball.Groups() = %v, want [D1Basketball]", bbGroups)
+	}
+}
+
+func TestHasDivisionSplit(t *testing.T) {
+	if !CollegeFootball.HasDivisionSplit() {
+		t.Error("CollegeFootball.HasDivisionSplit() = false, want true")
+	}
+	if CollegeBasketball.HasDivisionSplit() {
+		t.Error("CollegeBasketball.HasDivisionSplit() = true, want false")
+	}
+}
+
+func TestScoreboardValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    ScoreboardESPN
+		wantErr string
+	}{
+		{
+			name:    "no leagues",
+			resp:    ScoreboardESPN{},
+			wantErr: "missing leagues",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.resp.validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Basketball tests using scoreboard endpoint
+// ---------------------------------------------------------------------------
+
+func testScoreboardResponse() ScoreboardESPN {
+	return ScoreboardESPN{
+		Leagues: []ScoreboardLeague{{
+			Season: ScoreboardSeason{
+				Year:      2024,
+				StartDate: "2023-11-06T08:00Z",
+				EndDate:   "2024-04-08T06:59Z",
+				Type:      ScoreboardSeasonType{ID: 2, Name: "Regular Season"},
+			},
+			Calendar: []string{"2023-11-06T08:00Z", "2023-11-07T08:00Z"},
+		}},
+	}
+}
+
+func setupBasketballTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Basketball schedule has no calendar — just schedule + conferences
+		resp := GameScheduleESPN{
+			Content: Content{
+				Schedule: map[string]Day{
+					"2024-01-06": {Games: []Game{{
+						ID:     2001,
+						Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}},
+					}}},
+				},
+				Defaults: Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: FlexInt64(50)},
+				ConferenceAPI: ConferenceAPI{
+					Conferences: []Conference{
+						{GroupID: 300, Name: "Big East", ShortName: "Big East", ParentGroupID: FlexInt64(50)},
+					},
+				},
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	scoreboardPath := "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(testScoreboardResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
+	t.Helper()
+
+	restore := SetTestURLs(
+		serverURL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+	)
+	t.Cleanup(restore)
+
+	return &BasketballClient{Client: &Client{
+		MaxRetries:     2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          CollegeBasketball,
+		scoreboardURL:  serverURL + "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+	}}
+}
+
+func TestBasketball_DefaultSeason(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	year, err := client.DefaultSeason()
+	if err != nil {
+		t.Fatalf("DefaultSeason: %v", err)
+	}
+	if year != 2024 {
+		t.Errorf("year = %d, want 2024", year)
+	}
+}
+
+func TestBasketball_GetWeeksInSeason(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	weeks, err := client.GetWeeksInSeason(2024)
+	if err != nil {
+		t.Fatalf("GetWeeksInSeason: %v", err)
+	}
+
+	// Season: 2023-11-06 to 2024-04-08 ≈ 154 days ≈ 22 weeks + 1 = 23
+	if weeks < 20 || weeks > 25 {
+		t.Errorf("weeks = %d, expected roughly 22-23", weeks)
+	}
+}
+
+func TestBasketball_HasPostseasonStarted(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	// Scoreboard fixture has season type 2 (regular), so postseason has not started
+	started, err := client.HasPostseasonStarted(2024, time.Now())
+	if err != nil {
+		t.Fatalf("HasPostseasonStarted: %v", err)
+	}
+	if started {
+		t.Error("postseason should not have started (season type = 2)")
+	}
+}
+
 func TestTeamInfoValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -394,12 +570,12 @@ func TestTeamInfoValidate(t *testing.T) {
 		},
 		{
 			name:    "no leagues",
-			resp:    TeamInfoESPN{Sports: []Sport{{}}},
+			resp:    TeamInfoESPN{Sports: []TeamInfoSport{{}}},
 			wantErr: "missing leagues",
 		},
 		{
 			name:    "no teams",
-			resp:    TeamInfoESPN{Sports: []Sport{{Leagues: []League{{}}}}},
+			resp:    TeamInfoESPN{Sports: []TeamInfoSport{{Leagues: []League{{}}}}},
 			wantErr: "missing teams",
 		},
 	}

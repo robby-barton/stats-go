@@ -1,6 +1,10 @@
 package espn
 
-import "errors"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
 
 //nolint:gochecknoglobals // overridden in tests
 var weekURL = "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18"
@@ -53,10 +57,10 @@ type StatusType struct {
 }
 
 type Parameters struct {
-	Week       int64 `json:"week"`
-	Year       int64 `json:"year"`
-	SeasonType int64 `json:"seasonType"`
-	Group      int64 `json:"group,string"`
+	Week       int64     `json:"week"`
+	Year       int64     `json:"year"`
+	SeasonType int64     `json:"seasonType"`
+	Group      FlexInt64 `json:"group"`
 }
 
 type Calendar struct {
@@ -77,20 +81,47 @@ type ConferenceAPI struct {
 }
 
 type Conference struct {
-	GroupID       int64    `json:"groupId,string"`
-	Name          string   `json:"name"`
-	SubGroups     []string `json:"subGroups"` // is an array of ints though
-	Logo          string   `json:"logo"`
-	ParentGroupID int64    `json:"parentGroupId,string"`
-	ShortName     string   `json:"shortName"`
+	GroupID       int64     `json:"groupId,string"`
+	Name          string    `json:"name"`
+	SubGroups     []string  `json:"subGroups"` // is an array of ints though
+	Logo          string    `json:"logo"`
+	ParentGroupID FlexInt64 `json:"parentGroupId"`
+	ShortName     string    `json:"shortName"`
+}
+
+// FlexInt64 unmarshals a JSON value that may be a number, a quoted string, or null.
+type FlexInt64 int64
+
+func (f *FlexInt64) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*f = 0
+		return nil
+	}
+	// Try as a bare number first.
+	var n int64
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = FlexInt64(n)
+		return nil
+	}
+	// Fall back to a quoted string.
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
+	*f = FlexInt64(n)
+	return nil
 }
 
 func (r GameScheduleESPN) validate() error {
-	if len(r.Content.Calendar) == 0 {
-		return errors.New("schedule response missing calendar entries")
-	}
-	if len(r.Content.Calendar[0].Weeks) == 0 {
-		return errors.New("schedule response has empty weeks in first calendar entry")
+	// Calendar is only present in football schedule responses. Basketball
+	// schedule responses omit it entirely, so we cannot require it here.
+	// However, both sports must return schedule data.
+	if len(r.Content.Schedule) == 0 {
+		return fmt.Errorf("empty schedule in response")
 	}
 	return nil
 }

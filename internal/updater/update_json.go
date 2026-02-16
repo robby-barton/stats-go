@@ -7,20 +7,32 @@ import (
 	"strconv"
 
 	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/espn"
 )
 
 const (
 	fbs = "fbs"
 	fcs = "fcs"
+	d1  = "d1"
 )
 
+// divisions returns the division names used for ranking output for this sport.
+func (u *Updater) divisions() []string {
+	if u.ESPN.SportInfo() == espn.CollegeBasketball {
+		return []string{d1}
+	}
+	return []string{fbs, fcs}
+}
+
 func (u *Updater) UpdateAvailRanksJSON() error {
+	sport := u.sportDB()
 	years := []struct {
 		Year       int64 `json:"-"`
 		Weeks      int64 `json:"weeks"`
 		Postseason int64 `json:"postseason"`
 	}{}
 	if err := u.DB.Model(&database.TeamWeekResult{}).
+		Where("sport = ?", sport).
 		Select("year, max(case when postseason = 0 then week else 0 end) as weeks, max(postseason) as postseason").
 		Group("year").Order("year").Scan(&years).Error; err != nil {
 		return err
@@ -31,7 +43,7 @@ func (u *Updater) UpdateAvailRanksJSON() error {
 		availRanks[year.Year] = year
 	}
 
-	return u.Writer.WriteData(context.Background(), "availRanks.json", availRanks)
+	return u.Writer.WriteData(context.Background(), sport+"/availRanks.json", availRanks)
 }
 
 type teamJSON struct {
@@ -44,6 +56,7 @@ type teamJSON struct {
 func (u *Updater) getTeamInfo() (map[int64]teamJSON, error) {
 	teams := []teamJSON{}
 	if err := u.DB.Model(&database.TeamName{}).
+		Where("sport = ?", u.sportDB()).
 		Select("team_id as id, name, logo, logo_dark").
 		Scan(&teams).Error; err != nil {
 		return nil, err
@@ -58,6 +71,7 @@ func (u *Updater) getTeamInfo() (map[int64]teamJSON, error) {
 }
 
 func (u *Updater) UpdateTeamsJSON(teamMap map[int64]teamJSON) error {
+	sport := u.sportDB()
 	teamList := []teamJSON{}
 	if teamMap != nil {
 		for _, team := range teamMap {
@@ -65,13 +79,14 @@ func (u *Updater) UpdateTeamsJSON(teamMap map[int64]teamJSON) error {
 		}
 	} else {
 		if err := u.DB.Model(&database.TeamName{}).
+			Where("sport = ?", sport).
 			Select("team_id as id, name, logo, logo_dark").
 			Scan(&teamList).Error; err != nil {
 			return err
 		}
 	}
 
-	return u.Writer.WriteData(context.Background(), "teams.json", teamList)
+	return u.Writer.WriteData(context.Background(), sport+"/teams.json", teamList)
 }
 
 type rankingsJSON struct {
@@ -95,7 +110,7 @@ type resultJSON struct {
 func toJSON(rank *database.TeamWeekResult, teamMap map[int64]teamJSON) *resultJSON {
 	record := fmt.Sprintf("%d-%d", rank.Wins, rank.Losses)
 	if rank.Ties > 0 {
-		record = fmt.Sprintf("%d-%d-%d", rank.Week, rank.Losses, rank.Ties)
+		record = fmt.Sprintf("%d-%d-%d", rank.Wins, rank.Losses, rank.Ties)
 	}
 	return &resultJSON{
 		Team:      teamMap[rank.TeamID],
@@ -109,16 +124,17 @@ func toJSON(rank *database.TeamWeekResult, teamMap map[int64]teamJSON) *resultJS
 }
 
 func (u *Updater) UpdateRankJSON(week *rankingsJSON) error {
+	sport := u.sportDB()
 	weekName := "final"
 	if !week.Postseason {
 		weekName = strconv.FormatInt(week.Week, 10)
 	}
-	fileName := fmt.Sprintf("ranking/%d/%s/%s.json", week.Year, week.Division, weekName)
+	fileName := fmt.Sprintf("%s/ranking/%d/%s/%s.json", sport, week.Year, week.Division, weekName)
 	return u.Writer.WriteData(context.Background(), fileName, week.Results)
 }
 
 func (u *Updater) UpdateIndexJSON(week *rankingsJSON) error {
-	return u.Writer.WriteData(context.Background(), "latest.json", week.Results)
+	return u.Writer.WriteData(context.Background(), u.sportDB()+"/latest.json", week.Results)
 }
 
 type teamRankJSON struct {
@@ -134,9 +150,10 @@ type teamRankList struct {
 }
 
 func (u *Updater) UpdateTeamRankJSON(team teamJSON) error {
+	sport := u.sportDB()
 	teamRankings := []database.TeamWeekResult{}
 	if err := u.DB.Model(&database.TeamWeekResult{}).Where(
-		"team_id = ?", team.ID,
+		"sport = ? and team_id = ?", sport, team.ID,
 	).Order("year, postseason, week").Find(&teamRankings).Error; err != nil {
 		return err
 	}
@@ -164,7 +181,7 @@ func (u *Updater) UpdateTeamRankJSON(team teamJSON) error {
 		Years:    years,
 	}
 
-	fileName := fmt.Sprintf("team/%d.json", team.ID)
+	fileName := fmt.Sprintf("%s/team/%d.json", sport, team.ID)
 	return u.Writer.WriteData(context.Background(), fileName, results)
 }
 
@@ -181,6 +198,7 @@ type gameCountJSON struct {
 }
 
 func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
+	sport := u.sportDB()
 	// PostgreSQL: extract(dow from start_time) returns 0=Sun..6=Sat
 	// SQLite: strftime('%w', start_time) returns '0'=Sun..'6'=Sat
 	dowExpr := "extract(dow from start_time)"
@@ -195,12 +213,14 @@ func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
 			%s as dow,
 			game_id
 		from games
+		where sport = ?
 		union all
 		select
 			away_id as team_id,
 			%s as dow,
 			game_id
 		from games
+		where sport = ?
 	)
 	select
 		team_id,
@@ -231,7 +251,7 @@ func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
 		Total  int64
 	}{}
 
-	if err := u.DB.Raw(sql).Scan(&results).Error; err != nil {
+	if err := u.DB.Raw(sql, sport, sport).Scan(&results).Error; err != nil {
 		return err
 	}
 
@@ -254,10 +274,12 @@ func (u *Updater) UpdateGameCountJSON(teamMap map[int64]teamJSON) error {
 		})
 	}
 
-	return u.Writer.WriteData(context.Background(), "gameCount.json", resultsJSON)
+	return u.Writer.WriteData(context.Background(), sport+"/gameCount.json", resultsJSON)
 }
 
 func (u *Updater) UpdateRecentJSON() error {
+	sport := u.sportDB()
+
 	teamMap, err := u.getTeamInfo()
 	if err != nil {
 		return err
@@ -267,35 +289,38 @@ func (u *Updater) UpdateRecentJSON() error {
 		return err
 	}
 
+	if err := u.UpdateTeamsJSON(teamMap); err != nil {
+		return err
+	}
+
 	if err := u.UpdateGameCountJSON(teamMap); err != nil {
 		return err
 	}
 
-	sql := `
-	select 
-		max(year) as year,
-		max(week) as week,
-		max(postseason) as postseason 
-	from team_week_results 
-	where 
-		year = (
-			select 
-				max(year) 
-			from team_week_results
-		)
-	`
 	yearInfo := &struct {
 		Year       int64
 		Week       int64
 		Postseason int64
 	}{}
-	if err := u.DB.Raw(sql).Scan(yearInfo).Error; err != nil {
+	if err := u.DB.Raw(`
+	select
+		max(year) as year,
+		max(week) as week,
+		max(postseason) as postseason
+	from team_week_results
+	where
+		sport = ? and
+		year = (
+			select max(year) from team_week_results where sport = ?
+		)
+	`, sport, sport).Scan(yearInfo).Error; err != nil {
 		return err
 	}
 
 	teams := []int64{}
 	if err := u.DB.Model(&database.TeamWeekResult{}).
-		Distinct("team_id").Where("year = ?", yearInfo.Year).Pluck("team_id", &teams).Error; err != nil {
+		Distinct("team_id").Where("sport = ? and year = ?", sport, yearInfo.Year).
+		Pluck("team_id", &teams).Error; err != nil {
 		return err
 	}
 	for _, team := range teams {
@@ -304,12 +329,13 @@ func (u *Updater) UpdateRecentJSON() error {
 		}
 	}
 
-	for _, division := range []string{fbs, fcs} {
+	divisions := u.divisions()
+	for _, division := range divisions {
 		weekRankings := []database.TeamWeekResult{}
 		if yearInfo.Postseason > 0 {
 			if err := u.DB.Where(
-				"year = ? and fbs = ? and postseason = 1",
-				yearInfo.Year, division == fbs,
+				"sport = ? and year = ? and fbs = ? and postseason = 1",
+				sport, yearInfo.Year, division == fbs || division == d1,
 			).
 				Order("final_rank").
 				Find(&weekRankings).Error; err != nil {
@@ -317,8 +343,8 @@ func (u *Updater) UpdateRecentJSON() error {
 			}
 		} else {
 			if err := u.DB.Where(
-				"year = ? and fbs = ? and week = ? and postseason = 0",
-				yearInfo.Year, division == fbs, yearInfo.Week,
+				"sport = ? and year = ? and fbs = ? and week = ? and postseason = 0",
+				sport, yearInfo.Year, division == fbs || division == d1, yearInfo.Week,
 			).
 				Order("final_rank").
 				Find(&weekRankings).Error; err != nil {
@@ -342,7 +368,7 @@ func (u *Updater) UpdateRecentJSON() error {
 			return err
 		}
 
-		if division == fbs {
+		if division == fbs || (u.ESPN.SportInfo() == espn.CollegeBasketball && division == d1) {
 			if err := u.UpdateIndexJSON(json); err != nil {
 				return err
 			}
@@ -353,6 +379,8 @@ func (u *Updater) UpdateRecentJSON() error {
 }
 
 func (u *Updater) UpdateAllJSON() error {
+	sport := u.sportDB()
+
 	teamMap, err := u.getTeamInfo()
 	if err != nil {
 		return err
@@ -372,6 +400,7 @@ func (u *Updater) UpdateAllJSON() error {
 
 	teams := []int64{}
 	if err := u.DB.Model(&database.TeamWeekResult{}).
+		Where("sport = ?", sport).
 		Distinct("team_id").Pluck("team_id", &teams).Error; err != nil {
 		return err
 	}
@@ -387,14 +416,16 @@ func (u *Updater) UpdateAllJSON() error {
 	}
 
 	var latestRanking *rankingsJSON
+	divisions := u.divisions()
+	primaryDivision := divisions[0]
 
-	for _, division := range []string{fbs, fcs} {
+	for _, division := range divisions {
 		for _, year := range yearInfo {
 			for week := int64(1); week <= year.Weeks; week++ {
 				weekRankings := []database.TeamWeekResult{}
 				if err := u.DB.Where(
-					"year = ? and fbs = ? and week = ? and postseason = ?",
-					year.Year, division == fbs, week, 0,
+					"sport = ? and year = ? and fbs = ? and week = ? and postseason = ?",
+					sport, year.Year, division == fbs || division == d1, week, 0,
 				).
 					Order("final_rank").
 					Find(&weekRankings).Error; err != nil {
@@ -422,8 +453,8 @@ func (u *Updater) UpdateAllJSON() error {
 			if year.Postseason > 0 {
 				weekRankings := []database.TeamWeekResult{}
 				if err := u.DB.Where(
-					"year = ? and fbs = ? and postseason = ?",
-					year.Year, division == fbs, 1,
+					"sport = ? and year = ? and fbs = ? and postseason = ?",
+					sport, year.Year, division == fbs || division == d1, 1,
 				).
 					Order("final_rank").
 					Find(&weekRankings).Error; err != nil {
@@ -445,8 +476,8 @@ func (u *Updater) UpdateAllJSON() error {
 			} else {
 				weekRankings := []database.TeamWeekResult{}
 				if err := u.DB.Where(
-					"year = ? and fbs = ? and week = ? and postseason = ?",
-					year.Year, division == fbs, year.Weeks+1, 0,
+					"sport = ? and year = ? and fbs = ? and week = ? and postseason = ?",
+					sport, year.Year, division == fbs || division == d1, year.Weeks+1, 0,
 				).
 					Order("final_rank").
 					Find(&weekRankings).Error; err != nil {
@@ -470,7 +501,7 @@ func (u *Updater) UpdateAllJSON() error {
 				return err
 			}
 
-			if division == fbs {
+			if division == primaryDivision {
 				latestRanking = final
 			}
 		}

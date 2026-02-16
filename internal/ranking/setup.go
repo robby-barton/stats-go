@@ -13,23 +13,27 @@ func (r *Ranker) setup() (TeamList, error) {
 
 	var teamList TeamList
 	var err error
-	if r.Fcs {
-		if teamList, err = r.createTeamList(0); err != nil {
-			return nil, err
-		}
+
+	// FCS ranking only applies to football; basketball has no division split.
+	if r.Fcs && r.Sport != sportBasketball {
+		teamList, err = r.createTeamList(0)
 	} else {
-		if teamList, err = r.createTeamList(1); err != nil {
-			return nil, err
-		}
+		teamList, err = r.createTeamList(1)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return teamList, nil
 }
 
 func (r *Ranker) setGlobals() error {
+	sport := r.sportFilter()
+
 	if r.Year == 0 {
 		var year int64
 		if err := r.DB.Model(database.TeamSeason{}).
+			Where("sport = ?", sport).
 			Select("max(year) as year").Pluck("year", &year).Error; err != nil {
 			return err
 		}
@@ -39,7 +43,7 @@ func (r *Ranker) setGlobals() error {
 	var game database.Game
 	if r.Week > 0 {
 		if err := r.DB.
-			Where("season = ? and week = ? and postseason = 0", r.Year, r.Week).
+			Where("sport = ? and season = ? and week = ? and postseason = 0", sport, r.Year, r.Week).
 			Order("start_time asc").
 			Limit(1).
 			Find(&game).Error; err != nil {
@@ -56,7 +60,7 @@ func (r *Ranker) setGlobals() error {
 
 	if game == (database.Game{}) {
 		if err := r.DB.
-			Where("season <= ?", r.Year).
+			Where("sport = ? and season <= ?", sport, r.Year).
 			Order("start_time desc").
 			Limit(1).
 			Find(&game).Error; err != nil {
@@ -92,8 +96,9 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 
 	if err := r.DB.Model(&database.TeamSeason{}).
 		Select("team_names.team_id, team_names.name, team_seasons.conf").
-		Joins("left join team_names on team_seasons.team_id = team_names.team_id").
-		Where("team_seasons.fbs = ? and team_seasons.year = ?", findFbs, r.Year).
+		Joins("join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
+		Where("team_seasons.fbs = ? and team_seasons.year = ? and team_seasons.sport = ?",
+			findFbs, r.Year, r.sportFilter()).
 		Scan(&teams).Error; err != nil {
 		return nil, err
 	}

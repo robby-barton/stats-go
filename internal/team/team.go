@@ -1,8 +1,6 @@
 package team
 
 import (
-	"fmt"
-
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -25,7 +23,7 @@ type ParsedTeamInfo struct {
 	Slug             string
 }
 
-func GetTeamInfo(client *espn.Client) ([]ParsedTeamInfo, error) {
+func GetTeamInfo(client espn.SportClient) ([]ParsedTeamInfo, error) {
 	var parsedTeamInfo []ParsedTeamInfo
 
 	res, err := client.GetTeamInfo()
@@ -52,21 +50,17 @@ func GetTeamInfo(client *espn.Client) ([]ParsedTeamInfo, error) {
 		teamInfo.ShortDisplayName = team.ShortDisplayName
 		teamInfo.Slug = team.Slug
 
-		if len(team.Logos) > 2 {
-			return nil, fmt.Errorf("too many logos for %d", team.ID)
-		}
-
 		for _, logo := range team.Logos {
-			theme := ""
+			isDark := false
 			for i := len(logo.Rel) - 1; i >= 0; i-- {
 				if logo.Rel[i] == dark {
-					theme = dark
+					isDark = true
 					break
 				}
 			}
-			if theme == dark {
+			if isDark && teamInfo.LogoDark == "" {
 				teamInfo.LogoDark = logo.Href
-			} else {
+			} else if !isDark && teamInfo.Logo == "" {
 				teamInfo.Logo = logo.Href
 			}
 		}

@@ -5,14 +5,16 @@ import (
 )
 
 func (r *Ranker) record(teamList TeamList) error {
+	sport := r.sportFilter()
+
 	var games []database.Game
-	if err := r.DB.Where("season = ? and start_time <= ?", r.Year, r.startTime).
+	if err := r.DB.Where("sport = ? and season = ? and start_time <= ?", sport, r.Year, r.startTime).
 		Find(&games).Error; err != nil {
 		return err
 	}
 
 	var allTeams []int64
-	if err := r.DB.Model(database.TeamSeason{}).Where("year = ?", r.Year).
+	if err := r.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", sport, r.Year).
 		Pluck("team_id", &allTeams).Error; err != nil {
 		return err
 	}

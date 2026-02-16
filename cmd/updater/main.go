@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
@@ -35,134 +37,196 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	espnClient := espn.NewClient()
-	u := updater.Updater{
-		DB:     db,
-		Logger: log,
-		Writer: doWriter,
-		ESPN:   espnClient,
-	}
 
 	rootCmd := &cobra.Command{
 		Use:   "updater",
-		Short: "College football data updater",
+		Short: "College sports data updater",
 	}
 	rootCmd.SilenceUsage = true
 
-	scheduleCmd := &cobra.Command{
+	scheduleCmd := scheduleCommand(log, cfg, db, doWriter)
+	footballCmd := sportCommand(log, db, doWriter, espn.CollegeFootball)
+	basketballCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
+
+	rootCmd.AddCommand(scheduleCmd, footballCmd, basketballCmd)
+
+	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
+}
+
+func newUpdater(
+	log *zap.SugaredLogger,
+	db *gorm.DB,
+	w writer.Writer,
+	sport espn.Sport,
+) updater.Updater {
+	return updater.Updater{
+		DB:     db,
+		Logger: log,
+		Writer: w,
+		ESPN:   espn.NewClientForSport(sport),
+	}
+}
+
+// sportSchedule holds the cron expressions for a sport's scheduled jobs.
+type sportSchedule struct {
+	Name          string // human-readable label for log messages
+	GamesCron     string // completed games poll
+	TeamInfoCron  string // team metadata refresh
+	NewSeasonCron string // season initialization
+}
+
+// registerJobs adds the three cron jobs for a sport to the scheduler and
+// returns a stop function that shuts down the ranking-update goroutine.
+func (ss sportSchedule) registerJobs(
+	s gocron.Scheduler,
+	log *zap.SugaredLogger,
+	cfg *config.Config,
+	u updater.Updater,
+) func() {
+	update := make(chan bool, 1)
+	stop := make(chan bool, 1)
+
+	go func() {
+		for {
+			select {
+			case <-update:
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Errorf("%s panic caught: %s", ss.Name, r)
+						}
+					}()
+
+					if err := u.UpdateRecentRankings(); err != nil {
+						log.Error(err)
+						return
+					}
+					log.Infof("%s rankings updated", ss.Name)
+
+					if !cfg.Local {
+						if err := u.UpdateRecentJSON(); err != nil {
+							log.Error(err)
+						}
+					}
+				}()
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	// Completed games poll
+	if _, err := s.NewJob(gocron.CronJob(ss.GamesCron, false), gocron.NewTask(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("%s panic caught: %s", ss.Name, r)
+			}
+		}()
+
+		addedGames, err := u.UpdateCurrentWeek()
+		log.Infof("%s: added %d games: %v", ss.Name, len(addedGames), addedGames)
+		if err != nil {
+			log.Error(err)
+		} else if len(addedGames) > 0 {
+			update <- true
+		}
+	})); err != nil {
+		panic(err)
+	}
+
+	// Team info refresh
+	if _, err := s.NewJob(gocron.CronJob(ss.TeamInfoCron, false), gocron.NewTask(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("%s panic caught: %s", ss.Name, r)
+			}
+		}()
+
+		addedTeams, err := u.UpdateTeamInfo()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		log.Infof("%s: updated %d teams", ss.Name, addedTeams)
+		if !cfg.Local {
+			if err := u.UpdateTeamsJSON(nil); err != nil {
+				log.Error(err)
+			}
+			if err := u.Writer.PurgeCache(context.Background()); err != nil {
+				log.Error(err)
+			}
+		}
+	})); err != nil {
+		panic(err)
+	}
+
+	// New season initialization
+	if _, err := s.NewJob(gocron.CronJob(ss.NewSeasonCron, false), gocron.NewTask(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("%s panic caught: %s", ss.Name, r)
+			}
+		}()
+
+		addedSeasons, err := u.UpdateTeamSeasons(false)
+		log.Infof("%s: added %d seasons", ss.Name, addedSeasons)
+		if err != nil {
+			log.Error(err)
+		} else if addedSeasons > 0 {
+			update <- true
+		}
+	})); err != nil {
+		panic(err)
+	}
+
+	return func() { stop <- true }
+}
+
+func scheduleCommand(
+	log *zap.SugaredLogger,
+	cfg *config.Config,
+	db *gorm.DB,
+	w writer.Writer,
+) *cobra.Command {
+	return &cobra.Command{
 		Use:   "schedule",
-		Short: "Run the scheduled updater",
+		Short: "Run the scheduled updater for all sports",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			s, err := gocron.NewScheduler(gocron.WithLocation(time.Local))
 			if err != nil {
 				panic(err)
 			}
 
-			update := make(chan bool, 1)
-			stop := make(chan bool, 1)
-			go func() {
-				for {
-					select {
-					case <-update:
-						func() {
-							defer func() {
-								if r := recover(); r != nil {
-									log.Errorf("panic caught: %s", r)
-								}
-							}()
-
-							if err := u.UpdateRecentRankings(); err != nil {
-								log.Error(err)
-								return
-							}
-							log.Info("rankings updated")
-
-							if !cfg.Local {
-								if err := u.UpdateRecentJSON(); err != nil {
-									log.Error(err)
-								}
-							}
-						}()
-					case <-stop:
-						return
-					}
-				}
-			}()
-
-			// Update completed games
-			// every 5 minutes from August through January
-			_, err = s.NewJob(gocron.CronJob("*/5 * * 1,8-12 *", false), gocron.NewTask(func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Errorf("panic caught: %s", r)
-					}
-				}()
-
-				var addedGames []int64
-				addedGames, err = u.UpdateCurrentWeek()
-
-				log.Infof("Added %d games: %v", len(addedGames), addedGames)
-				if err != nil {
-					log.Error(err)
-				} else if len(addedGames) > 0 {
-					update <- true
-				}
-			}))
-			if err != nil {
-				panic(err)
+			sports := []struct {
+				schedule sportSchedule
+				sport    espn.Sport
+			}{
+				{
+					schedule: sportSchedule{
+						Name:          "football",
+						GamesCron:     "*/5 * * 1,8-12 *",
+						TeamInfoCron:  "0 5 * 1,8-12 0",
+						NewSeasonCron: "0 6 10 8 *",
+					},
+					sport: espn.CollegeFootball,
+				},
+				{
+					schedule: sportSchedule{
+						Name:          "basketball",
+						GamesCron:     "*/5 * * 1-4,11-12 *",
+						TeamInfoCron:  "0 5 * 1-4,11-12 0",
+						NewSeasonCron: "0 6 1 11 *",
+					},
+					sport: espn.CollegeBasketball,
+				},
 			}
 
-			// Update team info
-			// 5 am Sunday from August through January
-			_, err = s.NewJob(gocron.CronJob("0 5 * 1,8-12 0", false), gocron.NewTask(func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Errorf("panic caught: %s", r)
-					}
-				}()
-
-				var addedTeams int
-				addedTeams, err = u.UpdateTeamInfo()
-				if err != nil {
-					log.Error(err)
-					return
-				}
-
-				log.Infof("Updated %d teams", addedTeams)
-				if !cfg.Local {
-					if err := u.UpdateTeamsJSON(nil); err != nil {
-						log.Error(err)
-					}
-					if err := u.Writer.PurgeCache(context.Background()); err != nil {
-						log.Error(err)
-					}
-				}
-			}))
-			if err != nil {
-				panic(err)
-			}
-
-			// Add new season
-			// 6 am on August 10th
-			_, err = s.NewJob(gocron.CronJob("0 6 10 8 *", false), gocron.NewTask(func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Errorf("panic caught: %s", r)
-					}
-				}()
-
-				var addedSeasons int
-				addedSeasons, err = u.UpdateTeamSeasons(false)
-
-				log.Infof("Added %d seasons", addedSeasons)
-				if err != nil {
-					log.Error(err)
-				} else if addedSeasons > 0 {
-					update <- true
-				}
-			}))
-			if err != nil {
-				panic(err)
+			var stopFuncs []func()
+			for _, sp := range sports {
+				u := newUpdater(log, db, w, sp.sport)
+				stopFn := sp.schedule.registerJobs(s, log, cfg, u)
+				stopFuncs = append(stopFuncs, stopFn)
 			}
 
 			s.Start()
@@ -174,10 +238,33 @@ func main() {
 			if err := s.Shutdown(); err != nil {
 				log.Error(err)
 			}
-			stop <- true
+			for _, fn := range stopFuncs {
+				fn()
+			}
 
 			return nil
 		},
+	}
+}
+
+func sportCommand(
+	log *zap.SugaredLogger,
+	db *gorm.DB,
+	w writer.Writer,
+	sport espn.Sport,
+) *cobra.Command {
+	u := newUpdater(log, db, w, sport)
+
+	use := "football"
+	short := "College football one-shot commands"
+	if sport == espn.CollegeBasketball {
+		use = "basketball"
+		short = "College basketball one-shot commands"
+	}
+
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
 	}
 
 	var gamesAll bool
@@ -281,7 +368,7 @@ func main() {
 	}
 	jsonCmd.Flags().BoolVar(&jsonAll, "all", false, "rewrite all JSON")
 
-	rootCmd.AddCommand(scheduleCmd, gamesCmd, rankingCmd, teamsCmd, seasonCmd, jsonCmd)
+	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, jsonCmd)
 
-	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
+	return cmd
 }

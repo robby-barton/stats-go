@@ -1,8 +1,6 @@
 package game
 
 import (
-	"time"
-
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 )
@@ -21,23 +19,6 @@ type ParsedGameInfo struct {
 	PuntStats         []database.PuntStats
 }
 
-func GetGameStats(client *espn.Client, games []espn.Game) ([]*ParsedGameInfo, error) {
-	var parsedGameStats []*ParsedGameInfo
-
-	for _, game := range games {
-		gameStats, err := GetSingleGame(client, game.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		parsedGameStats = append(parsedGameStats, gameStats)
-
-		time.Sleep(client.RateLimit)
-	}
-
-	return parsedGameStats, nil
-}
-
 func combineGames(gamesLists [][]espn.Game) []espn.Game {
 	found := make(map[int64]bool)
 	var games []espn.Game
@@ -54,39 +35,37 @@ func combineGames(gamesLists [][]espn.Game) []espn.Game {
 	return games
 }
 
-func GetCurrentWeekGames(client *espn.Client) ([]espn.Game, error) {
-	fbsGames, err := client.GetCurrentWeekGames(espn.FBS)
-	if err != nil {
-		return nil, err
+// GetCurrentWeekGames fetches completed games for the current week across all
+// groups defined for the client's sport.
+func GetCurrentWeekGames(client espn.SportClient) ([]espn.Game, error) {
+	var allGames [][]espn.Game
+	for _, group := range client.SportInfo().Groups() {
+		games, err := client.GetCurrentWeekGames(group)
+		if err != nil {
+			return nil, err
+		}
+		allGames = append(allGames, games)
 	}
 
-	fcsGames, err := client.GetCurrentWeekGames(espn.FCS)
-	if err != nil {
-		return nil, err
-	}
-
-	games := combineGames([][]espn.Game{fbsGames, fcsGames})
-
-	return games, nil
+	return combineGames(allGames), nil
 }
 
-func GetGamesForSeason(client *espn.Client, year int64) ([]espn.Game, error) {
-	fbsGames, err := client.GetGamesBySeason(year, espn.FBS)
-	if err != nil {
-		return nil, err
+// GetGamesForSeason fetches all completed games for a season across all groups
+// defined for the client's sport.
+func GetGamesForSeason(client espn.SportClient, year int64) ([]espn.Game, error) {
+	var allGames [][]espn.Game
+	for _, group := range client.SportInfo().Groups() {
+		games, err := client.GetGamesBySeason(year, group)
+		if err != nil {
+			return nil, err
+		}
+		allGames = append(allGames, games)
 	}
 
-	fcsGames, err := client.GetGamesBySeason(year, espn.FCS)
-	if err != nil {
-		return nil, err
-	}
-
-	games := combineGames([][]espn.Game{fbsGames, fcsGames})
-
-	return games, nil
+	return combineGames(allGames), nil
 }
 
-func GetSingleGame(client *espn.Client, gameID int64) (*ParsedGameInfo, error) {
+func GetSingleGame(client espn.SportClient, gameID int64) (*ParsedGameInfo, error) {
 	res, err := client.GetGameStats(gameID)
 	if err != nil {
 		return nil, err
@@ -94,8 +73,11 @@ func GetSingleGame(client *espn.Client, gameID int64) (*ParsedGameInfo, error) {
 
 	parsedGame := &ParsedGameInfo{}
 	parsedGame.parseGameInfo(res)
+	parsedGame.GameInfo.Sport = client.SportInfo().SportDB()
 	parsedGame.parseTeamInfo(res)
-	parsedGame.parsePlayerStats(res)
+	if client.SportInfo() == espn.CollegeFootball {
+		parsedGame.parsePlayerStats(res)
+	}
 
 	return parsedGame, nil
 }

@@ -13,6 +13,7 @@ func TestRecord_BasicRecords(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC), // after all games
 	}
 
@@ -52,6 +53,7 @@ func TestRecord_PartialSeason(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 9, 18, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -81,6 +83,7 @@ func TestRecord_TieHandling(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
 	}
 

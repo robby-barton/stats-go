@@ -39,6 +39,7 @@ CREATE TABLE games (
     game_id integer NOT NULL,
     neutral boolean DEFAULT false,
     conf_game boolean DEFAULT false,
+    sport text DEFAULT 'cfb',
     season integer DEFAULT 0,
     week integer DEFAULT 0,
     postseason integer DEFAULT 0,
@@ -214,6 +215,7 @@ CREATE TABLE team_game_stats (
 CREATE TABLE team_names (
     team_id integer NOT NULL,
     name text NOT NULL,
+    sport text DEFAULT 'cfb',
     flair text,
     abbreviation text,
     alt_color text,
@@ -227,17 +229,18 @@ CREATE TABLE team_names (
     nickname text,
     short_display_name text,
     slug text,
-	PRIMARY KEY (team_id)
+	PRIMARY KEY (team_id, sport)
 );
 
 
 CREATE TABLE team_seasons (
     team_id integer NOT NULL,
     year integer NOT NULL,
+    sport text DEFAULT 'cfb',
     fbs integer DEFAULT 0,
     power_five integer DEFAULT 0,
     conf text,
-	PRIMARY KEY (team_id, year)
+	PRIMARY KEY (team_id, year, sport)
 );
 
 
@@ -246,6 +249,7 @@ CREATE TABLE team_week_results (
     year integer NOT NULL,
     week integer NOT NULL,
     postseason integer DEFAULT 0 NOT NULL,
+    sport text DEFAULT 'cfb' NOT NULL,
     final_rank integer DEFAULT 0,
     final_raw real DEFAULT 0,
     wins integer DEFAULT 0,
@@ -258,7 +262,7 @@ CREATE TABLE team_week_results (
     conf text,
     sol_rank integer DEFAULT 0,
     ties integer DEFAULT 0,
-	PRIMARY KEY (team_id, year, week, postseason)
+	PRIMARY KEY (team_id, year, week, postseason, sport)
 );
 
 

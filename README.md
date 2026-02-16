@@ -1,8 +1,8 @@
-# College Football Computer Ranking
+# College Sports Computer Ranking
 
 A Go application that pulls game data from the ESPN API, computes SRS/SOS
-composite rankings for college football teams, and exports results to
-DigitalOcean Spaces.
+composite rankings for college football and basketball teams, and exports
+results to DigitalOcean Spaces.
 
 ## Overview
 
@@ -13,7 +13,8 @@ The system consists of two CLI tools:
   computes rankings, and exports JSON to a CDN
 
 Rankings use a composite algorithm based on Simple Rating System (SRS) and
-Strength of Schedule (SOS), supporting both FBS and FCS divisions.
+Strength of Schedule (SOS). Football supports both FBS and FCS divisions;
+basketball ranks D1 teams.
 
 ## Getting Started
 
@@ -42,48 +43,59 @@ Set in `.env` (see `.env-sample` for the full list):
 
 ### Ranker
 
-Generate and print a ranking:
+Generate and print a ranking. The ranker uses sport subcommands (`football`,
+`basketball`):
 
 ```sh
-make ranker                      # current season, all teams
-make ranker OPTS="-t 25"         # top 25
-make ranker OPTS="-y 2024 -w 12" # specific year and week
-make ranker OPTS="-f"            # rank FCS instead of FBS
+make ranker OPTS="football"                # current football season, all teams
+make ranker OPTS="football -t 25"          # top 25 football
+make ranker OPTS="football -y 2024 -w 12"  # specific year and week
+make ranker OPTS="football -f"             # rank FCS instead of FBS
+make ranker OPTS="basketball"              # current basketball season, D1
+make ranker OPTS="basketball -t 25"        # top 25 basketball
 ```
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `-y` | int | most recent | Year to rank |
-| `-w` | int | most recent | Week of the season |
-| `-f` | bool | false | Rank FCS instead of FBS |
-| `-t` | int | all | Print only the top N teams |
-| `-r` | bool | false | Print SRS ratings instead of full ranking |
+| Subcommand | Flag | Type | Default | Description |
+|------------|------|------|---------|-------------|
+| `football` | `-y` | int | most recent | Year to rank |
+| | `-w` | int | most recent | Week of the season |
+| | `-f` | bool | false | Rank FCS instead of FBS |
+| | `-t` | int | all | Print only the top N teams |
+| | `-r` | bool | false | Print SRS ratings instead of full ranking |
+| `basketball` | `-y` | int | most recent | Year to rank |
+| | `-w` | int | most recent | Week of the season |
+| | `-t` | int | all | Print only the top N teams |
+| | `-r` | bool | false | Print SRS ratings instead of full ranking |
 
 ### Updater
 
-Run one-off operations or start the scheduled service:
+Run one-off operations or start the scheduled service. One-shot commands are
+nested under sport subcommands (`football`, `basketball`). The `schedule`
+command runs both sports:
 
 ```sh
-make updater OPTS="schedule"              # run as scheduled service
-make updater OPTS="games"                 # update current week's games
-make updater OPTS="games --all"           # update all games for current year
-make updater OPTS="games --single 12345"  # force-update a single game by ID
-make updater OPTS="ranking"               # update current season rankings
-make updater OPTS="ranking --all"         # update all rankings
-make updater OPTS="teams"                 # update team info
-make updater OPTS="season"               # update season info
-make updater OPTS="json"                  # rewrite current season JSON
-make updater OPTS="json --all"            # rewrite all JSON
+make updater OPTS="schedule"                        # run scheduled service (both sports)
+make updater OPTS="football games"                  # update current week's football games
+make updater OPTS="football games --all"            # update all football games for current year
+make updater OPTS="football games --single 12345"   # force-update a single game by ID
+make updater OPTS="football ranking"                # update current football rankings
+make updater OPTS="football ranking --all"          # update all football rankings
+make updater OPTS="football teams"                  # update football team info
+make updater OPTS="football season"                 # update football season info
+make updater OPTS="football json"                   # rewrite current football JSON
+make updater OPTS="football json --all"             # rewrite all football JSON
+make updater OPTS="basketball games --all"          # update all basketball games
+make updater OPTS="basketball ranking"              # update basketball rankings
 ```
 
-| Command | Flags | Description |
-|---------|-------|-------------|
-| `schedule` | | Run as a scheduled service (polls every 5 min Aug-Jan) |
-| `games` | `--all`, `--single <id>` | Update games (current week by default) |
-| `ranking` | `--all` | Update rankings (current season by default) |
-| `teams` | | Update team info from ESPN |
-| `season` | | Update season info |
-| `json` | `--all` | Rewrite JSON output (current season by default) |
+| Subcommand | Command | Flags | Description |
+|------------|---------|-------|-------------|
+| `schedule` | | | Run as scheduled service (both sports) |
+| `football` / `basketball` | `games` | `--all`, `--single <id>` | Update games (current week by default) |
+| | `ranking` | `--all` | Update rankings (current season by default) |
+| | `teams` | | Update team info from ESPN |
+| | `season` | | Update season info |
+| | `json` | `--all` | Rewrite JSON output (current season by default) |
 
 ## Development
 
@@ -124,7 +136,7 @@ make local-deploy     # build and run via docker compose
 ```
 
 In production, the container runs `updater schedule`, which polls for completed
-games every 5 minutes during the season (August through January).
+games during each sport's season (football: Aug–Jan, basketball: Nov–Apr).
 
 ## CI/CD
 

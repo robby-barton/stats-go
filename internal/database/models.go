@@ -17,8 +17,9 @@ func (Conference) TableName() string {
 }
 
 type TeamName struct {
-	TeamID           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null;unique"`
+	TeamID           int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Name             string `json:"name" gorm:"column:name;not null"`
+	Sport            string `json:"sport" gorm:"column:sport;primaryKey;default:cfb"`
 	Flair            string `json:"flair" gorm:"column:flair"`
 	Abbreviation     string `json:"abbreviation" gorm:"column:abbreviation"`
 	AltColor         string `json:"altColor" gorm:"column:alt_color"`
@@ -41,6 +42,7 @@ func (TeamName) TableName() string {
 type TeamSeason struct {
 	TeamID int64  `json:"team_id" gorm:"column:team_id;primaryKey;not null"`
 	Year   int64  `json:"year" gorm:"column:year;primaryKey"`
+	Sport  string `json:"sport" gorm:"column:sport;primaryKey;default:cfb"`
 	FBS    int64  `json:"fbs" gorm:"column:fbs"`
 	Conf   string `json:"conf" gorm:"column:conf"`
 }
@@ -56,6 +58,7 @@ type TeamWeekResult struct {
 	Year       int64   `json:"year" gorm:"column:year;primaryKey;not null"`
 	Week       int64   `json:"week" gorm:"column:week;primaryKey;not null"`
 	Postseason int64   `json:"postseason" gorm:"column:postseason;primaryKey"`
+	Sport      string  `json:"sport" gorm:"column:sport;primaryKey;default:cfb"`
 	FinalRank  int64   `json:"final_rank" gorm:"column:final_rank"`
 	FinalRaw   float64 `json:"final_raw" gorm:"column:final_raw"`
 	Wins       int64   `json:"wins" gorm:"column:wins"`
@@ -75,6 +78,7 @@ func (TeamWeekResult) TableName() string {
 type Game struct {
 	GameID     int64     `json:"game_id" gorm:"column:game_id;primaryKey;not null;unique"`
 	StartTime  time.Time `json:"start_time" gorm:"column:start_time"`
+	Sport      string    `json:"sport" gorm:"column:sport;default:cfb"`
 	Neutral    bool      `json:"neutral" gorm:"column:neutral"`
 	ConfGame   bool      `json:"conf_game" gorm:"column:conf_game"`
 	Season     int64     `json:"season" gorm:"column:season"`
