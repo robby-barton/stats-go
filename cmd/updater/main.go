@@ -45,10 +45,10 @@ func main() {
 	rootCmd.SilenceUsage = true
 
 	scheduleCmd := scheduleCommand(log, cfg, db, doWriter)
-	footballCmd := sportCommand(log, db, doWriter, espn.CollegeFootball)
-	basketballCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
+	ncaafCmd := sportCommand(log, db, doWriter, espn.CollegeFootball)
+	ncaambbCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
 
-	rootCmd.AddCommand(scheduleCmd, footballCmd, basketballCmd)
+	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaambbCmd)
 
 	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
 }

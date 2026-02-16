@@ -29,10 +29,10 @@ func main() {
 	}
 	rootCmd.SilenceUsage = true
 
-	footballCmd := sportRankCmd(db, "ncaaf", true)
-	basketballCmd := sportRankCmd(db, "ncaambb", false)
+	ncaafCmd := sportRankCmd(db, "ncaaf", true)
+	ncaambbCmd := sportRankCmd(db, "ncaambb", false)
 
-	rootCmd.AddCommand(footballCmd, basketballCmd)
+	rootCmd.AddCommand(ncaafCmd, ncaambbCmd)
 
 	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
 }
