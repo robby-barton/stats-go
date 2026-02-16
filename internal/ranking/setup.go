@@ -96,7 +96,7 @@ func (r *Ranker) createTeamList(findFbs int64) (TeamList, error) {
 
 	if err := r.DB.Model(&database.TeamSeason{}).
 		Select("team_names.team_id, team_names.name, team_seasons.conf").
-		Joins("left join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
+		Joins("join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
 		Where("team_seasons.fbs = ? and team_seasons.year = ? and team_seasons.sport = ?",
 			findFbs, r.Year, r.sportFilter()).
 		Scan(&teams).Error; err != nil {
