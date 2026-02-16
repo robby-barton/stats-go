@@ -2,6 +2,7 @@ package updater
 
 import (
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -171,6 +172,34 @@ func (u *Updater) insertGameInfo(game *game.ParsedGameInfo) error {
 	})
 }
 
+const gamesBatchSize = 100
+
+func (u *Updater) processGames(games []espn.Game) ([]int64, error) {
+	var allGameIDs []int64
+
+	for start := 0; start < len(games); start += gamesBatchSize {
+		end := min(start+gamesBatchSize, len(games))
+		batch := games[start:end]
+
+		for _, g := range batch {
+			stats, err := game.GetSingleGame(u.ESPN, g.ID)
+			if err != nil {
+				u.Logger.Warnf("skipping game %d: %v", g.ID, err)
+				continue
+			}
+			if err := u.insertGameInfo(stats); err != nil {
+				return allGameIDs, err
+			}
+			allGameIDs = append(allGameIDs, stats.GameInfo.GameID)
+			time.Sleep(u.ESPN.RateLimitDuration())
+		}
+
+		u.Logger.Infof("processed %d/%d games", end, len(games))
+	}
+
+	return allGameIDs, nil
+}
+
 func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
 	games, err := game.GetCurrentWeekGames(u.ESPN)
 	if err != nil {
@@ -182,20 +211,7 @@ func (u *Updater) UpdateCurrentWeek() ([]int64, error) {
 		return nil, err
 	}
 
-	gameStats, err := game.GetGameStats(u.ESPN, games)
-	if err != nil {
-		return nil, err
-	}
-
-	var gameIDs []int64
-	for _, game := range gameStats {
-		if err := u.insertGameInfo(game); err != nil {
-			return nil, err
-		}
-		gameIDs = append(gameIDs, game.GameInfo.GameID)
-	}
-
-	return gameIDs, nil
+	return u.processGames(games)
 }
 
 func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
@@ -209,20 +225,7 @@ func (u *Updater) UpdateGamesForYear(year int64) ([]int64, error) {
 		return nil, err
 	}
 
-	gameStats, err := game.GetGameStats(u.ESPN, games)
-	if err != nil {
-		return nil, err
-	}
-
-	var gameIDs []int64
-	for _, game := range gameStats {
-		if err := u.insertGameInfo(game); err != nil {
-			return nil, err
-		}
-		gameIDs = append(gameIDs, game.GameInfo.GameID)
-	}
-
-	return gameIDs, nil
+	return u.processGames(games)
 }
 
 func (u *Updater) UpdateSingleGame(gameID int64) error {

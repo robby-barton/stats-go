@@ -68,7 +68,7 @@ Key patterns:
   of the ranker CLI output (enforced via `forbidigo` lint).
 - Errors are propagated up — panics are only recovered at the scheduler level
   in `cmd/updater`.
-- ESPN API calls use `espn.Client.RateLimit` (default 200ms) between batch
+- ESPN API calls use `espn.Client.RateLimit` (default 500ms) between batch
   requests (in `game/`).
 - The HTTP client in `espn/request.go` retries with exponential backoff
   (`InitialBackoff * 2^attempt`, capped at 30s). Defaults: 5 retries, 1s initial backoff.

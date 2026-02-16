@@ -35,7 +35,7 @@ func NewClient() SportClient {
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
-		RateLimit:      200 * time.Millisecond,
+		RateLimit:      500 * time.Millisecond,
 		Sport:          CollegeFootball,
 	}}
 }
@@ -47,7 +47,7 @@ func NewClientForSport(sport Sport) SportClient {
 		MaxRetries:     5,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
-		RateLimit:      200 * time.Millisecond,
+		RateLimit:      500 * time.Millisecond,
 		Sport:          sport,
 		scheduleURL:    urls.Schedule,
 		gameStatsURL:   urls.GameStats,
