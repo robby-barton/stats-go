@@ -11,7 +11,7 @@ func TestSetGlobals_DefaultYear(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db}
+	r := &Ranker{DB: db, Sport: sportFootball}
 	if err := r.setGlobals(); err != nil {
 		t.Fatalf("setGlobals: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestSetGlobals_WeekSpecified(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db, Year: 2023, Week: 3}
+	r := &Ranker{DB: db, Year: 2023, Week: 3, Sport: sportFootball}
 	if err := r.setGlobals(); err != nil {
 		t.Fatalf("setGlobals: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestSetGlobals_WeekZero(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db, Year: 2023}
+	r := &Ranker{DB: db, Year: 2023, Sport: sportFootball}
 	if err := r.setGlobals(); err != nil {
 		t.Fatalf("setGlobals: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestSetGlobals_Postseason(t *testing.T) {
 		t.Fatalf("create postseason game: %v", err)
 	}
 
-	r := &Ranker{DB: db, Year: 2023}
+	r := &Ranker{DB: db, Year: 2023, Sport: sportFootball}
 	if err := r.setGlobals(); err != nil {
 		t.Fatalf("setGlobals: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestCreateTeamList_FBS(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db, Year: 2023, Week: 6}
+	r := &Ranker{DB: db, Year: 2023, Week: 6, Sport: sportFootball}
 	teamList, err := r.createTeamList(1)
 	if err != nil {
 		t.Fatalf("createTeamList: %v", err)
@@ -130,7 +130,7 @@ func TestCreateTeamList_FCS(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db, Year: 2023, Week: 6}
+	r := &Ranker{DB: db, Year: 2023, Week: 6, Sport: sportFootball}
 	teamList, err := r.createTeamList(0)
 	if err != nil {
 		t.Fatalf("createTeamList: %v", err)

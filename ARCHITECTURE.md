@@ -105,14 +105,14 @@ type Updater struct {
     DB     *gorm.DB
     Logger *zap.SugaredLogger
     Writer writer.Writer
-    ESPN   *espn.Client
-    Sport  espn.Sport
+    ESPN   espn.SportClient
 }
 ```
 
 Responsible for: fetching games, updating the DB, computing rankings, and
 exporting JSON. Used by `cmd/updater` in both scheduled and on-demand modes.
 Each sport gets its own `Updater` instance with a sport-specific ESPN client.
+The sport is derived from the `ESPN` client's `SportInfo()` method.
 
 ### Ranker Struct
 

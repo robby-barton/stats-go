@@ -35,7 +35,7 @@ func (r *Ranker) sportConfig() sportParams {
 	switch r.Sport {
 	case sportBasketball:
 		return sportParams{RequiredGames: 25, YearsBack: 1, MOVCaps: []int64{1, 20}}
-	case sportFootball, "":
+	case sportFootball:
 		return sportParams{RequiredGames: 12, YearsBack: 2, MOVCaps: []int64{1, 30}}
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", r.Sport))
@@ -46,8 +46,6 @@ func (r *Ranker) sportFilter() string {
 	switch r.Sport {
 	case sportFootball, sportBasketball:
 		return r.Sport
-	case "":
-		return sportFootball
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", r.Sport))
 	}

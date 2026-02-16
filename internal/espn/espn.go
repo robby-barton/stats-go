@@ -178,6 +178,9 @@ func (c *Client) GetTeamInfo() (*TeamInfoESPN, error) {
 func dateToParam(isoDate string) string {
 	t, err := time.Parse("2006-01-02T15:04Z", isoDate)
 	if err != nil {
+		if len(isoDate) < 10 {
+			return ""
+		}
 		// Best-effort: strip non-digits from the date portion.
 		return strings.ReplaceAll(isoDate[:10], "-", "")
 	}

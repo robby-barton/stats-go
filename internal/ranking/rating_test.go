@@ -13,6 +13,7 @@ func TestSRS_BasicRanking(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -55,6 +56,7 @@ func TestSRS_RankAssignment(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -89,6 +91,7 @@ func TestSOS_BasicRanking(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2023,
+		Sport:     sportFootball,
 		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -123,9 +126,10 @@ func TestCalculateRanking_FullPipeline(t *testing.T) {
 	seedTestData(t, db)
 
 	r := &Ranker{
-		DB:   db,
-		Year: 2023,
-		Week: 6,
+		DB:    db,
+		Year:  2023,
+		Week:  6,
+		Sport: sportFootball,
 	}
 
 	// Need to set startTime manually since setGlobals queries for week 6

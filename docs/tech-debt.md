@@ -11,6 +11,22 @@ Format rules:
 
 ## Active
 
+### Basketball historical season support not yet implemented
+
+Basketball ESPN methods (`GetGamesBySeason`, `GetWeeksInSeason`,
+`TeamConferencesByYear`, `HasPostseasonStarted`) only support the current
+season. A `validateCurrentSeason` guard returns an error for non-current years.
+Implementing historical support requires finding a year-parameterized ESPN
+endpoint for basketball or building a season-date archive.
+
+### `games` PK missing `sport` — cross-sport collision risk
+
+`games` table uses `game_id` alone as PK. Unlike `team_names`, `team_seasons`,
+and `team_week_results` (which all include `sport`), `games` relies on ESPN
+using separate ID spaces per sport. If that assumption breaks,
+`OnConflict{UpdateAll: true}` silently overwrites data. Fix requires a
+multi-step migration touching FK constraints — separate PR.
+
 ### ESPN teams endpoint missing some D1 basketball teams
 
 The `/teams?limit=1000` endpoint doesn't return all D1 basketball teams. At

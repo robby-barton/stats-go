@@ -92,7 +92,7 @@ frontend. See [espn-api.md](espn-api.md) for endpoint details.
 Key design choices:
 - **Filter on `STATUS_FINAL` only** — Only completed games are ingested to
   avoid partial data.
-- **200ms rate limiting** between sequential API calls (in `game/` package) to
+- **500ms rate limiting** between sequential API calls (in `game/` package) to
   avoid being blocked.
 - **5 retries with 1s backoff** on HTTP failures (in `espn/request.go`).
 - **URL vars as fallback** — ESPN endpoint URLs are `var` not `const`

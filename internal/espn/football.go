@@ -113,11 +113,11 @@ func (fc *FootballClient) TeamConferencesByYear(year int64) (map[int64]int64, er
 	return teamConfs, nil
 }
 
-func (fc *FootballClient) ConferenceMap() (map[Group]interface{}, error) {
+func (fc *FootballClient) ConferenceMap() (ConferenceMapResult, error) {
 	var res GameScheduleESPN
 	err := fc.makeRequest(fc.WeekURL(), &res)
 	if err != nil {
-		return nil, err
+		return ConferenceMapResult{}, err
 	}
 
 	conferences := res.Content.ConferenceAPI.Conferences
@@ -148,10 +148,14 @@ func (fc *FootballClient) ConferenceMap() (map[Group]interface{}, error) {
 		}
 	}
 
-	return map[Group]interface{}{ //nolint:exhaustive // football doesn't have D1Basketball
-		FBS:  fbs,
-		FCS:  fcs,
-		DII:  dii,
-		DIII: diii,
+	return ConferenceMapResult{
+		Conferences: map[Group]map[int64]string{ //nolint:exhaustive // football doesn't have D1Basketball
+			FBS: fbs,
+			FCS: fcs,
+		},
+		SubGroups: map[Group][]int64{ //nolint:exhaustive // only DII/DIII have sub-groups
+			DII:  dii,
+			DIII: diii,
+		},
 	}, nil
 }

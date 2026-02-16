@@ -54,21 +54,15 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 
 	var teamSeasons []database.TeamSeason
 
+	confResult, err := u.ESPN.ConferenceMap()
+	if err != nil {
+		return 0, err
+	}
+
 	if u.ESPN.SportInfo() == espn.CollegeBasketball {
 		// Basketball: all D1 teams are top-division (FBS=1). Conference names
 		// come from the conference API but there's no FBS/FCS split.
-		conferences, err := u.ESPN.ConferenceMap()
-		if err != nil {
-			return 0, err
-		}
-		// For basketball, conferences are all under D1Basketball parent group.
-		// The ConferenceMap returns them under the D1Basketball key.
-		d1Confs := map[int64]string{}
-		if confMap, ok := conferences[espn.D1Basketball]; ok {
-			if cm, ok := confMap.(map[int64]string); ok {
-				d1Confs = cm
-			}
-		}
+		d1Confs := confResult.Conferences[espn.D1Basketball]
 
 		for team, conf := range teamConfs {
 			confName, ok := d1Confs[conf]
@@ -84,13 +78,9 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 			})
 		}
 	} else {
-		conferences, err := u.ESPN.ConferenceMap()
-		if err != nil {
-			return 0, err
-		}
-		fbs := conferences[espn.FBS].(map[int64]string)
+		fbs := confResult.Conferences[espn.FBS]
 		fbsfcs := maps.Clone(fbs)
-		maps.Copy(fbsfcs, conferences[espn.FCS].(map[int64]string))
+		maps.Copy(fbsfcs, confResult.Conferences[espn.FCS])
 
 		for team, conf := range teamConfs {
 			confName, ok := fbsfcs[conf]
