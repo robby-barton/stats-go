@@ -41,7 +41,7 @@ func postgresDB(params *DBParams) (*gorm.DB, error) {
 }
 
 func sqliteDB() (*gorm.DB, error) {
-	return gorm.Open(sqlite.Open("db/cfb.db"), &gorm.Config{
+	return gorm.Open(sqlite.Open("db/stats.db"), &gorm.Config{
 		SkipDefaultTransaction: true, // handle my own transactions
 	})
 }

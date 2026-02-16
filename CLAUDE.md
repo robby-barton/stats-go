@@ -51,7 +51,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency graph and design
 rationale.
 
 Key patterns:
-- **Multi-sport support** — Football (`cfb`) and basketball (`cbb`) via `espn.Sport` type
+- **Multi-sport support** — Football (`ncaaf`) and basketball (`ncaambb`) via `espn.Sport` type
 - **Three independent CLI entry points** in `cmd/` — each wires its own deps
 - **Sport subcommands** — CLIs use `football`/`basketball` subcommands; `schedule` runs both
 - **Writer interface** (`internal/writer`) — pluggable output (DO Spaces vs local files)

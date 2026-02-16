@@ -51,10 +51,10 @@ The system supports college football and basketball through a `Sport` type in th
 ESPN package (`espn.CollegeFootball`, `espn.CollegeBasketball`). Each sport has:
 
 - **ESPN client configuration:** Different API URLs, group IDs, season types
-- **Database separation:** Shared tables use a `sport` column (`"cfb"` or `"cbb"`)
+- **Database separation:** Shared tables use a `sport` column (`"ncaaf"` or `"ncaambb"`)
 - **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV caps
 - **Division structure:** Football has FBS/FCS; basketball has D1 only
-- **JSON output paths:** Sport-prefixed (`cfb/ranking/...`, `cbb/ranking/...`)
+- **JSON output paths:** Sport-prefixed (`ncaaf/ranking/...`, `ncaambb/ranking/...`)
 
 The `Updater` and `Ranker` structs each carry a sport identifier. The CLI
 exposes sport subcommands (`football`, `basketball`). The `schedule` command runs
@@ -122,7 +122,7 @@ type Ranker struct {
     Year  int64
     Week  int64
     Fcs   bool
-    Sport string  // "cfb" or "cbb"
+    Sport string  // "ncaaf" or "ncaambb"
 }
 ```
 
@@ -151,7 +151,7 @@ by whether `DBParams` is nil (nil → SQLite).
 All models use composite primary keys for multi-dimensional lookups
 (team+year, game+team, etc.). Shared tables (`games`, `team_names`,
 `team_seasons`, `team_week_results`) include a `sport` column with a default of
-`"cfb"`. The `team_names`, `team_seasons`, and `team_week_results` primary keys
+`"ncaaf"`. The `team_names`, `team_seasons`, and `team_week_results` primary keys
 include `sport`. ESPN uses the same team IDs across sports for the same school,
 so `team_names` requires `(team_id, sport)` to store per-sport team metadata.
 

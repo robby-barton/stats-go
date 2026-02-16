@@ -29,8 +29,8 @@ func main() {
 	}
 	rootCmd.SilenceUsage = true
 
-	footballCmd := sportRankCmd(db, "cfb", true)
-	basketballCmd := sportRankCmd(db, "cbb", false)
+	footballCmd := sportRankCmd(db, "ncaaf", true)
+	basketballCmd := sportRankCmd(db, "ncaambb", false)
 
 	rootCmd.AddCommand(footballCmd, basketballCmd)
 
@@ -42,11 +42,11 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 	var top int
 	var fcs, rating bool
 
-	use := "football"
-	short := "Calculate college football rankings"
-	if sport == "cbb" {
-		use = "basketball"
-		short = "Calculate college basketball rankings"
+	use := "ncaaf"
+	short := "Calculate NCAA football rankings"
+	if sport == "ncaambb" {
+		use = "ncaambb"
+		short = "Calculate NCAA men's basketball rankings"
 	}
 
 	cmd := &cobra.Command{

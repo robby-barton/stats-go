@@ -282,20 +282,20 @@ func seedBasketballTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs", Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "cbb"},
-		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats", Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "cbb"},
-		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles", Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "cbb"},
-		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks", Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "cbb"},
+		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs", Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "ncaambb"},
+		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats", Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "ncaambb"},
+		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles", Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "ncaambb"},
+		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks", Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "ncaambb"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed basketball team_names: %v", err)
 	}
 
 	teamSeasons := []database.TeamSeason{
-		{TeamID: 11, Year: 2024, FBS: 1, Conf: "Big East", Sport: "cbb"},
-		{TeamID: 12, Year: 2024, FBS: 1, Conf: "Big East", Sport: "cbb"},
-		{TeamID: 13, Year: 2024, FBS: 1, Conf: "ACC", Sport: "cbb"},
-		{TeamID: 14, Year: 2024, FBS: 1, Conf: "ACC", Sport: "cbb"},
+		{TeamID: 11, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
+		{TeamID: 12, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
+		{TeamID: 13, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
+		{TeamID: 14, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
 	}
 	if err := db.Create(&teamSeasons).Error; err != nil {
 		t.Fatalf("seed basketball team_seasons: %v", err)
@@ -310,19 +310,19 @@ func seedBasketballGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: bbFixtureGameID1, Season: 2024, Week: 10,
 			HomeID: 11, AwayID: 12, HomeScore: 78, AwayScore: 65,
-			ConfGame: true, Sport: "cbb",
+			ConfGame: true, Sport: "ncaambb",
 			StartTime: time.Date(2024, 1, 6, 19, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: bbFixtureGameID2, Season: 2024, Week: 10,
 			HomeID: 13, AwayID: 14, HomeScore: 70, AwayScore: 68,
-			ConfGame: true, Sport: "cbb",
+			ConfGame: true, Sport: "ncaambb",
 			StartTime: time.Date(2024, 1, 6, 19, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: bbFixtureGameID4, Season: 2024, Week: 11,
 			HomeID: 11, AwayID: 13, HomeScore: 80, AwayScore: 75,
-			Sport: "cbb",
+			Sport: "ncaambb",
 			StartTime: time.Date(2024, 1, 13, 19, 0, 0, 0, time.UTC),
 		},
 	}
@@ -346,8 +346,8 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 	if err := u.DB.Where("game_id = ?", bbFixtureGameID1).First(&game).Error; err != nil {
 		t.Fatalf("game not found: %v", err)
 	}
-	if game.Sport != "cbb" {
-		t.Errorf("Sport = %q, want %q", game.Sport, "cbb")
+	if game.Sport != "ncaambb" {
+		t.Errorf("Sport = %q, want %q", game.Sport, "ncaambb")
 	}
 	if game.HomeScore != 78 || game.AwayScore != 65 {
 		t.Errorf("scores = %d-%d, want 78-65", game.HomeScore, game.AwayScore)
@@ -403,8 +403,8 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	var games []database.Game
 	u.DB.Find(&games)
 	for _, g := range games {
-		if g.Sport != "cbb" {
-			t.Errorf("game %d Sport = %q, want %q", g.GameID, g.Sport, "cbb")
+		if g.Sport != "ncaambb" {
+			t.Errorf("game %d Sport = %q, want %q", g.GameID, g.Sport, "ncaambb")
 		}
 	}
 
@@ -443,8 +443,8 @@ func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 		if s.FBS != 1 {
 			t.Errorf("team %d FBS = %d, want 1 (all D1 basketball)", s.TeamID, s.FBS)
 		}
-		if s.Sport != "cbb" {
-			t.Errorf("team %d Sport = %q, want %q", s.TeamID, s.Sport, "cbb")
+		if s.Sport != "ncaambb" {
+			t.Errorf("team %d Sport = %q, want %q", s.TeamID, s.Sport, "ncaambb")
 		}
 	}
 }
@@ -467,13 +467,13 @@ func TestBasketball_RankingForWeek(t *testing.T) {
 		t.Fatal("no ranking results found")
 	}
 
-	// All basketball results should have Fbs=true and Sport="cbb"
+	// All basketball results should have Fbs=true and Sport="ncaambb"
 	for _, r := range results {
 		if !r.Fbs {
 			t.Errorf("team %d Fbs = false, want true (basketball single D1 ranking)", r.TeamID)
 		}
-		if r.Sport != "cbb" {
-			t.Errorf("team %d Sport = %q, want %q", r.TeamID, r.Sport, "cbb")
+		if r.Sport != "ncaambb" {
+			t.Errorf("team %d Sport = %q, want %q", r.TeamID, r.Sport, "ncaambb")
 		}
 		if r.FinalRank == 0 {
 			t.Errorf("team %d has FinalRank 0", r.TeamID)
@@ -524,7 +524,7 @@ func TestBasketball_UpdateRecentJSON(t *testing.T) {
 			continue
 		}
 		// Check that no cfb files were written
-		if len(fileName) >= 3 && fileName[:3] == "cfb" {
+		if len(fileName) >= 3 && fileName[:3] == "ncaaf" {
 			t.Errorf("unexpected cfb file: %q", fileName)
 		}
 	}

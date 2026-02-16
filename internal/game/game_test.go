@@ -176,8 +176,8 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 		t.Fatalf("GetSingleGame: %v", err)
 	}
 
-	if parsed.GameInfo.Sport != "cbb" {
-		t.Errorf("Sport = %q, want %q", parsed.GameInfo.Sport, "cbb")
+	if parsed.GameInfo.Sport != "ncaambb" {
+		t.Errorf("Sport = %q, want %q", parsed.GameInfo.Sport, "ncaambb")
 	}
 	if parsed.GameInfo.GameID != 2001 {
 		t.Errorf("GameID = %d, want 2001", parsed.GameInfo.GameID)

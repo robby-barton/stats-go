@@ -204,7 +204,7 @@ func scheduleCommand(
 			}{
 				{
 					schedule: sportSchedule{
-						Name:          "football",
+						Name:          "ncaaf",
 						GamesCron:     "*/5 * * 1,8-12 *",
 						TeamInfoCron:  "0 5 * 1,8-12 0",
 						NewSeasonCron: "0 6 10 8 *",
@@ -213,7 +213,7 @@ func scheduleCommand(
 				},
 				{
 					schedule: sportSchedule{
-						Name:          "basketball",
+						Name:          "ncaambb",
 						GamesCron:     "*/5 * * 1-4,11-12 *",
 						TeamInfoCron:  "0 5 * 1-4,11-12 0",
 						NewSeasonCron: "0 6 1 11 *",
@@ -255,11 +255,11 @@ func sportCommand(
 ) *cobra.Command {
 	u := newUpdater(log, db, w, sport)
 
-	use := "football"
-	short := "College football one-shot commands"
+	use := "ncaaf"
+	short := "NCAA football one-shot commands"
 	if sport == espn.CollegeBasketball {
-		use = "basketball"
-		short = "College basketball one-shot commands"
+		use = "ncaambb"
+		short = "NCAA men's basketball one-shot commands"
 	}
 
 	cmd := &cobra.Command{

@@ -498,24 +498,24 @@ func seedTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide", Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true, Sport: "cfb"},
-		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers", Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true, Sport: "cfb"},
-		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats", Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true, Sport: "cfb"},
-		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs", Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true, Sport: "cfb"},
-		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles", Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true, Sport: "cfb"},
-		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons", Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true, Sport: "cfb"},
+		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide", Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers", Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats", Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs", Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles", Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons", Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true, Sport: "ncaaf"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed team_names: %v", err)
 	}
 
 	teamSeasons := []database.TeamSeason{
-		{TeamID: 1, Year: 2023, FBS: 1, Conf: "SEC", Sport: "cfb"},
-		{TeamID: 2, Year: 2023, FBS: 1, Conf: "SEC", Sport: "cfb"},
-		{TeamID: 3, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "cfb"},
-		{TeamID: 4, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "cfb"},
-		{TeamID: 5, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "cfb"},
-		{TeamID: 6, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "cfb"},
+		{TeamID: 1, Year: 2023, FBS: 1, Conf: "SEC", Sport: "ncaaf"},
+		{TeamID: 2, Year: 2023, FBS: 1, Conf: "SEC", Sport: "ncaaf"},
+		{TeamID: 3, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "ncaaf"},
+		{TeamID: 4, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "ncaaf"},
+		{TeamID: 5, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "ncaaf"},
+		{TeamID: 6, Year: 2023, FBS: 0, Conf: "MVFC", Sport: "ncaaf"},
 	}
 	if err := db.Create(&teamSeasons).Error; err != nil {
 		t.Fatalf("seed team_seasons: %v", err)
@@ -532,38 +532,38 @@ func seedGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: fixtureGameID1, Season: 2023, Week: 1,
 			HomeID: 1, AwayID: 2, HomeScore: 28, AwayScore: 14,
-			ConfGame: true, Sport: "cfb",
+			ConfGame: true, Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 2, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID2, Season: 2023, Week: 1,
 			HomeID: 3, AwayID: 4, HomeScore: 21, AwayScore: 10,
-			ConfGame: true, Sport: "cfb",
+			ConfGame: true, Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 2, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID4, Season: 2023, Week: 2,
 			HomeID: 1, AwayID: 3, HomeScore: 35, AwayScore: 17,
-			Sport: "cfb",
+			Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID5, Season: 2023, Week: 2,
 			HomeID: 2, AwayID: 4, HomeScore: 24, AwayScore: 21,
-			Sport: "cfb",
+			Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		// FCS games
 		{
 			GameID: 501001, Season: 2023, Week: 1,
 			HomeID: 5, AwayID: 6, HomeScore: 17, AwayScore: 10,
-			ConfGame: true, Sport: "cfb",
+			ConfGame: true, Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 2, 20, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: 501002, Season: 2023, Week: 2,
 			HomeID: 6, AwayID: 5, HomeScore: 14, AwayScore: 21,
-			ConfGame: true, Sport: "cfb",
+			ConfGame: true, Sport: "ncaaf",
 			StartTime: time.Date(2023, 9, 9, 20, 0, 0, 0, time.UTC),
 		},
 	}
