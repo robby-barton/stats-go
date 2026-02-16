@@ -17,22 +17,22 @@ func seedBasketballData(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 101, Name: "Hoops A", Sport: "ncaambb"},
-		{TeamID: 102, Name: "Hoops B", Sport: "ncaambb"},
-		{TeamID: 103, Name: "Hoops C", Sport: "ncaambb"},
-		{TeamID: 104, Name: "Hoops D", Sport: "ncaambb"},
-		{TeamID: 105, Name: "Hoops E", Sport: "ncaambb"},
+		{TeamID: 101, Name: "Hoops A", Sport: "ncaam"},
+		{TeamID: 102, Name: "Hoops B", Sport: "ncaam"},
+		{TeamID: 103, Name: "Hoops C", Sport: "ncaam"},
+		{TeamID: 104, Name: "Hoops D", Sport: "ncaam"},
+		{TeamID: 105, Name: "Hoops E", Sport: "ncaam"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed basketball team_names: %v", err)
 	}
 
 	teamSeasons := []database.TeamSeason{
-		{TeamID: 101, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
-		{TeamID: 102, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
-		{TeamID: 103, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
-		{TeamID: 104, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
-		{TeamID: 105, Year: 2024, FBS: 1, Conf: "Big 12", Sport: "ncaambb"},
+		{TeamID: 101, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaam"},
+		{TeamID: 102, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaam"},
+		{TeamID: 103, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaam"},
+		{TeamID: 104, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaam"},
+		{TeamID: 105, Year: 2024, FBS: 1, Conf: "Big 12", Sport: "ncaam"},
 	}
 	if err := db.Create(&teamSeasons).Error; err != nil {
 		t.Fatalf("seed basketball team_seasons: %v", err)
@@ -44,18 +44,18 @@ func seedBasketballData(t *testing.T, db *gorm.DB) {
 	games := []database.Game{
 		// Week 1
 		{GameID: 3001, Season: 2024, Week: 1, HomeID: 101, AwayID: 102,
-			HomeScore: 78, AwayScore: 65, ConfGame: true, Sport: "ncaambb", StartTime: base},
+			HomeScore: 78, AwayScore: 65, ConfGame: true, Sport: "ncaam", StartTime: base},
 		{GameID: 3002, Season: 2024, Week: 1, HomeID: 103, AwayID: 104,
-			HomeScore: 70, AwayScore: 68, ConfGame: true, Sport: "ncaambb", StartTime: base.Add(time.Hour)},
+			HomeScore: 70, AwayScore: 68, ConfGame: true, Sport: "ncaam", StartTime: base.Add(time.Hour)},
 		{GameID: 3003, Season: 2024, Week: 1, HomeID: 105, AwayID: 101,
-			HomeScore: 60, AwayScore: 72, Sport: "ncaambb", StartTime: base.Add(2 * time.Hour)},
+			HomeScore: 60, AwayScore: 72, Sport: "ncaam", StartTime: base.Add(2 * time.Hour)},
 		// Week 2
 		{GameID: 3004, Season: 2024, Week: 2, HomeID: 101, AwayID: 103,
-			HomeScore: 80, AwayScore: 75, Sport: "ncaambb", StartTime: base.Add(week)},
+			HomeScore: 80, AwayScore: 75, Sport: "ncaam", StartTime: base.Add(week)},
 		{GameID: 3005, Season: 2024, Week: 2, HomeID: 102, AwayID: 104,
-			HomeScore: 66, AwayScore: 64, Sport: "ncaambb", StartTime: base.Add(week + time.Hour)},
+			HomeScore: 66, AwayScore: 64, Sport: "ncaam", StartTime: base.Add(week + time.Hour)},
 		{GameID: 3006, Season: 2024, Week: 2, HomeID: 105, AwayID: 103,
-			HomeScore: 55, AwayScore: 55, Sport: "ncaambb", StartTime: base.Add(week + 2*time.Hour)},
+			HomeScore: 55, AwayScore: 55, Sport: "ncaam", StartTime: base.Add(week + 2*time.Hour)},
 	}
 	if err := db.Create(&games).Error; err != nil {
 		t.Fatalf("seed basketball games: %v", err)
@@ -79,7 +79,7 @@ func TestSetGlobals_Basketball(t *testing.T) {
 	// Also seed football data to ensure it's ignored
 	seedTestData(t, db)
 
-	r := &Ranker{DB: db, Sport: "ncaambb"}
+	r := &Ranker{DB: db, Sport: "ncaam"}
 	if err := r.setGlobals(); err != nil {
 		t.Fatalf("setGlobals: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestCreateTeamList_Basketball(t *testing.T) {
 	db := setupTestDB(t)
 	seedBasketballData(t, db)
 
-	r := &Ranker{DB: db, Year: 2024, Week: 3, Sport: "ncaambb"}
+	r := &Ranker{DB: db, Year: 2024, Week: 3, Sport: "ncaam"}
 
 	// All basketball teams have FBS=1
 	teamList, err := r.createTeamList(1)
@@ -125,7 +125,7 @@ func TestRecord_Basketball(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2024,
-		Sport:     "ncaambb",
+		Sport:     "ncaam",
 		startTime: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC), // after all games
 	}
 
@@ -158,7 +158,7 @@ func TestSRS_Basketball(t *testing.T) {
 	r := &Ranker{
 		DB:        db,
 		Year:      2024,
-		Sport:     "ncaambb",
+		Sport:     "ncaam",
 		startTime: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -199,7 +199,7 @@ func TestCalculateRanking_Basketball(t *testing.T) {
 	r := &Ranker{
 		DB:    db,
 		Year:  2024,
-		Sport: "ncaambb",
+		Sport: "ncaam",
 	}
 
 	teamList, err := r.CalculateRanking()
@@ -207,7 +207,7 @@ func TestCalculateRanking_Basketball(t *testing.T) {
 		t.Fatalf("CalculateRanking: %v", err)
 	}
 
-	// All 5 basketball teams should be included (all FBS=1 for ncaambb)
+	// All 5 basketball teams should be included (all FBS=1 for ncaam)
 	if len(teamList) != 5 {
 		t.Fatalf("len(teamList) = %d, want 5", len(teamList))
 	}

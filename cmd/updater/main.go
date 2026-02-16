@@ -46,9 +46,9 @@ func main() {
 
 	scheduleCmd := scheduleCommand(log, cfg, db, doWriter)
 	ncaafCmd := sportCommand(log, db, doWriter, espn.CollegeFootball)
-	ncaambbCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
+	ncaamCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
 
-	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaambbCmd)
+	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
 
 	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
 }
@@ -213,7 +213,7 @@ func scheduleCommand(
 				},
 				{
 					schedule: sportSchedule{
-						Name:          "ncaambb",
+						Name:          "ncaam",
 						GamesCron:     "*/5 * * 1-4,11-12 *",
 						TeamInfoCron:  "0 5 * 1-4,11-12 0",
 						NewSeasonCron: "0 6 1 11 *",
@@ -258,7 +258,7 @@ func sportCommand(
 	use := "ncaaf"
 	short := "NCAA football one-shot commands"
 	if sport == espn.CollegeBasketball {
-		use = "ncaambb"
+		use = "ncaam"
 		short = "NCAA men's basketball one-shot commands"
 	}
 

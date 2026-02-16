@@ -47,7 +47,7 @@ See `internal/ranking/rating.go`.
 
 Football and basketball data share the same tables (`games`, `team_names`,
 `team_seasons`, `team_week_results`) differentiated by a `sport` column
-(`"ncaaf"` or `"ncaambb"`). This avoids duplicating schema definitions and keeps
+(`"ncaaf"` or `"ncaam"`). This avoids duplicating schema definitions and keeps
 queries simple — just add `WHERE sport = ?`. The alternative (separate tables
 per sport) was rejected because the data models are identical and separate
 tables would mean duplicating every query and migration.
@@ -106,7 +106,7 @@ interface. This allows:
 - Local dev: plain JSON files written to disk
 - Testing: mock writers
 
-JSON output paths are sport-prefixed (`ncaaf/ranking/...`, `ncaambb/ranking/...`) to
+JSON output paths are sport-prefixed (`ncaaf/ranking/...`, `ncaam/ranking/...`) to
 keep football and basketball data separate in the output bucket.
 
 ## Scheduled Updates During Season
