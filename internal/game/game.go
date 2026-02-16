@@ -1,8 +1,6 @@
 package game
 
 import (
-	"time"
-
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 )
@@ -19,23 +17,6 @@ type ParsedGameInfo struct {
 	ReturnStats       []database.ReturnStats
 	KickStats         []database.KickStats
 	PuntStats         []database.PuntStats
-}
-
-func GetGameStats(client espn.SportClient, games []espn.Game) ([]*ParsedGameInfo, error) {
-	var parsedGameStats []*ParsedGameInfo
-
-	for _, game := range games {
-		gameStats, err := GetSingleGame(client, game.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		parsedGameStats = append(parsedGameStats, gameStats)
-
-		time.Sleep(client.RateLimitDuration())
-	}
-
-	return parsedGameStats, nil
 }
 
 func combineGames(gamesLists [][]espn.Game) []espn.Game {

@@ -2,6 +2,7 @@ package espn
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 )
 
@@ -118,5 +119,9 @@ func (f *FlexInt64) UnmarshalJSON(b []byte) error {
 func (r GameScheduleESPN) validate() error {
 	// Calendar is only present in football schedule responses. Basketball
 	// schedule responses omit it entirely, so we cannot require it here.
+	// However, both sports must return schedule data.
+	if len(r.Content.Schedule) == 0 {
+		return fmt.Errorf("empty schedule in response")
+	}
 	return nil
 }

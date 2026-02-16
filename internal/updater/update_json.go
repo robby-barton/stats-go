@@ -110,7 +110,7 @@ type resultJSON struct {
 func toJSON(rank *database.TeamWeekResult, teamMap map[int64]teamJSON) *resultJSON {
 	record := fmt.Sprintf("%d-%d", rank.Wins, rank.Losses)
 	if rank.Ties > 0 {
-		record = fmt.Sprintf("%d-%d-%d", rank.Week, rank.Losses, rank.Ties)
+		record = fmt.Sprintf("%d-%d-%d", rank.Wins, rank.Losses, rank.Ties)
 	}
 	return &resultJSON{
 		Team:      teamMap[rank.TeamID],
@@ -289,6 +289,10 @@ func (u *Updater) UpdateRecentJSON() error {
 		return err
 	}
 
+	if err := u.UpdateTeamsJSON(teamMap); err != nil {
+		return err
+	}
+
 	if err := u.UpdateGameCountJSON(teamMap); err != nil {
 		return err
 	}
@@ -331,7 +335,7 @@ func (u *Updater) UpdateRecentJSON() error {
 		if yearInfo.Postseason > 0 {
 			if err := u.DB.Where(
 				"sport = ? and year = ? and fbs = ? and postseason = 1",
-				sport, yearInfo.Year, division == fbs,
+				sport, yearInfo.Year, division == fbs || division == d1,
 			).
 				Order("final_rank").
 				Find(&weekRankings).Error; err != nil {
@@ -340,7 +344,7 @@ func (u *Updater) UpdateRecentJSON() error {
 		} else {
 			if err := u.DB.Where(
 				"sport = ? and year = ? and fbs = ? and week = ? and postseason = 0",
-				sport, yearInfo.Year, division == fbs, yearInfo.Week,
+				sport, yearInfo.Year, division == fbs || division == d1, yearInfo.Week,
 			).
 				Order("final_rank").
 				Find(&weekRankings).Error; err != nil {

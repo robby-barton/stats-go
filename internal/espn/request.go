@@ -65,7 +65,7 @@ func wrapClient(c *Client) SportClient {
 	case CollegeFootball:
 		return &FootballClient{Client: c}
 	default:
-		return &FootballClient{Client: c}
+		panic(fmt.Sprintf("unsupported sport: %s", c.Sport))
 	}
 }
 
@@ -95,7 +95,10 @@ func (c *Client) TeamInfoURL() string {
 
 // ScoreboardURL returns the scoreboard URL for this client.
 func (c *Client) ScoreboardURL() string {
-	return c.scoreboardURL
+	if c.scoreboardURL != "" {
+		return c.scoreboardURL
+	}
+	return scoreboardURL
 }
 
 type validatable interface {

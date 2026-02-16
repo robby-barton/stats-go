@@ -64,6 +64,9 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 			start := time.Now()
 			div, err := r.CalculateRanking()
 			duration := time.Since(start)
+			if err != nil {
+				return err
+			}
 
 			// sanitize input
 			if top <= 0 || top > len(div) {
@@ -75,7 +78,6 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 			} else {
 				r.PrintRankings(div, top)
 			}
-			fmt.Println(err)      //nolint:forbidigo // allow
 			fmt.Println(duration) //nolint:forbidigo // allow
 			return nil
 		},

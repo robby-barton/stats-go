@@ -299,30 +299,33 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	t.Cleanup(restore)
 	client := newTestClient()
 
-	// Empty response parses fine (validate is a no-op for schedule), but Year will be zero
-	year, err := client.DefaultSeason()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if year != 0 {
-		t.Errorf("year = %d, want 0 for empty response", year)
+	// Empty response fails validation because schedule data is missing.
+	_, err := client.DefaultSeason()
+	if err == nil {
+		t.Fatal("expected error for empty response, got nil")
 	}
 }
 
 func TestGameScheduleValidate(t *testing.T) {
-	// validate() is a no-op — calendar is football-specific and basketball
-	// schedule responses omit it. Methods that need calendar data guard
-	// themselves.
 	tests := []struct {
-		name string
-		resp GameScheduleESPN
+		name    string
+		resp    GameScheduleESPN
+		wantErr bool
 	}{
-		{name: "empty response", resp: GameScheduleESPN{}},
-		{name: "empty calendar", resp: GameScheduleESPN{Content: Content{Calendar: []Calendar{{}}}}},
+		{name: "empty response", resp: GameScheduleESPN{}, wantErr: true},
+		{name: "empty calendar", resp: GameScheduleESPN{Content: Content{Calendar: []Calendar{{}}}}, wantErr: true},
+		{
+			name: "valid schedule",
+			resp: GameScheduleESPN{Content: Content{Schedule: map[string]Day{"2026-01-01": {}}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.resp.validate(); err != nil {
+			err := tt.resp.validate()
+			if tt.wantErr && err == nil {
+				t.Error("validate() expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
 				t.Errorf("validate() returned unexpected error: %v", err)
 			}
 		})
