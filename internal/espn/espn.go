@@ -16,8 +16,8 @@ const (
 
 // Short database identifiers for each sport.
 const (
-	SportDBFootball   = "cfb"
-	SportDBBasketball = "cbb"
+	SportDBFootball   = "ncaaf"
+	SportDBBasketball = "ncaambb"
 )
 
 // SportDB returns the short database identifier for the sport.

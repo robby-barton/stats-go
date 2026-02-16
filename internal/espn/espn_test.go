@@ -375,11 +375,11 @@ func TestGameInfoValidate(t *testing.T) {
 }
 
 func TestSportDB(t *testing.T) {
-	if got := CollegeFootball.SportDB(); got != "cfb" {
-		t.Errorf("CollegeFootball.SportDB() = %q, want %q", got, "cfb")
+	if got := CollegeFootball.SportDB(); got != "ncaaf" {
+		t.Errorf("CollegeFootball.SportDB() = %q, want %q", got, "ncaaf")
 	}
-	if got := CollegeBasketball.SportDB(); got != "cbb" {
-		t.Errorf("CollegeBasketball.SportDB() = %q, want %q", got, "cbb")
+	if got := CollegeBasketball.SportDB(); got != "ncaambb" {
+		t.Errorf("CollegeBasketball.SportDB() = %q, want %q", got, "ncaambb")
 	}
 }
 

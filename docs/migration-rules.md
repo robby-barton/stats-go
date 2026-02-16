@@ -57,7 +57,7 @@ production.
 ## Schema Design Constraints
 
 - Shared tables (`games`, `team_names`, `team_seasons`, `team_week_results`)
-  carry a `sport` column (`"cfb"` or `"cbb"`). New columns on these tables
+  carry a `sport` column (`"ncaaf"` or `"ncaambb"`). New columns on these tables
   must be sport-agnostic or include sport-specific defaults.
 - `team_names` uses `(team_id, sport)` as its composite primary key. ESPN
   reuses team IDs across sports. Do not collapse this back to a single-column

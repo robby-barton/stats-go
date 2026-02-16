@@ -47,12 +47,12 @@ See `internal/ranking/rating.go`.
 
 Football and basketball data share the same tables (`games`, `team_names`,
 `team_seasons`, `team_week_results`) differentiated by a `sport` column
-(`"cfb"` or `"cbb"`). This avoids duplicating schema definitions and keeps
+(`"ncaaf"` or `"ncaambb"`). This avoids duplicating schema definitions and keeps
 queries simple — just add `WHERE sport = ?`. The alternative (separate tables
 per sport) was rejected because the data models are identical and separate
 tables would mean duplicating every query and migration.
 
-The `sport` column defaults to `"cfb"` for backward compatibility with existing
+The `sport` column defaults to `"ncaaf"` for backward compatibility with existing
 football-only data. ESPN uses the same team IDs for a school across sports
 (e.g., Alabama's team_id is identical in football and basketball), so
 `team_names` requires `(team_id, sport)` as its primary key to store per-sport
@@ -106,7 +106,7 @@ interface. This allows:
 - Local dev: plain JSON files written to disk
 - Testing: mock writers
 
-JSON output paths are sport-prefixed (`cfb/ranking/...`, `cbb/ranking/...`) to
+JSON output paths are sport-prefixed (`ncaaf/ranking/...`, `ncaambb/ranking/...`) to
 keep football and basketball data separate in the output bucket.
 
 ## Scheduled Updates During Season
