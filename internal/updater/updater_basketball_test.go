@@ -282,20 +282,20 @@ func seedBasketballTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs", Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "ncaambb"},
-		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats", Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "ncaambb"},
-		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles", Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "ncaambb"},
-		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks", Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "ncaambb"},
+		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs", Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "ncaam"},
+		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats", Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "ncaam"},
+		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles", Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "ncaam"},
+		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks", Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "ncaam"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed basketball team_names: %v", err)
 	}
 
 	teamSeasons := []database.TeamSeason{
-		{TeamID: 11, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
-		{TeamID: 12, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaambb"},
-		{TeamID: 13, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
-		{TeamID: 14, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaambb"},
+		{TeamID: 11, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaam"},
+		{TeamID: 12, Year: 2024, FBS: 1, Conf: "Big East", Sport: "ncaam"},
+		{TeamID: 13, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaam"},
+		{TeamID: 14, Year: 2024, FBS: 1, Conf: "ACC", Sport: "ncaam"},
 	}
 	if err := db.Create(&teamSeasons).Error; err != nil {
 		t.Fatalf("seed basketball team_seasons: %v", err)
@@ -310,19 +310,19 @@ func seedBasketballGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: bbFixtureGameID1, Season: 2024, Week: 10,
 			HomeID: 11, AwayID: 12, HomeScore: 78, AwayScore: 65,
-			ConfGame: true, Sport: "ncaambb",
+			ConfGame: true, Sport: "ncaam",
 			StartTime: time.Date(2024, 1, 6, 19, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: bbFixtureGameID2, Season: 2024, Week: 10,
 			HomeID: 13, AwayID: 14, HomeScore: 70, AwayScore: 68,
-			ConfGame: true, Sport: "ncaambb",
+			ConfGame: true, Sport: "ncaam",
 			StartTime: time.Date(2024, 1, 6, 19, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: bbFixtureGameID4, Season: 2024, Week: 11,
 			HomeID: 11, AwayID: 13, HomeScore: 80, AwayScore: 75,
-			Sport: "ncaambb",
+			Sport: "ncaam",
 			StartTime: time.Date(2024, 1, 13, 19, 0, 0, 0, time.UTC),
 		},
 	}
@@ -346,8 +346,8 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 	if err := u.DB.Where("game_id = ?", bbFixtureGameID1).First(&game).Error; err != nil {
 		t.Fatalf("game not found: %v", err)
 	}
-	if game.Sport != "ncaambb" {
-		t.Errorf("Sport = %q, want %q", game.Sport, "ncaambb")
+	if game.Sport != "ncaam" {
+		t.Errorf("Sport = %q, want %q", game.Sport, "ncaam")
 	}
 	if game.HomeScore != 78 || game.AwayScore != 65 {
 		t.Errorf("scores = %d-%d, want 78-65", game.HomeScore, game.AwayScore)
@@ -403,8 +403,8 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	var games []database.Game
 	u.DB.Find(&games)
 	for _, g := range games {
-		if g.Sport != "ncaambb" {
-			t.Errorf("game %d Sport = %q, want %q", g.GameID, g.Sport, "ncaambb")
+		if g.Sport != "ncaam" {
+			t.Errorf("game %d Sport = %q, want %q", g.GameID, g.Sport, "ncaam")
 		}
 	}
 
@@ -443,8 +443,8 @@ func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 		if s.FBS != 1 {
 			t.Errorf("team %d FBS = %d, want 1 (all D1 basketball)", s.TeamID, s.FBS)
 		}
-		if s.Sport != "ncaambb" {
-			t.Errorf("team %d Sport = %q, want %q", s.TeamID, s.Sport, "ncaambb")
+		if s.Sport != "ncaam" {
+			t.Errorf("team %d Sport = %q, want %q", s.TeamID, s.Sport, "ncaam")
 		}
 	}
 }
@@ -467,13 +467,13 @@ func TestBasketball_RankingForWeek(t *testing.T) {
 		t.Fatal("no ranking results found")
 	}
 
-	// All basketball results should have Fbs=true and Sport="ncaambb"
+	// All basketball results should have Fbs=true and Sport="ncaam"
 	for _, r := range results {
 		if !r.Fbs {
 			t.Errorf("team %d Fbs = false, want true (basketball single D1 ranking)", r.TeamID)
 		}
-		if r.Sport != "ncaambb" {
-			t.Errorf("team %d Sport = %q, want %q", r.TeamID, r.Sport, "ncaambb")
+		if r.Sport != "ncaam" {
+			t.Errorf("team %d Sport = %q, want %q", r.TeamID, r.Sport, "ncaam")
 		}
 		if r.FinalRank == 0 {
 			t.Errorf("team %d has FinalRank 0", r.TeamID)
@@ -500,11 +500,11 @@ func TestBasketball_UpdateRecentJSON(t *testing.T) {
 		t.Fatalf("UpdateRecentJSON: %v", err)
 	}
 
-	// Verify ncaambb/ prefix on expected files
+	// Verify ncaam/ prefix on expected files
 	expectedFiles := []string{
-		"ncaambb/availRanks.json",
-		"ncaambb/gameCount.json",
-		"ncaambb/latest.json",
+		"ncaam/availRanks.json",
+		"ncaam/gameCount.json",
+		"ncaam/latest.json",
 	}
 	for _, f := range expectedFiles {
 		if !cw.hasFile(f) {
@@ -512,15 +512,15 @@ func TestBasketball_UpdateRecentJSON(t *testing.T) {
 		}
 	}
 
-	// Verify ranking files use ncaambb/ prefix and d1 division
-	// Pattern: ncaambb/ranking/YEAR/d1/WEEK.json
+	// Verify ranking files use ncaam/ prefix and d1 division
+	// Pattern: ncaam/ranking/YEAR/d1/WEEK.json
 	if cw.fileCount() < len(expectedFiles) {
 		t.Errorf("total files = %d, want at least %d", cw.fileCount(), len(expectedFiles))
 	}
 
 	// Should NOT have fbs or fcs divisions
 	for fileName := range cw.data {
-		if fileName == "ncaambb/ranking" {
+		if fileName == "ncaam/ranking" {
 			continue
 		}
 		// Check that no ncaaf files were written

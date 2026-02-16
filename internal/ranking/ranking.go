@@ -10,7 +10,7 @@ import (
 
 const (
 	sportFootball   = "ncaaf"
-	sportBasketball = "ncaambb"
+	sportBasketball = "ncaam"
 )
 
 type Ranker struct {

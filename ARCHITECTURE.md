@@ -51,10 +51,10 @@ The system supports college football and basketball through a `Sport` type in th
 ESPN package (`espn.CollegeFootball`, `espn.CollegeBasketball`). Each sport has:
 
 - **ESPN client configuration:** Different API URLs, group IDs, season types
-- **Database separation:** Shared tables use a `sport` column (`"ncaaf"` or `"ncaambb"`)
+- **Database separation:** Shared tables use a `sport` column (`"ncaaf"` or `"ncaam"`)
 - **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV caps
 - **Division structure:** Football has FBS/FCS; basketball has D1 only
-- **JSON output paths:** Sport-prefixed (`ncaaf/ranking/...`, `ncaambb/ranking/...`)
+- **JSON output paths:** Sport-prefixed (`ncaaf/ranking/...`, `ncaam/ranking/...`)
 
 The `Updater` and `Ranker` structs each carry a sport identifier. The CLI
 exposes sport subcommands (`football`, `basketball`). The `schedule` command runs
@@ -122,7 +122,7 @@ type Ranker struct {
     Year  int64
     Week  int64
     Fcs   bool
-    Sport string  // "ncaaf" or "ncaambb"
+    Sport string  // "ncaaf" or "ncaam"
 }
 ```
 
