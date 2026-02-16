@@ -500,11 +500,11 @@ func TestBasketball_UpdateRecentJSON(t *testing.T) {
 		t.Fatalf("UpdateRecentJSON: %v", err)
 	}
 
-	// Verify cbb/ prefix on expected files
+	// Verify ncaambb/ prefix on expected files
 	expectedFiles := []string{
-		"cbb/availRanks.json",
-		"cbb/gameCount.json",
-		"cbb/latest.json",
+		"ncaambb/availRanks.json",
+		"ncaambb/gameCount.json",
+		"ncaambb/latest.json",
 	}
 	for _, f := range expectedFiles {
 		if !cw.hasFile(f) {
@@ -512,20 +512,20 @@ func TestBasketball_UpdateRecentJSON(t *testing.T) {
 		}
 	}
 
-	// Verify ranking files use cbb/ prefix and d1 division
-	// Pattern: cbb/ranking/YEAR/d1/WEEK.json
+	// Verify ranking files use ncaambb/ prefix and d1 division
+	// Pattern: ncaambb/ranking/YEAR/d1/WEEK.json
 	if cw.fileCount() < len(expectedFiles) {
 		t.Errorf("total files = %d, want at least %d", cw.fileCount(), len(expectedFiles))
 	}
 
 	// Should NOT have fbs or fcs divisions
 	for fileName := range cw.data {
-		if fileName == "cbb/ranking" {
+		if fileName == "ncaambb/ranking" {
 			continue
 		}
-		// Check that no cfb files were written
-		if len(fileName) >= 3 && fileName[:3] == "ncaaf" {
-			t.Errorf("unexpected cfb file: %q", fileName)
+		// Check that no ncaaf files were written
+		if len(fileName) >= 5 && fileName[:5] == "ncaaf" {
+			t.Errorf("unexpected ncaaf file: %q", fileName)
 		}
 	}
 

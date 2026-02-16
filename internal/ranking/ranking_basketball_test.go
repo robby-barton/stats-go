@@ -207,7 +207,7 @@ func TestCalculateRanking_Basketball(t *testing.T) {
 		t.Fatalf("CalculateRanking: %v", err)
 	}
 
-	// All 5 basketball teams should be included (all FBS=1 for cbb)
+	// All 5 basketball teams should be included (all FBS=1 for ncaambb)
 	if len(teamList) != 5 {
 		t.Fatalf("len(teamList) = %d, want 5", len(teamList))
 	}
