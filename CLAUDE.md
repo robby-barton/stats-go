@@ -2,7 +2,7 @@
 
 College sports computer ranking system written in Go. Collects game data from
 ESPN for football and basketball, computes rankings using a composite algorithm,
-and exports results to DigitalOcean Spaces.
+and serves results via an API.
 
 ## Repo Responsibilities
 
@@ -31,7 +31,7 @@ here. See [docs/multi-repo-workflow.md](docs/multi-repo-workflow.md).
 ```
 cmd/
   ranker/     CLI tool to calculate and print rankings
-  updater/    Service that fetches games and updates DB/JSON on a schedule
+  updater/    Service that fetches games and updates DB on a schedule
   migrate/    One-time migration from PostgreSQL to SQLite
 internal/
   config/     Environment-based configuration (godotenv)
@@ -41,8 +41,7 @@ internal/
   logger/     Structured logging (zap)
   ranking/    Ranking algorithm (SRS, SOS, composite scoring)
   team/       Team info parsing from ESPN
-  updater/    Orchestration of DB updates and JSON export
-  writer/     Output interface with DigitalOcean and local implementations
+  updater/    Orchestration of DB updates and ranking computation
 ```
 
 ## Architecture
@@ -54,8 +53,7 @@ Key patterns:
 - **Multi-sport support** — Football (`ncaaf`) and basketball (`ncaam`) via `espn.Sport` type
 - **Three independent CLI entry points** in `cmd/` — each wires its own deps
 - **Sport subcommands** — CLIs use `football`/`basketball` subcommands; `schedule` runs both
-- **Writer interface** (`internal/writer`) — pluggable output (DO Spaces vs local files)
-- **Updater struct** receives DB, Logger, Writer, ESPN client, and Sport via dependency injection
+- **Updater struct** receives DB, Logger, ESPN client, and Sport via dependency injection
 - **ESPN package** — per-client URLs via `NewClientForSport(sport)`, no DB dependency
 - **Ranking package** takes a `*gorm.DB` and sport, computes everything in-memory
 - **Sport column** on shared DB tables (`games`, `team_names`, `team_seasons`, `team_week_results`)

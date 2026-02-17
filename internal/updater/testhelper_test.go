@@ -3,12 +3,10 @@
 package updater
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -54,47 +52,6 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	}
 
 	return db
-}
-
-// ---------------------------------------------------------------------------
-// Capturing writer
-// ---------------------------------------------------------------------------
-
-type capturingWriter struct {
-	mu         sync.Mutex
-	data       map[string]any
-	purgeCount int
-}
-
-func newCapturingWriter() *capturingWriter {
-	return &capturingWriter{data: map[string]any{}}
-}
-
-func (w *capturingWriter) WriteData(_ context.Context, fileName string, data any) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.data[fileName] = data
-	return nil
-}
-
-func (w *capturingWriter) PurgeCache(_ context.Context) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.purgeCount++
-	return nil
-}
-
-func (w *capturingWriter) hasFile(name string) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	_, ok := w.data[name]
-	return ok
-}
-
-func (w *capturingWriter) fileCount() int {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return len(w.data)
 }
 
 // ---------------------------------------------------------------------------
@@ -459,11 +416,10 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 // Test Updater constructor
 // ---------------------------------------------------------------------------
 
-func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) (*Updater, *capturingWriter) {
+func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) *Updater {
 	t.Helper()
 
 	db := setupTestDB(t)
-	cw := newCapturingWriter()
 	ts := setupTestServer(t, scoreOverride)
 
 	restore := espn.SetTestURLs(
@@ -484,15 +440,14 @@ func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) (*Updater, *
 	u := &Updater{
 		DB:     db,
 		Logger: zap.NewNop().Sugar(),
-		Writer: cw,
 		ESPN:   client,
 	}
 
-	return u, cw
+	return u
 }
 
 // seedTeamsAndSeasons inserts teams and seasons into the test database
-// so that ranking and JSON-export tests have team context available.
+// so that ranking tests have team context available.
 // Includes 4 FBS teams and 2 FCS teams to exercise both ranking paths.
 func seedTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()

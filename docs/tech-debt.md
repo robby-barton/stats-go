@@ -11,6 +11,13 @@ Format rules:
 
 ## Active
 
+### `stats-web` header doesn't fit on mobile viewports
+
+The new header layout overflows or clips on narrow screens. This is a
+`stats-web` issue but is tracked here since this repo owns cross-repo
+coordination. Fix should be scoped in a `stats-web` PR once the desired
+layout is decided.
+
 ### Basketball historical season support not yet implemented
 
 Basketball ESPN methods (`GetGamesBySeason`, `GetWeeksInSeason`,
@@ -69,6 +76,13 @@ produces a confusing `<nil>` line. The error should be checked and the duration
 should use structured output or be omitted.
 
 ## Resolved
+
+### Remove JSON export from the updater (resolved 2026-02-16)
+
+Removed the entire JSON export pipeline: `internal/writer/` package,
+`update_json.go`, writer field from `Updater` struct, `DOConfig`/`Local` from
+config, `json` CLI subcommand, and all related test infrastructure. The
+`stats-web` frontend now consumes the API directly.
 
 ### `team_names` primary key missing `sport` (resolved 2026-02-14)
 

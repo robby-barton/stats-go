@@ -7,15 +7,12 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/robby-barton/stats-go/internal/database"
-	"github.com/robby-barton/stats-go/internal/writer"
 )
 
 type Config struct {
 	Env              string
 	DBParams         *database.DBParams
 	RevalidateSecret string
-	DOConfig         *writer.DOConfig
-	Local            bool
 }
 
 func SetupConfig() *Config {
@@ -38,15 +35,6 @@ func SetupConfig() *Config {
 			DBName:   os.Getenv("PG_DBNAME"),
 			SSLMode:  os.Getenv("PG_SSLMODE"),
 		},
-		DOConfig: &writer.DOConfig{
-			Key:      os.Getenv("DO_KEY"),
-			Secret:   os.Getenv("DO_SECRET"),
-			Endpoint: os.Getenv("DO_ENDPOINT"),
-			Bucket:   os.Getenv("DO_BUCKET"),
-			APIToken: os.Getenv("DO_API_TOKEN"),
-			CDNID:    os.Getenv("DO_CDN_ID"),
-		},
 		RevalidateSecret: os.Getenv("REVALIDATE_SECRET"),
-		Local:            local,
 	}
 }

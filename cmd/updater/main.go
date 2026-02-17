@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,7 +16,6 @@ import (
 	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
-	"github.com/robby-barton/stats-go/internal/writer"
 )
 
 func main() {
@@ -33,20 +31,15 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer sqlDB.Close()
 
-	doWriter, err := writer.NewDigitalOceanWriter(cfg.DOConfig)
-	if err != nil {
-		panic(err)
-	}
-
 	rootCmd := &cobra.Command{
 		Use:   "updater",
 		Short: "College sports data updater",
 	}
 	rootCmd.SilenceUsage = true
 
-	scheduleCmd := scheduleCommand(log, cfg, db, doWriter)
-	ncaafCmd := sportCommand(log, db, doWriter, espn.CollegeFootball)
-	ncaamCmd := sportCommand(log, db, doWriter, espn.CollegeBasketball)
+	scheduleCmd := scheduleCommand(log, db)
+	ncaafCmd := sportCommand(log, db, espn.CollegeFootball)
+	ncaamCmd := sportCommand(log, db, espn.CollegeBasketball)
 
 	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
 
@@ -56,13 +49,11 @@ func main() {
 func newUpdater(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
-	w writer.Writer,
 	sport espn.Sport,
 ) updater.Updater {
 	return updater.Updater{
 		DB:     db,
 		Logger: log,
-		Writer: w,
 		ESPN:   espn.NewClientForSport(sport),
 	}
 }
@@ -80,7 +71,6 @@ type sportSchedule struct {
 func (ss sportSchedule) registerJobs(
 	s gocron.Scheduler,
 	log *zap.SugaredLogger,
-	cfg *config.Config,
 	u updater.Updater,
 ) func() {
 	update := make(chan bool, 1)
@@ -102,12 +92,6 @@ func (ss sportSchedule) registerJobs(
 						return
 					}
 					log.Infof("%s rankings updated", ss.Name)
-
-					if !cfg.Local {
-						if err := u.UpdateRecentJSON(); err != nil {
-							log.Error(err)
-						}
-					}
 				}()
 			case <-stop:
 				return
@@ -149,14 +133,6 @@ func (ss sportSchedule) registerJobs(
 		}
 
 		log.Infof("%s: updated %d teams", ss.Name, addedTeams)
-		if !cfg.Local {
-			if err := u.UpdateTeamsJSON(nil); err != nil {
-				log.Error(err)
-			}
-			if err := u.Writer.PurgeCache(context.Background()); err != nil {
-				log.Error(err)
-			}
-		}
 	})); err != nil {
 		panic(err)
 	}
@@ -185,9 +161,7 @@ func (ss sportSchedule) registerJobs(
 
 func scheduleCommand(
 	log *zap.SugaredLogger,
-	cfg *config.Config,
 	db *gorm.DB,
-	w writer.Writer,
 ) *cobra.Command {
 	return &cobra.Command{
 		Use:   "schedule",
@@ -224,8 +198,8 @@ func scheduleCommand(
 
 			var stopFuncs []func()
 			for _, sp := range sports {
-				u := newUpdater(log, db, w, sp.sport)
-				stopFn := sp.schedule.registerJobs(s, log, cfg, u)
+				u := newUpdater(log, db, sp.sport)
+				stopFn := sp.schedule.registerJobs(s, log, u)
 				stopFuncs = append(stopFuncs, stopFn)
 			}
 
@@ -250,10 +224,9 @@ func scheduleCommand(
 func sportCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
-	w writer.Writer,
 	sport espn.Sport,
 ) *cobra.Command {
-	u := newUpdater(log, db, w, sport)
+	u := newUpdater(log, db, sport)
 
 	use := "ncaaf"
 	short := "NCAA football one-shot commands"
@@ -349,26 +322,7 @@ func sportCommand(
 		},
 	}
 
-	var jsonAll bool
-	jsonCmd := &cobra.Command{
-		Use:   "json",
-		Short: "Rewrite JSON output",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			var err error
-			if jsonAll {
-				err = u.UpdateAllJSON()
-			} else {
-				err = u.UpdateRecentJSON()
-			}
-			if err != nil {
-				log.Error(err)
-			}
-			return nil
-		},
-	}
-	jsonCmd.Flags().BoolVar(&jsonAll, "all", false, "rewrite all JSON")
-
-	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, jsonCmd)
+	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd)
 
 	return cmd
 }
