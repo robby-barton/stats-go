@@ -27,22 +27,19 @@ ranking algorithm -> output.
               │  (Postgres or SQLite)   │  Sport column on shared tables
               └────────────┬────────────┘
                            │
-          ┌────────────────┼────────────────┐
-          │                │                │
-   ┌──────▼──────┐  ┌─────▼──────┐  ┌──────▼──────┐
-   │  internal/   │  │ internal/  │  │  internal/  │
-   │  ranking     │  │ updater    │  │  writer     │
-   │  (algorithm) │  │ (orchestr) │  │ (interface) │
-   └──────────────┘  └────────────┘  └─────────────┘
-          │                │                │
-          │         ┌──────┴──────┐         │
-          │         │  Uses both  │─────────┘
-          │         └─────────────┘
-          │
-   ┌──────┴──────────────────────────────────┐
-   │              cmd/ entry points           │
-   │  ranker     updater     migrate          │
-   └──────────────────────────────────────────┘
+          ┌────────────────┼────────────┐
+          │                │            │
+   ┌──────▼──────┐  ┌─────▼──────┐     │
+   │  internal/   │  │ internal/  │     │
+   │  ranking     │  │ updater    │     │
+   │  (algorithm) │  │ (orchestr) │     │
+   └──────────────┘  └────────────┘     │
+          │                │            │
+          │                │            │
+   ┌──────┴─────────────────────────────┘
+   │              cmd/ entry points
+   │  ranker     updater     migrate
+   └────────────────────────────────────┘
 ```
 
 ## Multi-Sport Support
@@ -54,7 +51,6 @@ ESPN package (`espn.CollegeFootball`, `espn.CollegeBasketball`). Each sport has:
 - **Database separation:** Shared tables use a `sport` column (`"ncaaf"` or `"ncaam"`)
 - **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV caps
 - **Division structure:** Football has FBS/FCS; basketball has D1 only
-- **JSON output paths:** Sport-prefixed (`ncaaf/ranking/...`, `ncaam/ranking/...`)
 
 The `Updater` and `Ranker` structs each carry a sport identifier. The CLI
 exposes sport subcommands (`football`, `basketball`). The `schedule` command runs
@@ -67,14 +63,13 @@ same level or from `cmd/`.
 
 ```
 cmd/ranker   → config, database, ranking
-cmd/updater  → config, database, logger, updater, writer, espn
+cmd/updater  → config, database, logger, updater, espn
 cmd/migrate  → database
 
-updater      → database, espn, game, ranking, team, writer
+updater      → database, espn, game, ranking, team
 game         → database, espn
 team         → espn
 ranking      → database
-writer       → (external: AWS SDK, DO API)
 espn         → (external: net/http only)
 config       → (external: godotenv)
 logger       → (external: zap)
@@ -82,19 +77,6 @@ database     → (external: gorm)
 ```
 
 ## Key Abstractions
-
-### Writer Interface
-
-```go
-type Writer interface {
-    WriteData(ctx context.Context, fileName string, data any) error
-    PurgeCache(ctx context.Context) error
-}
-```
-
-Two implementations:
-- **DigitalOceanWriter** — uploads gzipped JSON to DO Spaces, purges CDN cache
-- **DefaultWriter** — writes JSON to local filesystem
 
 ### Updater Struct
 
@@ -104,13 +86,12 @@ Central orchestrator that ties together all internal packages:
 type Updater struct {
     DB     *gorm.DB
     Logger *zap.SugaredLogger
-    Writer writer.Writer
     ESPN   espn.SportClient
 }
 ```
 
-Responsible for: fetching games, updating the DB, computing rankings, and
-exporting JSON. Used by `cmd/updater` in both scheduled and on-demand modes.
+Responsible for: fetching games, updating the DB, and computing rankings.
+Used by `cmd/updater` in both scheduled and on-demand modes.
 Each sport gets its own `Updater` instance with a sport-specific ESPN client.
 The sport is derived from the `ESPN` client's `SportInfo()` method.
 
@@ -160,4 +141,3 @@ so `team_names` requires `(team_id, sport)` to store per-sport team metadata.
 - **Docker:** Multi-stage build (`golang:1.26-alpine` → `alpine:latest`)
 - **Production:** `updater schedule` running in a container alongside PostgreSQL
 - **CI/CD:** GitHub Actions — lint and test on PR, build+push on merge to master
-- **Output:** JSON files served from DigitalOcean Spaces CDN

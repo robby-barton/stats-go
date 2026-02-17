@@ -10,7 +10,7 @@ import (
 )
 
 func TestUpdateSingleGame(t *testing.T) {
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	if err := u.UpdateSingleGame(fixtureGameID1); err != nil {
 		t.Fatalf("UpdateSingleGame: %v", err)
@@ -51,7 +51,7 @@ func TestUpdateSingleGame(t *testing.T) {
 }
 
 func TestUpdateCurrentWeek(t *testing.T) {
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	gameIDs, err := u.UpdateCurrentWeek()
 	if err != nil {
@@ -95,7 +95,7 @@ func TestUpdateCurrentWeek(t *testing.T) {
 
 func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 	// First run: normal scores
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	_, err := u.UpdateCurrentWeek()
 	if err != nil {
@@ -142,7 +142,7 @@ func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 }
 
 func TestUpdateTeamInfo(t *testing.T) {
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	count, err := u.UpdateTeamInfo()
 	if err != nil {
@@ -172,7 +172,7 @@ func TestUpdateTeamInfo(t *testing.T) {
 }
 
 func TestUpdateTeamSeasons(t *testing.T) {
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	count, err := u.UpdateTeamSeasons(true)
 	if err != nil {
@@ -205,7 +205,7 @@ func TestUpdateTeamSeasons(t *testing.T) {
 }
 
 func TestRankingForWeek(t *testing.T) {
-	u, _ := newTestUpdater(t, nil)
+	u := newTestUpdater(t, nil)
 
 	// Seed teams, seasons, and games directly
 	seedTeamsAndSeasons(t, u.DB)
@@ -237,45 +237,6 @@ func TestRankingForWeek(t *testing.T) {
 	}
 	if fbsResults != 4 {
 		t.Errorf("FBS results = %d, want 4", fbsResults)
-	}
-}
-
-func TestUpdateRecentJSON(t *testing.T) {
-	u, cw := newTestUpdater(t, nil)
-
-	// Seed the full pipeline: teams, seasons, games, rankings
-	seedTeamsAndSeasons(t, u.DB)
-	seedGames(t, u.DB)
-
-	if err := u.UpdateRecentRankings(); err != nil {
-		t.Fatalf("UpdateRecentRankings: %v", err)
-	}
-
-	// Run JSON export
-	if err := u.UpdateRecentJSON(); err != nil {
-		t.Fatalf("UpdateRecentJSON: %v", err)
-	}
-
-	// Verify expected files were written
-	expectedFiles := []string{
-		"ncaaf/availRanks.json",
-		"ncaaf/gameCount.json",
-		"ncaaf/latest.json",
-	}
-	for _, f := range expectedFiles {
-		if !cw.hasFile(f) {
-			t.Errorf("expected file %q not written", f)
-		}
-	}
-
-	// Verify ranking files were written (pattern: ranking/YEAR/DIVISION/WEEK.json)
-	if cw.fileCount() < len(expectedFiles) {
-		t.Errorf("total files = %d, want at least %d", cw.fileCount(), len(expectedFiles))
-	}
-
-	// Verify PurgeCache was called
-	if cw.purgeCount != 1 {
-		t.Errorf("PurgeCache count = %d, want 1", cw.purgeCount)
 	}
 }
 

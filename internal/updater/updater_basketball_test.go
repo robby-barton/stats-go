@@ -240,11 +240,10 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 // Basketball test Updater constructor
 // ---------------------------------------------------------------------------
 
-func newBasketballTestUpdater(t *testing.T) (*Updater, *capturingWriter) {
+func newBasketballTestUpdater(t *testing.T) *Updater {
 	t.Helper()
 
 	db := setupTestDB(t)
-	cw := newCapturingWriter()
 	ts := setupBasketballTestServer(t)
 
 	restore := espn.SetTestURLs(
@@ -270,11 +269,10 @@ func newBasketballTestUpdater(t *testing.T) (*Updater, *capturingWriter) {
 	u := &Updater{
 		DB:     db,
 		Logger: zap.NewNop().Sugar(),
-		Writer: cw,
 		ESPN:   client,
 	}
 
-	return u, cw
+	return u
 }
 
 // seedBasketballTeamsAndSeasons inserts 4 basketball teams (all FBS=1).
@@ -336,7 +334,7 @@ func seedBasketballGames(t *testing.T, db *gorm.DB) {
 // ---------------------------------------------------------------------------
 
 func TestBasketball_UpdateSingleGame(t *testing.T) {
-	u, _ := newBasketballTestUpdater(t)
+	u := newBasketballTestUpdater(t)
 
 	if err := u.UpdateSingleGame(bbFixtureGameID1); err != nil {
 		t.Fatalf("UpdateSingleGame: %v", err)
@@ -376,7 +374,7 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 }
 
 func TestBasketball_UpdateCurrentWeek(t *testing.T) {
-	u, _ := newBasketballTestUpdater(t)
+	u := newBasketballTestUpdater(t)
 
 	gameIDs, err := u.UpdateCurrentWeek()
 	if err != nil {
@@ -419,7 +417,7 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 }
 
 func TestBasketball_UpdateTeamSeasons(t *testing.T) {
-	u, _ := newBasketballTestUpdater(t)
+	u := newBasketballTestUpdater(t)
 
 	count, err := u.UpdateTeamSeasons(true)
 	if err != nil {
@@ -450,7 +448,7 @@ func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 }
 
 func TestBasketball_RankingForWeek(t *testing.T) {
-	u, _ := newBasketballTestUpdater(t)
+	u := newBasketballTestUpdater(t)
 
 	seedBasketballTeamsAndSeasons(t, u.DB)
 	seedBasketballGames(t, u.DB)
@@ -483,54 +481,5 @@ func TestBasketball_RankingForWeek(t *testing.T) {
 	// Should have 4 results (one per team)
 	if len(results) != 4 {
 		t.Errorf("results count = %d, want 4", len(results))
-	}
-}
-
-func TestBasketball_UpdateRecentJSON(t *testing.T) {
-	u, cw := newBasketballTestUpdater(t)
-
-	seedBasketballTeamsAndSeasons(t, u.DB)
-	seedBasketballGames(t, u.DB)
-
-	if err := u.UpdateRecentRankings(); err != nil {
-		t.Fatalf("UpdateRecentRankings: %v", err)
-	}
-
-	if err := u.UpdateRecentJSON(); err != nil {
-		t.Fatalf("UpdateRecentJSON: %v", err)
-	}
-
-	// Verify ncaam/ prefix on expected files
-	expectedFiles := []string{
-		"ncaam/availRanks.json",
-		"ncaam/gameCount.json",
-		"ncaam/latest.json",
-	}
-	for _, f := range expectedFiles {
-		if !cw.hasFile(f) {
-			t.Errorf("expected file %q not written", f)
-		}
-	}
-
-	// Verify ranking files use ncaam/ prefix and d1 division
-	// Pattern: ncaam/ranking/YEAR/d1/WEEK.json
-	if cw.fileCount() < len(expectedFiles) {
-		t.Errorf("total files = %d, want at least %d", cw.fileCount(), len(expectedFiles))
-	}
-
-	// Should NOT have fbs or fcs divisions
-	for fileName := range cw.data {
-		if fileName == "ncaam/ranking" {
-			continue
-		}
-		// Check that no ncaaf files were written
-		if len(fileName) >= 5 && fileName[:5] == "ncaaf" {
-			t.Errorf("unexpected ncaaf file: %q", fileName)
-		}
-	}
-
-	// Verify PurgeCache was called
-	if cw.purgeCount != 1 {
-		t.Errorf("PurgeCache count = %d, want 1", cw.purgeCount)
 	}
 }
