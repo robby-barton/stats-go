@@ -11,13 +11,6 @@ Format rules:
 
 ## Active
 
-### `stats-web` header doesn't fit on mobile viewports
-
-The new header layout overflows or clips on narrow screens. This is a
-`stats-web` issue but is tracked here since this repo owns cross-repo
-coordination. Fix should be scoped in a `stats-web` PR once the desired
-layout is decided.
-
 ### Basketball historical season support not yet implemented
 
 Basketball ESPN methods (`GetGamesBySeason`, `GetWeeksInSeason`,
@@ -69,6 +62,13 @@ and the fallback methods.
 See `internal/espn/request.go:58-79`.
 
 ## Resolved
+
+### `stats-web` header doesn't fit on mobile viewports (resolved 2026-02-16)
+
+Added a hamburger menu to `stats-web` that collapses nav links behind a toggle
+on viewports under 48rem. Removed the `min-width: 45rem` rule that forced a
+720px minimum width. Implemented with CSS media queries and a small inline
+script — no new React island needed.
 
 ### `fmt.Println` in ranker CLI for error and duration output (resolved 2026-02-16)
 
