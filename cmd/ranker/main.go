@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -78,7 +79,7 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 			} else {
 				r.PrintRankings(div, top)
 			}
-			fmt.Println(duration) //nolint:forbidigo // allow
+			fmt.Fprintf(os.Stderr, "%s\n", duration)
 			return nil
 		},
 	}

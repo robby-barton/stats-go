@@ -68,14 +68,14 @@ and the fallback methods.
 
 See `internal/espn/request.go:58-79`.
 
-### `fmt.Println` in ranker CLI for error and duration output
-
-`cmd/ranker/main.go` prints `err` (which may be `nil`) and `duration` via
-`fmt.Println` with `//nolint:forbidigo` suppression. Printing a nil error
-produces a confusing `<nil>` line. The error should be checked and the duration
-should use structured output or be omitted.
-
 ## Resolved
+
+### `fmt.Println` in ranker CLI for error and duration output (resolved 2026-02-16)
+
+Changed duration output from `fmt.Println` to `fmt.Fprintf(os.Stderr, ...)` so
+it doesn't mix with ranking table output on stdout and no longer needs a
+`forbidigo` nolint directive. The nil-error print was already fixed in a prior
+change (error is checked and returned before reaching the print).
 
 ### Remove JSON export from the updater (resolved 2026-02-16)
 
