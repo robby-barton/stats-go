@@ -10,9 +10,9 @@ import (
 )
 
 type Config struct {
-	Env              string
-	DBParams         *database.DBParams
-	RevalidateSecret string
+	Env          string
+	DBParams     *database.DBParams
+	DeployScript string
 }
 
 func SetupConfig() *Config {
@@ -35,6 +35,6 @@ func SetupConfig() *Config {
 			DBName:   os.Getenv("PG_DBNAME"),
 			SSLMode:  os.Getenv("PG_SSLMODE"),
 		},
-		RevalidateSecret: os.Getenv("REVALIDATE_SECRET"),
+		DeployScript: os.Getenv("DEPLOY_SCRIPT"),
 	}
 }

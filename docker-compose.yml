@@ -10,8 +10,12 @@ services:
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
       PG_DBNAME: ${PG_DBNAME}
-      PG_SSLMODE: ${PG_SSLMODE} 
+      PG_SSLMODE: ${PG_SSLMODE}
       TZ: ${TZ:-America/New_York}
+      DEPLOY_SCRIPT: ${DEPLOY_SCRIPT:-/scripts/deploy-web.sh}
+      CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
     depends_on:
       db:
         condition: service_healthy
