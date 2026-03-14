@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -37,7 +39,7 @@ func main() {
 	}
 	rootCmd.SilenceUsage = true
 
-	scheduleCmd := scheduleCommand(log, db)
+	scheduleCmd := scheduleCommand(log, db, cfg.DeployScript)
 	ncaafCmd := sportCommand(log, db, espn.CollegeFootball)
 	ncaamCmd := sportCommand(log, db, espn.CollegeBasketball)
 
@@ -58,6 +60,53 @@ func newUpdater(
 	}
 }
 
+// deployer runs a deploy script in the background after rankings are updated.
+// Calls to Trigger are coalesced: if a deploy is already queued, extra triggers
+// are dropped so at most one deploy is pending at a time.
+type deployer struct {
+	script  string
+	log     *zap.SugaredLogger
+	trigger chan struct{}
+}
+
+func newDeployer(log *zap.SugaredLogger, script string) *deployer {
+	d := &deployer{
+		script:  script,
+		log:     log,
+		trigger: make(chan struct{}, 1),
+	}
+	go d.run()
+	return d
+}
+
+// Trigger enqueues a deploy. If one is already pending, this is a no-op.
+func (d *deployer) Trigger() {
+	if d.script == "" {
+		return
+	}
+	select {
+	case d.trigger <- struct{}{}:
+	default:
+	}
+}
+
+func (d *deployer) stop() {
+	close(d.trigger)
+}
+
+func (d *deployer) run() {
+	for range d.trigger {
+		//nolint:gosec // DEPLOY_SCRIPT is operator-supplied config, not user input
+		cmd := exec.CommandContext(context.Background(), d.script)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			d.log.Errorf("deploy script failed: %v\n%s", err, out)
+			continue
+		}
+		d.log.Infof("deploy script completed:\n%s", out)
+	}
+}
+
 // sportSchedule holds the cron expressions for a sport's scheduled jobs.
 type sportSchedule struct {
 	Name          string // human-readable label for log messages
@@ -72,6 +121,7 @@ func (ss sportSchedule) registerJobs(
 	s gocron.Scheduler,
 	log *zap.SugaredLogger,
 	u updater.Updater,
+	d *deployer,
 ) func() {
 	update := make(chan bool, 1)
 	stop := make(chan bool, 1)
@@ -92,6 +142,7 @@ func (ss sportSchedule) registerJobs(
 						return
 					}
 					log.Infof("%s rankings updated", ss.Name)
+					d.Trigger()
 				}()
 			case <-stop:
 				return
@@ -162,6 +213,7 @@ func (ss sportSchedule) registerJobs(
 func scheduleCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
+	deployScript string,
 ) *cobra.Command {
 	return &cobra.Command{
 		Use:   "schedule",
@@ -171,6 +223,8 @@ func scheduleCommand(
 			if err != nil {
 				panic(err)
 			}
+
+			d := newDeployer(log, deployScript)
 
 			sports := []struct {
 				schedule sportSchedule
@@ -199,7 +253,7 @@ func scheduleCommand(
 			var stopFuncs []func()
 			for _, sp := range sports {
 				u := newUpdater(log, db, sp.sport)
-				stopFn := sp.schedule.registerJobs(s, log, u)
+				stopFn := sp.schedule.registerJobs(s, log, u, d)
 				stopFuncs = append(stopFuncs, stopFn)
 			}
 
@@ -215,6 +269,7 @@ func scheduleCommand(
 			for _, fn := range stopFuncs {
 				fn()
 			}
+			d.stop()
 
 			return nil
 		},
