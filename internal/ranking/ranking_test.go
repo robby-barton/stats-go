@@ -76,12 +76,12 @@ func TestFinalRanking_Basic(t *testing.T) {
 		},
 	}
 
-	r := &Ranker{}
+	r := &Ranker{Sport: sportFootball}
 	r.finalRanking(teamList)
 
-	// Alpha: 1.0*0.60 + 1.0*0.30 + 0.8*0.10 = 0.98
-	// Beta: 0.667*0.60 + 0.5*0.30 + 0.6*0.10 = 0.6102
-	// Gamma: 0.5*0.60 + 0.3*0.30 + 0.4*0.10 = 0.43
+	// Alpha: 1.0*0.45 + 1.0*0.40 + 0.8*0.15 = 0.97
+	// Beta: 0.667*0.45 + 0.5*0.40 + 0.6*0.15 = 0.590
+	// Gamma: 0.5*0.45 + 0.3*0.40 + 0.4*0.15 = 0.405
 
 	if teamList[1].FinalRank != 1 {
 		t.Errorf("Alpha FinalRank = %d, want 1", teamList[1].FinalRank)
@@ -94,7 +94,7 @@ func TestFinalRanking_Basic(t *testing.T) {
 	}
 
 	// Verify FinalRaw calculation for Alpha
-	expectedRaw := 1.0*0.60 + 1.0*0.30 + 0.8*0.10
+	expectedRaw := 1.0*0.45 + 1.0*0.40 + 0.8*0.15
 	if math.Abs(teamList[1].FinalRaw-expectedRaw) > 0.001 {
 		t.Errorf("Alpha FinalRaw = %f, want %f", teamList[1].FinalRaw, expectedRaw)
 	}
@@ -122,7 +122,7 @@ func TestFinalRanking_TiedScores(t *testing.T) {
 		},
 	}
 
-	r := &Ranker{}
+	r := &Ranker{Sport: sportFootball}
 	r.finalRanking(teamList)
 
 	// Teams A and B have identical FinalRaw, so they should share the same rank
