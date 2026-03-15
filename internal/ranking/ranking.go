@@ -28,15 +28,24 @@ type sportParams struct {
 	RequiredGames int
 	YearsBack     int64
 	MOVCaps       []int64
+	RecordWeight  float64
+	SRSWeight     float64
+	SOSWeight     float64
 }
 
 // sportConfig returns ranking constants appropriate for the sport.
 func (r *Ranker) sportConfig() sportParams {
 	switch r.Sport {
 	case sportBasketball:
-		return sportParams{RequiredGames: 25, YearsBack: 1, MOVCaps: []int64{1, 20}}
+		return sportParams{
+			RequiredGames: 25, YearsBack: 1, MOVCaps: []int64{1, 20},
+			RecordWeight: 0.25, SRSWeight: 0.60, SOSWeight: 0.15,
+		}
 	case sportFootball:
-		return sportParams{RequiredGames: 12, YearsBack: 2, MOVCaps: []int64{1, 30}}
+		return sportParams{
+			RequiredGames: 12, YearsBack: 2, MOVCaps: []int64{1, 30},
+			RecordWeight: 0.45, SRSWeight: 0.40, SOSWeight: 0.15,
+		}
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", r.Sport))
 	}
@@ -127,8 +136,11 @@ func (r *Ranker) CalculateRanking() (TeamList, error) {
 }
 
 func (r *Ranker) finalRanking(teamList TeamList) {
+	cfg := r.sportConfig()
 	for _, team := range teamList {
-		team.FinalRaw = (team.Record.Record * 0.60) + (team.SRSNorm * 0.30) + (team.SOSNorm * 0.10)
+		team.FinalRaw = (team.Record.Record * cfg.RecordWeight) +
+			(team.SRSNorm * cfg.SRSWeight) +
+			(team.SOSNorm * cfg.SOSWeight)
 	}
 
 	var ids []int64
