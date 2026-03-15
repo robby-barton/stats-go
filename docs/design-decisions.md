@@ -1,25 +1,26 @@
 # Design Decisions
 
-## Ranking Algorithm: 60/30/10 Composite
+## Ranking Algorithm: Sport-Specific Composite
 
 The final ranking uses a weighted composite score:
 
 ```
-FinalRaw = (Record * 0.60) + (SRS_normalized * 0.30) + (SOS_normalized * 0.10)
+FinalRaw = (Record * RecordWeight) + (SRS_normalized * SRSWeight) + (SOS_normalized * SOSWeight)
 ```
 
-- **60% Win-Loss Record** — The most important factor. Teams that win more
-  games should rank higher.
-- **30% SRS (Simple Rating System)** — An iterative margin-of-victory rating
+- **Win-Loss Record** — Winning more games is the primary signal for football;
+  less dominant for basketball where margin matters more.
+- **SRS (Simple Rating System)** — An iterative margin-of-victory rating
   adjusted for opponent strength. Run with two margin-of-victory caps and
   averaged. The dual-MOV approach balances "did you win?" with "did you
   dominate?" while preventing blowouts from distorting ratings. Iterates up to
   10,000 times or until convergence.
-- **10% SOS (Strength of Schedule)** — Solved via Cholesky decomposition of a
+- **SOS (Strength of Schedule)** — Solved via Cholesky decomposition of a
   system of linear equations. Measures quality of opponents independent of the
   team's own performance.
 
-All component scores are min-max normalized to [0,1] before weighting.
+All component scores are min-max normalized to [0,1] before weighting. Weights
+were tuned independently per sport via exhaustive grid search.
 
 ### Sport-Specific Constants
 
@@ -28,6 +29,9 @@ tuning parameters:
 
 | Parameter | Football | Basketball | Rationale |
 |-----------|----------|------------|-----------|
+| `RecordWeight` | 0.45 | 0.25 | Football results are more outcome-driven; basketball rewards margin |
+| `SRSWeight` | 0.40 | 0.60 | SRS is more predictive in basketball's higher-volume schedule |
+| `SOSWeight` | 0.15 | 0.15 | Equal schedule-strength influence across sports |
 | `requiredGames` | 12 | 25 | Basketball plays ~30 games/season vs ~12 for football |
 | `yearsBack` | 2 | 1 | Basketball has more games, less need for historical backfill |
 | MOV caps | [1, 30] | [1, 20] | Basketball has narrower score variance |
@@ -98,16 +102,14 @@ Key design choices:
 - **URL vars as fallback** — ESPN endpoint URLs are `var` not `const`
   so tests can override them with a mock HTTP server.
 
-## Writer Interface for Output
+## Post-Rankings Deploy Hook
 
-Rather than hardcoding DigitalOcean Spaces, output goes through a `Writer`
-interface. This allows:
-- Production: gzipped JSON uploaded to DO Spaces with CDN cache purging
-- Local dev: plain JSON files written to disk
-- Testing: mock writers
-
-JSON output paths are sport-prefixed (`ncaaf/ranking/...`, `ncaam/ranking/...`) to
-keep football and basketball data separate in the output bucket.
+After each ranking update, the updater optionally triggers a deploy script
+configured via the `DEPLOY_SCRIPT` environment variable. The deployer runs in a
+background goroutine with a buffered channel of size 1. Multiple ranking updates
+in quick succession coalesce into a single deploy — if one is already queued,
+extra triggers are dropped. This prevents deploy storms during rapid back-to-back
+ranking runs. If `DEPLOY_SCRIPT` is empty, the hook is a no-op.
 
 ## Scheduled Updates During Season
 

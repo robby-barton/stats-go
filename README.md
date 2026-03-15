@@ -1,8 +1,7 @@
 # College Sports Computer Ranking
 
-A Go application that pulls game data from the ESPN API, computes SRS/SOS
-composite rankings for college football and basketball teams, and exports
-results to DigitalOcean Spaces.
+A Go application that pulls game data from the ESPN API and computes SRS/SOS
+composite rankings for college football and basketball teams.
 
 ## Overview
 
@@ -10,7 +9,7 @@ The system consists of two CLI tools:
 
 - **Ranker** — calculates and prints rankings for a given year/week
 - **Updater** — scheduled service that fetches games, updates the database,
-  computes rankings, and exports JSON to a CDN
+  and computes rankings
 
 Rankings use a composite algorithm based on Simple Rating System (SRS) and
 Strength of Schedule (SOS). Football supports both FBS and FCS divisions;
@@ -27,7 +26,7 @@ basketball ranks D1 teams.
 ### Setup
 
 ```sh
-cp .env-sample .env   # configure database and DigitalOcean credentials
+cp .env-sample .env   # configure database credentials
 make modules          # sync Go module dependencies
 ```
 
@@ -38,6 +37,7 @@ Set in `.env` (see `.env-sample` for the full list):
 | Variable | Description |
 |----------|-------------|
 | `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DBNAME`, `PG_SSLMODE` | PostgreSQL connection (omit all to use SQLite) |
+| `DEPLOY_SCRIPT` | Path to a script run after each ranking update (optional) |
 
 ## Usage
 
@@ -82,8 +82,6 @@ make updater OPTS="football ranking"                # update current football ra
 make updater OPTS="football ranking --all"          # update all football rankings
 make updater OPTS="football teams"                  # update football team info
 make updater OPTS="football season"                 # update football season info
-make updater OPTS="football json"                   # rewrite current football JSON
-make updater OPTS="football json --all"             # rewrite all football JSON
 make updater OPTS="basketball games --all"          # update all basketball games
 make updater OPTS="basketball ranking"              # update basketball rankings
 ```
@@ -95,7 +93,6 @@ make updater OPTS="basketball ranking"              # update basketball rankings
 | | `ranking` | `--all` | Update rankings (current season by default) |
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |
-| | `json` | `--all` | Rewrite JSON output (current season by default) |
 
 ## Development
 
@@ -112,7 +109,7 @@ make format           # go fmt
 ```
 cmd/
   ranker/             CLI: calculate and print rankings
-  updater/            CLI: fetch games, update DB, export JSON
+  updater/            CLI: fetch games, update DB, compute rankings
   migrate/            CLI: one-time migration from PostgreSQL to SQLite
 internal/
   config/             Environment-based configuration (godotenv)
@@ -122,8 +119,7 @@ internal/
   logger/             Structured logging (zap)
   ranking/            Ranking algorithm (SRS, SOS, composite scoring)
   team/               Team info parsing from ESPN
-  updater/            Orchestration of DB updates and JSON export
-  writer/             Output interface (DigitalOcean Spaces or local files)
+  updater/            Orchestration of DB updates and ranking computation
 ```
 
 ## Deployment

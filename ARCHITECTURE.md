@@ -125,7 +125,7 @@ defaults to football and uses package-level URL vars (overridable in tests via
 
 ## Database
 
-14 GORM models covering teams, games, and player statistics. Supports both
+19 GORM models covering teams, games, and player statistics. Supports both
 PostgreSQL (production) and SQLite (local development). Connection is determined
 by whether `DBParams` is nil (nil → SQLite).
 
