@@ -28,6 +28,22 @@ func (u *Updater) getYearInfo() ([]yearInfo, error) {
 	return yearInfo, nil
 }
 
+// regularSeasonWeeks returns the distinct regular-season week numbers for a
+// given year, in ascending order. This avoids iterating over week gaps (common
+// in basketball) that would cause the ranker to fall through to the latest-game
+// logic and produce duplicate entries.
+func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
+	var weeks []int64
+	if err := u.DB.Model(database.Game{}).
+		Where("sport = ? and season = ? and postseason = 0", u.sportDB(), year).
+		Distinct("week").
+		Order("week").
+		Pluck("week", &weeks).Error; err != nil {
+		return nil, err
+	}
+	return weeks, nil
+}
+
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	return u.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
@@ -133,7 +149,11 @@ func (u *Updater) UpdateAllRankings() error {
 	}
 
 	for _, year := range yearInfo {
-		for week := int64(1); week <= year.Weeks; week++ {
+		weeks, err := u.regularSeasonWeeks(year.Year)
+		if err != nil {
+			return err
+		}
+		for _, week := range weeks {
 			u.Logger.Infof("%d/%d", year.Year, week)
 			weekRankings, err := u.rankingForWeek(year.Year, week)
 			if err != nil {

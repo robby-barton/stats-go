@@ -34,20 +34,30 @@ func (u *Updater) seasonsExist(year int64) bool {
 	return count > 0
 }
 
+// UpdateTeamSeasons updates team season records for the current ESPN season.
 func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 	currentSeason, err := u.ESPN.DefaultSeason()
 	if err != nil {
 		return 0, err
 	}
+	return u.updateTeamSeasonsForYear(currentSeason, force)
+}
 
-	if !force && u.seasonsExist(currentSeason) {
+// UpdateTeamSeasonsForYear updates team season records for a specific year.
+// Use force=true to overwrite existing records.
+func (u *Updater) UpdateTeamSeasonsForYear(year int64, force bool) (int, error) {
+	return u.updateTeamSeasonsForYear(year, force)
+}
+
+func (u *Updater) updateTeamSeasonsForYear(year int64, force bool) (int, error) {
+	if !force && u.seasonsExist(year) {
 		u.Logger.Info("Not updating")
 		return 0, nil
 	}
 
 	sport := u.sportDB()
 
-	teamConfs, err := u.ESPN.TeamConferencesByYear(currentSeason)
+	teamConfs, err := u.ESPN.TeamConferencesByYear(year)
 	if err != nil {
 		return 0, err
 	}
@@ -72,7 +82,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 			teamSeasons = append(teamSeasons, database.TeamSeason{
 				TeamID: team,
 				Conf:   confName,
-				Year:   currentSeason,
+				Year:   year,
 				Sport:  sport,
 				FBS:    1, // all D1 basketball teams treated as top-division
 			})
@@ -94,7 +104,7 @@ func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
 			teamSeasons = append(teamSeasons, database.TeamSeason{
 				TeamID: team,
 				Conf:   confName,
-				Year:   currentSeason,
+				Year:   year,
 				Sport:  sport,
 				FBS:    isFBS,
 			})

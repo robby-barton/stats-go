@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -297,6 +298,7 @@ func sportCommand(
 
 	var gamesAll bool
 	var gamesSingle int64
+	var gamesYear int64
 	gamesCmd := &cobra.Command{
 		Use:   "games",
 		Short: "One-time game update",
@@ -312,10 +314,13 @@ func sportCommand(
 
 			var addedGames []int64
 			var err error
-			if gamesAll {
+			switch {
+			case gamesYear > 0:
+				addedGames, err = u.UpdateGamesForYear(gamesYear)
+			case gamesAll:
 				year, _, _ := time.Now().Date()
 				addedGames, err = u.UpdateGamesForYear(int64(year))
-			} else {
+			default:
 				addedGames, err = u.UpdateCurrentWeek()
 			}
 			if err != nil {
@@ -328,7 +333,8 @@ func sportCommand(
 	}
 	gamesCmd.Flags().BoolVar(&gamesAll, "all", false, "update all games for the current year")
 	gamesCmd.Flags().Int64Var(&gamesSingle, "single", 0, "force update one game by ID")
-	gamesCmd.MarkFlagsMutuallyExclusive("all", "single")
+	gamesCmd.Flags().Int64Var(&gamesYear, "year", 0, "update all games for a specific year")
+	gamesCmd.MarkFlagsMutuallyExclusive("all", "single", "year")
 
 	var rankingAll bool
 	rankingCmd := &cobra.Command{
@@ -363,11 +369,20 @@ func sportCommand(
 		},
 	}
 
+	var seasonYear int64
 	seasonCmd := &cobra.Command{
 		Use:   "season",
 		Short: "Update season info",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			addedSeasons, err := u.UpdateTeamSeasons(true)
+			var (
+				addedSeasons int
+				err          error
+			)
+			if seasonYear > 0 {
+				addedSeasons, err = u.UpdateTeamSeasonsForYear(seasonYear, true)
+			} else {
+				addedSeasons, err = u.UpdateTeamSeasons(true)
+			}
 			if err != nil {
 				log.Error(err)
 			} else {
@@ -376,8 +391,55 @@ func sportCommand(
 			return nil
 		},
 	}
+	seasonCmd.Flags().Int64Var(&seasonYear, "year", 0, "update seasons for a specific year (default: current season)")
 
-	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd)
+	var backfillFrom, backfillTo int64
+	backfillCmd := &cobra.Command{
+		Use:   "backfill",
+		Short: "Backfill games, seasons, and rankings for a range of years",
+		Long: `Fetches team seasons and games from ESPN for each year in [from, to],
+then recomputes all rankings. Existing records are skipped unless already absent.
+
+Example:
+  updater ncaam backfill --from 2021 --to 2025`,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if backfillFrom <= 0 || backfillTo <= 0 || backfillFrom > backfillTo {
+				return fmt.Errorf("--from and --to must be positive and from <= to")
+			}
+			for year := backfillFrom; year <= backfillTo; year++ {
+				log.Infof("Backfilling %s year %d...", use, year)
+
+				n, err := u.UpdateTeamSeasonsForYear(year, false)
+				if err != nil {
+					return fmt.Errorf("team seasons %d: %w", year, err)
+				}
+				log.Infof("  seasons: %d teams", n)
+
+				addedGames, err := u.UpdateGamesForYear(year)
+				if err != nil {
+					return fmt.Errorf("games %d: %w", year, err)
+				}
+				log.Infof("  games: %d added", len(addedGames))
+			}
+
+			log.Infof("Recomputing all %s rankings...", use)
+			if err := u.UpdateAllRankings(); err != nil {
+				return fmt.Errorf("rankings: %w", err)
+			}
+			log.Infof("Backfill complete (%s %d–%d)", use, backfillFrom, backfillTo)
+			return nil
+		},
+	}
+	backfillCmd.Flags().Int64VarP(&backfillFrom, "from", "f", 0, "first year to backfill (inclusive)")
+	backfillCmd.Flags().Int64VarP(&backfillTo, "to", "t", 0, "last year to backfill (inclusive)")
+	if err := backfillCmd.MarkFlagRequired("from"); err != nil {
+		panic(err)
+	}
+	if err := backfillCmd.MarkFlagRequired("to"); err != nil {
+		panic(err)
+	}
+
+	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, backfillCmd)
 
 	return cmd
 }
