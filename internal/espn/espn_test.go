@@ -453,31 +453,59 @@ func testScoreboardResponse() ScoreboardESPN {
 	}
 }
 
+func basketballScheduleResponse(r *http.Request) GameScheduleESPN {
+	date := r.URL.Query().Get("date")
+	games := map[string]Day{
+		"2024-01-06": {Games: []Game{{
+			ID:     2001,
+			Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}},
+		}}},
+	}
+
+	// When a specific date is requested, return date-specific games.
+	// Game 3001 appears on both dates to verify deduplication.
+	if date != "" {
+		today := time.Now().Format("20060102")
+		yesterday := time.Now().AddDate(0, 0, -1).Format("20060102")
+		switch date {
+		case today:
+			games = map[string]Day{
+				today: {Games: []Game{
+					{ID: 3001, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
+					{ID: 3002, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
+				}},
+			}
+		case yesterday:
+			games = map[string]Day{
+				yesterday: {Games: []Game{
+					{ID: 3001, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
+					{ID: 3003, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
+				}},
+			}
+		}
+	}
+
+	return GameScheduleESPN{
+		Content: Content{
+			Schedule: games,
+			Defaults: Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: FlexInt64(50)},
+			ConferenceAPI: ConferenceAPI{
+				Conferences: []Conference{
+					{GroupID: 300, Name: "Big East", ShortName: "Big East", ParentGroupID: FlexInt64(50)},
+				},
+			},
+		},
+	}
+}
+
 func setupBasketballTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Basketball schedule has no calendar — just schedule + conferences
-		resp := GameScheduleESPN{
-			Content: Content{
-				Schedule: map[string]Day{
-					"2024-01-06": {Games: []Game{{
-						ID:     2001,
-						Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}},
-					}}},
-				},
-				Defaults: Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: FlexInt64(50)},
-				ConferenceAPI: ConferenceAPI{
-					Conferences: []Conference{
-						{GroupID: 300, Name: "Big East", ShortName: "Big East", ParentGroupID: FlexInt64(50)},
-					},
-				},
-			},
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
+		if err := json.NewEncoder(w).Encode(basketballScheduleResponse(r)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -554,6 +582,32 @@ func TestBasketball_HasPostseasonStarted(t *testing.T) {
 	}
 	if started {
 		t.Error("postseason should not have started (season type = 2)")
+	}
+}
+
+func TestBasketball_GetCurrentWeekGames(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	games, err := client.GetCurrentWeekGames(D1Basketball)
+	if err != nil {
+		t.Fatalf("GetCurrentWeekGames: %v", err)
+	}
+
+	// Today returns 3001+3002, yesterday returns 3001+3003.
+	// After dedup we should have 3 unique games.
+	if len(games) != 3 {
+		t.Fatalf("len(games) = %d, want 3", len(games))
+	}
+
+	ids := map[int64]bool{}
+	for _, g := range games {
+		ids[g.ID] = true
+	}
+	for _, want := range []int64{3001, 3002, 3003} {
+		if !ids[want] {
+			t.Errorf("missing game ID %d", want)
+		}
 	}
 }
 
