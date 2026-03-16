@@ -191,14 +191,14 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 		resp := bbFixtureScheduleResponse()
 
 		// If a date param is provided, filter schedule to only that date.
+		// If no games match, keep the full schedule so the response still
+		// passes validation (ConferenceMap only needs the conference data).
 		if dateParam := r.URL.Query().Get("date"); dateParam != "" {
 			// Convert "20240106" → "2024-01-06"
 			key := dateParam[:4] + "-" + dateParam[4:6] + "-" + dateParam[6:8]
-			filtered := map[string]espn.Day{}
 			if day, ok := resp.Content.Schedule[key]; ok {
-				filtered[key] = day
+				resp.Content.Schedule = map[string]espn.Day{key: day}
 			}
-			resp.Content.Schedule = filtered
 		}
 
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
