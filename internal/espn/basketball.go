@@ -109,6 +109,36 @@ func (bc *BasketballClient) getSeasonDates(year int64) ([]string, error) {
 	return bc.historicalSeasonDates(year), nil
 }
 
+// GetCurrentWeekGames fetches completed games from today and yesterday.
+// The base Client method only returns ESPN's "current" schedule page, which
+// for basketball is a single day. If a late-night game finishes after ESPN
+// rolls to the next day, the base method would miss it permanently. Fetching
+// two days ensures the 5-minute cron has a full day of retries to catch it.
+func (bc *BasketballClient) GetCurrentWeekGames(group Group) ([]Game, error) {
+	now := time.Now()
+	var allGames []Game
+	seen := make(map[int64]bool)
+
+	for daysBack := 0; daysBack <= 1; daysBack++ {
+		date := now.AddDate(0, 0, -daysBack).Format("20060102")
+		games, err := bc.GetCompletedGamesByDate(date, group)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range games {
+			if !seen[g.ID] {
+				seen[g.ID] = true
+				allGames = append(allGames, g)
+			}
+		}
+		if daysBack < 1 {
+			time.Sleep(bc.RateLimit)
+		}
+	}
+
+	return allGames, nil
+}
+
 func (bc *BasketballClient) GetGamesBySeason(year int64, group Group) ([]Game, error) {
 	dates, err := bc.getSeasonDates(year)
 	if err != nil {
