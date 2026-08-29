@@ -60,10 +60,9 @@ func TestCheckGames_MalformedScheduleEntries(t *testing.T) {
 		t.Fatalf("seed game: %v", err)
 	}
 
-	u := &Updater{
-		DB:     db,
-		Logger: zap.NewNop().Sugar(),
-		ESPN:   espn.NewClientForSport(espn.CollegeFootball),
+	u, err := NewUpdater(db, zap.NewNop().Sugar(), espn.NewClientForSport(espn.CollegeFootball))
+	if err != nil {
+		t.Fatalf("NewUpdater: %v", err)
 	}
 
 	wellFormed := finalScheduleGame(1001, []espn.Competitor{

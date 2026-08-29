@@ -62,14 +62,13 @@ football-only data. ESPN uses the same team IDs for a school across sports
 `team_names` requires `(team_id, sport)` as its primary key to store per-sport
 metadata without overwriting.
 
-## Per-Client ESPN URLs (Not Package-Level Vars)
+## Per-Client ESPN URLs (No Package-Level Vars)
 
 When supporting multiple sports in a single process (the `schedule` command),
-each sport needs its own ESPN API URLs. Rather than using package-level vars
-that would conflict when both sports run simultaneously, each `espn.Client`
-carries its own URL set. The `NewClientForSport(sport)` constructor configures
-sport-specific URLs. The legacy `NewClient()` leaves per-client URLs empty,
-falling back to package-level vars for test compatibility.
+each sport needs its own ESPN API URLs. Each `espn.Client` therefore carries
+its own URL set, configured by `NewClientForSport(sport)`. There are no
+package-level URL vars; tests point a single client at a mock HTTP server via
+`Client.SetURLs`, so parallel clients (one per sport) never interfere.
 
 ## Basketball: D1 Only, No Division Split
 
@@ -105,9 +104,11 @@ Key design choices:
   sequential API calls, applied via `espn.SportClient.Throttle()`. Every
   multi-request path (football week loops, basketball date loops, per-game
   fetches) calls it, so no request loop can bypass the shared policy.
-- **5 retries with 1s backoff** on HTTP failures (in `espn/request.go`).
-- **URL vars as fallback** — ESPN endpoint URLs are `var` not `const`
-  so tests can override them with a mock HTTP server.
+- **Up to 5 total attempts (4 retries) with 1s initial exponential backoff**
+  on HTTP failures (in `espn/request.go`); no backoff sleep after the final
+  attempt.
+- **Per-client URLs** — each `espn.Client` carries its own endpoint URL set
+  (`NewClientForSport`); tests override them per client via `SetURLs`.
 
 ## Failed Game Fetches: Durable Retry via `games.retry`
 

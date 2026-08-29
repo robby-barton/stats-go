@@ -80,14 +80,25 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
-func overrideGameURLs(t *testing.T, serverURL string) {
+func overrideGameURLs(t *testing.T, client *espn.Client, serverURL string) {
 	t.Helper()
-	restore := espn.SetTestURLs(
+	t.Cleanup(client.SetURLs(
 		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-	)
-	t.Cleanup(restore)
+		"",
+	))
+}
+
+// newTestClient returns a football client with fast retry settings for tests.
+func newTestClient() *espn.FootballClient {
+	return &espn.FootballClient{Client: &espn.Client{
+		MaxAttempts:    2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          espn.CollegeFootball,
+	}}
 }
 
 func setupBasketballTestServer(t *testing.T) *httptest.Server {
@@ -159,20 +170,19 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 
 func TestGetSingleGame_Basketball(t *testing.T) {
 	ts := setupBasketballTestServer(t)
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
 	client := &espn.BasketballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
 	}}
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		"",
+	))
 
 	parsed, err := GetSingleGame(context.Background(), client, zap.NewNop().Sugar(), 2001)
 	if err != nil {
@@ -206,20 +216,19 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 
 func TestGetCurrentWeekGames_Basketball(t *testing.T) {
 	ts := setupBasketballTestServer(t)
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
 	client := &espn.BasketballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
 	}}
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		"",
+	))
 
 	games, err := GetCurrentWeekGames(context.Background(), client)
 	if err != nil {
@@ -271,9 +280,8 @@ func TestCombineGames(t *testing.T) {
 
 func TestGetSingleGame(t *testing.T) {
 	ts := setupGameTestServer(t)
-	overrideGameURLs(t, ts.URL)
-
-	client := espn.NewClient()
+	client := newTestClient()
+	overrideGameURLs(t, client.Client, ts.URL)
 	parsed, err := GetSingleGame(context.Background(), client, zap.NewNop().Sugar(), 1001)
 	if err != nil {
 		t.Fatalf("GetSingleGame: %v", err)
@@ -307,9 +315,8 @@ func TestGetSingleGame(t *testing.T) {
 
 func TestGetCurrentWeekGames(t *testing.T) {
 	ts := setupGameTestServer(t)
-	overrideGameURLs(t, ts.URL)
-
-	client := espn.NewClient()
+	client := newTestClient()
+	overrideGameURLs(t, client.Client, ts.URL)
 	games, err := GetCurrentWeekGames(context.Background(), client)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)

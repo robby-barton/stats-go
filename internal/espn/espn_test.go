@@ -48,19 +48,19 @@ func setupTestServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
-func overrideURLs(t *testing.T, serverURL string) {
+func overrideURLs(t *testing.T, client *Client, serverURL string) {
 	t.Helper()
-	restore := SetTestURLs(
+	t.Cleanup(client.SetURLs(
 		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-	)
-	t.Cleanup(restore)
+		"",
+	))
 }
 
 func newTestClient() *FootballClient {
 	return &FootballClient{Client: &Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
@@ -70,8 +70,8 @@ func newTestClient() *FootballClient {
 
 func TestGetCurrentWeekGames(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {
@@ -97,8 +97,8 @@ func TestGetCurrentWeekGames(t *testing.T) {
 
 func TestGetGamesByWeek(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	res, err := client.GetGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
 	if err != nil {
@@ -118,8 +118,8 @@ func TestGetGamesByWeek(t *testing.T) {
 
 func TestGetCompletedGamesByWeek(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	games, err := client.GetCompletedGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
 	if err != nil {
@@ -133,8 +133,8 @@ func TestGetCompletedGamesByWeek(t *testing.T) {
 
 func TestGetWeeksInSeason(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	weeks, err := client.GetWeeksInSeason(context.Background(), 2023)
 	if err != nil {
@@ -149,8 +149,8 @@ func TestGetWeeksInSeason(t *testing.T) {
 
 func TestHasPostseasonStarted(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	// Postseason starts 2023-12-16T08:00Z
 	// Test with time before postseason
@@ -176,8 +176,8 @@ func TestHasPostseasonStarted(t *testing.T) {
 
 func TestGetGameStats(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	res, err := client.GetGameStats(context.Background(), 1001)
 	if err != nil {
@@ -207,8 +207,8 @@ func TestGetGameStats(t *testing.T) {
 
 func TestGetTeamInfo(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	res, err := client.GetTeamInfo(context.Background())
 	if err != nil {
@@ -235,8 +235,8 @@ func TestGetTeamInfo(t *testing.T) {
 
 func TestDefaultSeason(t *testing.T) {
 	ts := setupTestServer(t)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	year, err := client.DefaultSeason(context.Background())
 	if err != nil {
@@ -256,9 +256,8 @@ func TestMakeRequestNon2xx(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	restore := SetTestURLs(ts.URL+"/schedule", "", "")
-	t.Cleanup(restore)
 	client := newTestClient()
+	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -278,9 +277,8 @@ func TestMakeRequestMalformedJSON(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	restore := SetTestURLs(ts.URL+"/schedule", "", "")
-	t.Cleanup(restore)
 	client := newTestClient()
+	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -300,9 +298,8 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	restore := SetTestURLs(ts.URL+"/schedule", "", "")
-	t.Cleanup(restore)
 	client := newTestClient()
+	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
 
 	// Empty response fails validation because schedule data is missing.
 	_, err := client.DefaultSeason(context.Background())
@@ -531,21 +528,20 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
 	t.Helper()
 
-	restore := SetTestURLs(
-		serverURL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
-	return &BasketballClient{Client: &Client{
-		MaxRetries:     2,
+	c := &BasketballClient{Client: &Client{
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          CollegeBasketball,
-		scoreboardURL:  serverURL + "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 	}}
+	t.Cleanup(c.SetURLs(
+		serverURL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+	))
+	return c
 }
 
 func TestBasketball_DefaultSeason(t *testing.T) {
@@ -648,8 +644,8 @@ func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
 
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
-	overrideURLs(t, ts.URL)
 	client := newTestClient()
+	overrideURLs(t, client.Client, ts.URL)
 
 	if _, err := client.GetGamesBySeason(context.Background(), 2023, FBS); err != nil {
 		t.Fatalf("GetGamesBySeason: %v", err)
@@ -708,5 +704,48 @@ func TestTeamInfoValidate(t *testing.T) {
 				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestMakeRequestMaxAttempts verifies that MaxAttempts is the total number of
+// request tries (not retries), and that no backoff sleep happens after the
+// final failed attempt — with InitialBackoff=30ms and 3 attempts the elapsed
+// time should be 30ms+60ms of sleeps (plus request overhead), never the
+// additional 120ms a post-final sleep would add.
+func TestMakeRequestMaxAttempts(t *testing.T) {
+	var mu sync.Mutex
+	var requests int
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requests++
+		mu.Unlock()
+		http.Error(w, "server error", http.StatusInternalServerError)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client := &FootballClient{Client: &Client{
+		MaxAttempts:    3,
+		InitialBackoff: 30 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          CollegeFootball,
+	}}
+	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+
+	start := time.Now()
+	_, err := client.DefaultSeason(context.Background())
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error after exhausting attempts, got nil")
+	}
+	if requests != 3 {
+		t.Errorf("requests = %d, want 3 (MaxAttempts is total tries)", requests)
+	}
+	if elapsed >= 150*time.Millisecond {
+		t.Errorf("elapsed = %v, want < 150ms (no backoff sleep after the final attempt)", elapsed)
 	}
 }

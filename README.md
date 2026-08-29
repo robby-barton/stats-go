@@ -43,26 +43,26 @@ Set in `.env` (see `.env-sample` for the full list):
 
 ### Ranker
 
-Generate and print a ranking. The ranker uses sport subcommands (`football`,
-`basketball`):
+Generate and print a ranking. The ranker uses sport subcommands (`ncaaf`,
+`ncaam`):
 
 ```sh
-make ranker OPTS="football"                # current football season, all teams
-make ranker OPTS="football -t 25"          # top 25 football
-make ranker OPTS="football -y 2024 -w 12"  # specific year and week
-make ranker OPTS="football -f"             # rank FCS instead of FBS
-make ranker OPTS="basketball"              # current basketball season, D1
-make ranker OPTS="basketball -t 25"        # top 25 basketball
+make ranker OPTS="ncaaf"                # current football season, all teams
+make ranker OPTS="ncaaf -t 25"          # top 25 football
+make ranker OPTS="ncaaf -y 2024 -w 12"  # specific year and week
+make ranker OPTS="ncaaf -f"             # rank FCS instead of FBS
+make ranker OPTS="ncaam"                # current basketball season, D1
+make ranker OPTS="ncaam -t 25"          # top 25 basketball
 ```
 
 | Subcommand | Flag | Type | Default | Description |
 |------------|------|------|---------|-------------|
-| `football` | `-y` | int | most recent | Year to rank |
+| `ncaaf` | `-y` | int | most recent | Year to rank |
 | | `-w` | int | most recent | Week of the season |
 | | `-f` | bool | false | Rank FCS instead of FBS |
 | | `-t` | int | all | Print only the top N teams |
 | | `-r` | bool | false | Print SRS ratings instead of full ranking |
-| `basketball` | `-y` | int | most recent | Year to rank |
+| `ncaam` | `-y` | int | most recent | Year to rank |
 | | `-w` | int | most recent | Week of the season |
 | | `-t` | int | all | Print only the top N teams |
 | | `-r` | bool | false | Print SRS ratings instead of full ranking |
@@ -70,29 +70,31 @@ make ranker OPTS="basketball -t 25"        # top 25 basketball
 ### Updater
 
 Run one-off operations or start the scheduled service. One-shot commands are
-nested under sport subcommands (`football`, `basketball`). The `schedule`
-command runs both sports:
+nested under sport subcommands (`ncaaf`, `ncaam`). The `schedule` command runs
+both sports:
 
 ```sh
-make updater OPTS="schedule"                        # run scheduled service (both sports)
-make updater OPTS="football games"                  # update current week's football games
-make updater OPTS="football games --all"            # update all football games for current year
-make updater OPTS="football games --single 12345"   # force-update a single game by ID
-make updater OPTS="football ranking"                # update current football rankings
-make updater OPTS="football ranking --all"          # update all football rankings
-make updater OPTS="football teams"                  # update football team info
-make updater OPTS="football season"                 # update football season info
-make updater OPTS="basketball games --all"          # update all basketball games
-make updater OPTS="basketball ranking"              # update basketball rankings
+make updater OPTS="schedule"                      # run scheduled service (both sports)
+make updater OPTS="ncaaf games"                   # update current week's football games
+make updater OPTS="ncaaf games --all"             # update all football games for current year
+make updater OPTS="ncaaf games --single 12345"    # force-update a single game by ID
+make updater OPTS="ncaaf ranking"                 # update current football rankings
+make updater OPTS="ncaaf ranking --all"           # update all football rankings
+make updater OPTS="ncaaf teams"                   # update football team info
+make updater OPTS="ncaaf season"                  # update football season info
+make updater OPTS="ncaam games --all"             # update all basketball games
+make updater OPTS="ncaam ranking"                 # update basketball rankings
+make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year range
 ```
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
 | `schedule` | | | Run as scheduled service (both sports) |
-| `football` / `basketball` | `games` | `--all`, `--single <id>` | Update games (current week by default) |
+| `ncaaf` / `ncaam` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
 | | `ranking` | `--all` | Update rankings (current season by default) |
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |
+| | `backfill` | `--from`, `--to` | Backfill seasons, games, and rankings for a year range |
 
 ## Development
 

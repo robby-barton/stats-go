@@ -11,13 +11,16 @@ Format rules:
 
 ## Active
 
-### Basketball historical season support not yet implemented
+### Basketball season navigation is current-season only
 
-Basketball ESPN methods (`GetGamesBySeason`, `GetWeeksInSeason`,
-`TeamConferencesByYear`, `HasPostseasonStarted`) only support the current
-season. A `validateCurrentSeason` guard returns an error for non-current years.
-Implementing historical support requires finding a year-parameterized ESPN
-endpoint for basketball or building a season-date archive.
+Basketball historical support is now largely implemented:
+`BasketballClient.getSeasonDates` synthesizes the full date range for any
+historical season (Nov 1 of Y-1 through Apr 10 of Y), so `GetGamesBySeason` and
+`TeamConferencesByYear` support historical years. What remains current-season
+only are `GetWeeksInSeason` and `HasPostseasonStarted` (guarded by
+`validateCurrentSeason`), which are used only by the current-season scheduler.
+Extending them would require a year-parameterized ESPN calendar endpoint or a
+season-date archive.
 
 ### `games` PK missing `sport` — cross-sport collision risk
 
@@ -47,21 +50,17 @@ references it.
 
 See `internal/updater/update_team_season.go:83` and `docs/design-decisions.md`.
 
-### Package-level ESPN URL vars exist only as test fallback
-
-Three package-level `var` declarations (`weekURL`, `gameStatsURL`, `teamInfoURL`)
-exist solely so the legacy `NewClient()` constructor — used only in two test
-files — can have its URLs overridden via `SetTestURLs()`. Production code uses
-`NewClientForSport()` which sets per-client URLs directly. The fallback chain
-(`Client.WeekURL()` etc.) adds indirection for no production benefit.
-
-Eliminating `NewClient()` in favor of `NewClientForSport()` everywhere (including
-tests) would allow removing the package-level vars, the `SetTestURLs` function,
-and the fallback methods.
-
-See `internal/espn/request.go:58-79`.
-
 ## Resolved
+
+### Package-level ESPN URL vars exist only as test fallback (resolved 2026-08-30)
+
+Eliminated. All clients are built with `NewClientForSport` (per-client URLs);
+tests point a single client at a mock server via `Client.SetURLs`. The
+package-level URL vars (`weekURL`, `gameStatsURL`, `teamInfoURL`, and the dead
+`scoreboardURL`), `SetTestURLs`, `SetTestScoreboardURL`, the legacy
+`NewClient()` constructor, and the URL fallback chain have all been removed.
+
+See `internal/espn/request.go` and `internal/espn/testing_helpers.go`.
 
 ### `stats-web` header doesn't fit on mobile viewports (resolved 2026-02-16)
 
@@ -82,7 +81,13 @@ change (error is checked and returned before reaching the print).
 Removed the entire JSON export pipeline: `internal/writer/` package,
 `update_json.go`, writer field from `Updater` struct, `DOConfig`/`Local` from
 config, `json` CLI subcommand, and all related test infrastructure. The
-`stats-web` frontend now consumes the API directly.
+`stats-web` frontend consumes the PostgreSQL database directly at build time.
+
+### Updater tests run in the default suite (resolved 2026-08-30)
+
+The hermetic updater tests (mock ESPN HTTP server + in-memory SQLite) no
+longer carry the `integration` build tag, so `go test ./...` runs them. CI's
+separate integration job is now redundant with the default test job.
 
 ### `team_names` primary key missing `sport` (resolved 2026-02-14)
 
@@ -110,9 +115,9 @@ registration for each sport. Extracted `sportSchedule.registerJobs` method.
 ### No integration tests (resolved 2026-02-13)
 
 Added integration tests in `internal/updater/` behind a `//go:build integration`
-tag. Tests exercise the full pipeline (fetch → parse → store → rank → export)
-against an in-memory SQLite database with a mock ESPN HTTP server and a
-capturing writer. CI runs integration tests as a separate job.
+tag. Tests exercise the full pipeline (fetch → parse → store → rank) against an
+in-memory SQLite database with a mock ESPN HTTP server. (Later moved into the
+default `go test ./...` suite — see the Resolved entry above.)
 
 ### ESPN API fragility (resolved 2026-02-13)
 

@@ -125,33 +125,20 @@ func YearsBack(s sport.Sport) int64 {
 }
 
 type Team struct {
-	Name          string
-	Conf          string
-	Year          int64
-	Week          int64
-	Postseason    int64
-	Record        Record
-	Composite     float64
-	CompositeNorm float64
-	CompositeRank int64
-	SRS           float64
-	SRSHigh       float64
-	SRSHighNorm   float64
-	SRSLow        float64
-	SRSLowNorm    float64
-	SRSNorm       float64
-	SRSRank       int64
-	SOS           float64
-	SOSNorm       float64
-	SOSRank       int64
-	SOV           float64
-	SOVNorm       float64
-	SOVRank       int64
-	SOL           float64
-	SOLNorm       float64
-	SOLRank       int64
-	FinalRaw      float64
-	FinalRank     int64
+	Name       string
+	Conf       string
+	Year       int64
+	Week       int64
+	Postseason int64
+	Record     Record
+	SRS        float64
+	SRSNorm    float64
+	SRSRank    int64
+	SOS        float64
+	SOSNorm    float64
+	SOSRank    int64
+	FinalRaw   float64
+	FinalRank  int64
 }
 
 type Record struct {

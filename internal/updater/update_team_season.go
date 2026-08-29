@@ -13,7 +13,7 @@ import (
 )
 
 func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
-	return u.DB.Transaction(func(tx *gorm.DB) error {
+	return u.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
 			Clauses(clause.OnConflict{
 				UpdateAll: true, // upsert
@@ -28,7 +28,7 @@ func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
 
 func (u *Updater) seasonsExist(year int64) (bool, error) {
 	var count int64
-	err := u.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
+	err := u.db.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
 	if err != nil {
 		return false, err
 	}
@@ -37,7 +37,7 @@ func (u *Updater) seasonsExist(year int64) (bool, error) {
 
 // UpdateTeamSeasons updates team season records for the current ESPN season.
 func (u *Updater) UpdateTeamSeasons(ctx context.Context, force bool) (int, error) {
-	currentSeason, err := u.ESPN.DefaultSeason(ctx)
+	currentSeason, err := u.espn.DefaultSeason(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -57,26 +57,26 @@ func (u *Updater) updateTeamSeasonsForYear(ctx context.Context, year int64, forc
 			return 0, fmt.Errorf("checking existing team seasons for %d: %w", year, err)
 		}
 		if exists {
-			u.Logger.Info("Not updating")
+			u.logger.Info("Not updating")
 			return 0, nil
 		}
 	}
 
 	sport := u.sportDB()
 
-	teamConfs, err := u.ESPN.TeamConferencesByYear(ctx, year)
+	teamConfs, err := u.espn.TeamConferencesByYear(ctx, year)
 	if err != nil {
 		return 0, err
 	}
 
 	var teamSeasons []database.TeamSeason
 
-	confResult, err := u.ESPN.ConferenceMap(ctx)
+	confResult, err := u.espn.ConferenceMap(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	if u.ESPN.SportInfo() == espn.CollegeBasketball {
+	if u.espn.SportInfo() == espn.CollegeBasketball {
 		// Basketball: all D1 teams are top-division (FBS=1). Conference names
 		// come from the conference API but there's no FBS/FCS split.
 		d1Confs := confResult.Conferences[espn.D1Basketball]

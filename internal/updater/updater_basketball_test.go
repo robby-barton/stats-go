@@ -1,5 +1,3 @@
-//go:build integration
-
 package updater
 
 import (
@@ -76,20 +74,21 @@ func bbFixtureScoreboardResponse() espn.ScoreboardESPN {
 
 func bbFixtureGameInfoResponse(gameID int64) espn.GameInfoESPN {
 	games := map[int64]espn.GameInfoESPN{
-		bbFixtureGameID1: bbNewGameInfo(bbFixtureGameID1, 11, 78, 12, 65, 2024, 10, true),
-		bbFixtureGameID2: bbNewGameInfo(bbFixtureGameID2, 13, 70, 14, 68, 2024, 10, true),
-		bbFixtureGameID4: bbNewGameInfo(bbFixtureGameID4, 11, 80, 13, 75, 2024, 11, false),
+		bbFixtureGameID1: bbNewGameInfo(bbFixtureGameID1, 11, 78, 12, 65, 10, true),
+		bbFixtureGameID2: bbNewGameInfo(bbFixtureGameID2, 13, 70, 14, 68, 10, true),
+		bbFixtureGameID4: bbNewGameInfo(bbFixtureGameID4, 11, 80, 13, 75, 11, false),
 	}
 	if g, ok := games[gameID]; ok {
 		return g
 	}
-	return bbNewGameInfo(gameID, 11, 0, 12, 0, 2024, 10, false)
+	return bbNewGameInfo(gameID, 11, 0, 12, 0, 10, false)
 }
 
 func bbNewGameInfo(
-	gameID, homeID, homeScore, awayID, awayScore, year, week int64,
+	gameID, homeID, homeScore, awayID, awayScore, week int64,
 	confGame bool,
 ) espn.GameInfoESPN {
+	const year = 2024
 	dateStr := "2024-01-06T19:00Z"
 	if week == 11 {
 		dateStr = "2024-01-13T19:00Z"
@@ -218,19 +217,21 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 		}
 	})
 
-	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/teams", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(bbFixtureTeamInfoResponse()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/teams",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(bbFixtureTeamInfoResponse()); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
-	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(bbFixtureScoreboardResponse()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(bbFixtureScoreboardResponse()); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -247,30 +248,23 @@ func newBasketballTestUpdater(t *testing.T) *Updater {
 	db := setupTestDB(t)
 	ts := setupBasketballTestServer(t)
 
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
 	client := &espn.BasketballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
 	}}
-
-	restoreSB := espn.SetTestScoreboardURL(client.Client,
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
-	)
-	t.Cleanup(restoreSB)
+	))
 
-	u := &Updater{
-		DB:     db,
-		Logger: zap.NewNop().Sugar(),
-		ESPN:   client,
+	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)
+	if err != nil {
+		t.Fatalf("NewUpdater: %v", err)
 	}
 
 	return u
@@ -281,10 +275,14 @@ func seedBasketballTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs", Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "ncaam"},
-		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats", Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "ncaam"},
-		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles", Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "ncaam"},
-		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks", Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "ncaam"},
+		{TeamID: 11, Name: "BBall Alpha", DisplayName: "BBall Alpha Bulldogs",
+			Abbreviation: "BBA", Location: "BBall Alpha", Slug: "bball-alpha", IsActive: true, Sport: "ncaam"},
+		{TeamID: 12, Name: "BBall Beta", DisplayName: "BBall Beta Wildcats",
+			Abbreviation: "BBB", Location: "BBall Beta", Slug: "bball-beta", IsActive: true, Sport: "ncaam"},
+		{TeamID: 13, Name: "BBall Gamma", DisplayName: "BBall Gamma Eagles",
+			Abbreviation: "BBG", Location: "BBall Gamma", Slug: "bball-gamma", IsActive: true, Sport: "ncaam"},
+		{TeamID: 14, Name: "BBall Delta", DisplayName: "BBall Delta Hawks",
+			Abbreviation: "BBD", Location: "BBall Delta", Slug: "bball-delta", IsActive: true, Sport: "ncaam"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed basketball team_names: %v", err)
@@ -321,7 +319,7 @@ func seedBasketballGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: bbFixtureGameID4, Season: 2024, Week: 11,
 			HomeID: 11, AwayID: 13, HomeScore: 80, AwayScore: 75,
-			Sport: "ncaam",
+			Sport:     "ncaam",
 			StartTime: time.Date(2024, 1, 13, 19, 0, 0, 0, time.UTC),
 		},
 	}
@@ -342,7 +340,7 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 	}
 
 	var game database.Game
-	if err := u.DB.Where("game_id = ?", bbFixtureGameID1).First(&game).Error; err != nil {
+	if err := u.db.Where("game_id = ?", bbFixtureGameID1).First(&game).Error; err != nil {
 		t.Fatalf("game not found: %v", err)
 	}
 	if game.Sport != "ncaam" {
@@ -357,7 +355,7 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 
 	// Team stats should still be inserted
 	var teamStats []database.TeamGameStats
-	if err := u.DB.Where("game_id = ?", bbFixtureGameID1).Find(&teamStats).Error; err != nil {
+	if err := u.db.Where("game_id = ?", bbFixtureGameID1).Find(&teamStats).Error; err != nil {
 		t.Fatalf("team stats query: %v", err)
 	}
 	if len(teamStats) != 2 {
@@ -366,7 +364,7 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 
 	// No player stats for basketball
 	var passStats []database.PassingStats
-	if err := u.DB.Where("game_id = ?", bbFixtureGameID1).Find(&passStats).Error; err != nil {
+	if err := u.db.Where("game_id = ?", bbFixtureGameID1).Find(&passStats).Error; err != nil {
 		t.Fatalf("passing stats query: %v", err)
 	}
 	if len(passStats) != 0 {
@@ -400,7 +398,7 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 
 	// Verify sport on stored games
 	var games []database.Game
-	u.DB.Find(&games)
+	u.db.Find(&games)
 	for _, g := range games {
 		if g.Sport != "ncaam" {
 			t.Errorf("game %d Sport = %q, want %q", g.GameID, g.Sport, "ncaam")
@@ -430,7 +428,7 @@ func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 	}
 
 	var seasons []database.TeamSeason
-	if err := u.DB.Find(&seasons).Error; err != nil {
+	if err := u.db.Find(&seasons).Error; err != nil {
 		t.Fatalf("query seasons: %v", err)
 	}
 	if len(seasons) == 0 {
@@ -451,15 +449,15 @@ func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 func TestBasketball_RankingForWeek(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 
-	seedBasketballTeamsAndSeasons(t, u.DB)
-	seedBasketballGames(t, u.DB)
+	seedBasketballTeamsAndSeasons(t, u.db)
+	seedBasketballGames(t, u.db)
 
 	if err := u.UpdateRecentRankings(); err != nil {
 		t.Fatalf("UpdateRecentRankings: %v", err)
 	}
 
 	var results []database.TeamWeekResult
-	if err := u.DB.Find(&results).Error; err != nil {
+	if err := u.db.Find(&results).Error; err != nil {
 		t.Fatalf("query results: %v", err)
 	}
 	if len(results) == 0 {

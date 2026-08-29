@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,9 +50,21 @@ func run() int {
 	}
 	rootCmd.SilenceUsage = true
 
-	scheduleCmd := scheduleCommand(log, db, cfg.DeployScript)
-	ncaafCmd := sportCommand(log, db, espn.CollegeFootball)
-	ncaamCmd := sportCommand(log, db, espn.CollegeBasketball)
+	scheduleCmd, err := scheduleCommand(log, db, cfg.DeployScript)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
+	ncaafCmd, err := sportCommand(log, db, espn.CollegeFootball)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
+	ncaamCmd, err := sportCommand(log, db, espn.CollegeBasketball)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
 
 	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
 
@@ -62,16 +75,13 @@ func run() int {
 	return 0
 }
 
+// newUpdater builds a validated Updater for the given sport's ESPN client.
 func newUpdater(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	sport espn.Sport,
-) updater.Updater {
-	return updater.Updater{
-		DB:     db,
-		Logger: log,
-		ESPN:   espn.NewClientForSport(sport),
-	}
+) (*updater.Updater, error) {
+	return updater.NewUpdater(db, log, espn.NewClientForSport(sport))
 }
 
 // deployer runs a deploy script in the background after rankings are updated.
@@ -141,7 +151,7 @@ func (ss sportSchedule) registerJobs(
 	ctx context.Context,
 	s gocron.Scheduler,
 	log *zap.SugaredLogger,
-	u updater.Updater,
+	u *updater.Updater,
 	d *deployer,
 	wg *sync.WaitGroup,
 ) {
@@ -241,8 +251,13 @@ func scheduleCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	deployScript string,
-) *cobra.Command {
-	return &cobra.Command{
+) (*cobra.Command, error) {
+	// newUpdater validates its inputs; a nil DB or logger is a wiring bug, so
+	// surface it as an error instead of a runtime panic inside a cron job.
+	if db == nil || log == nil {
+		return nil, errors.New("schedule: nil DB or logger")
+	}
+	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -284,7 +299,10 @@ func scheduleCommand(
 
 			var wg sync.WaitGroup
 			for _, sp := range sports {
-				u := newUpdater(log, db, sp.sport)
+				u, err := newUpdater(log, db, sp.sport)
+				if err != nil {
+					return err
+				}
 				sp.schedule.registerJobs(ctx, s, log, u, d, &wg)
 			}
 
@@ -309,14 +327,18 @@ func scheduleCommand(
 			return nil
 		},
 	}
+	return cmd, nil
 }
 
 func sportCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	sport espn.Sport,
-) *cobra.Command {
-	u := newUpdater(log, db, sport)
+) (*cobra.Command, error) {
+	u, err := newUpdater(log, db, sport)
+	if err != nil {
+		return nil, err
+	}
 
 	use := "ncaaf"
 	short := "NCAA football one-shot commands"
@@ -476,5 +498,5 @@ Example:
 
 	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, backfillCmd)
 
-	return cmd
+	return cmd, nil
 }

@@ -1,5 +1,3 @@
-//go:build integration
-
 package updater
 
 import (
@@ -169,22 +167,23 @@ func newInProgressGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, 
 
 func fixtureGameInfoResponse(gameID int64) espn.GameInfoESPN {
 	games := map[int64]espn.GameInfoESPN{
-		fixtureGameID1: newGameInfo(fixtureGameID1, 1, 28, 2, 14, 2023, 1, true),
-		fixtureGameID2: newGameInfo(fixtureGameID2, 3, 21, 4, 10, 2023, 1, true),
-		fixtureGameID4: newGameInfo(fixtureGameID4, 1, 35, 3, 17, 2023, 2, false),
-		fixtureGameID5: newGameInfo(fixtureGameID5, 2, 24, 4, 21, 2023, 2, false),
+		fixtureGameID1: newGameInfo(fixtureGameID1, 1, 28, 2, 14, 1, true),
+		fixtureGameID2: newGameInfo(fixtureGameID2, 3, 21, 4, 10, 1, true),
+		fixtureGameID4: newGameInfo(fixtureGameID4, 1, 35, 3, 17, 2, false),
+		fixtureGameID5: newGameInfo(fixtureGameID5, 2, 24, 4, 21, 2, false),
 	}
 	if g, ok := games[gameID]; ok {
 		return g
 	}
 	// Fallback for unknown game IDs
-	return newGameInfo(gameID, 1, 0, 2, 0, 2023, 1, false)
+	return newGameInfo(gameID, 1, 0, 2, 0, 1, false)
 }
 
 func newGameInfo(
-	gameID, homeID, homeScore, awayID, awayScore, year, week int64,
+	gameID, homeID, homeScore, awayID, awayScore, week int64,
 	confGame bool,
 ) espn.GameInfoESPN {
+	const year = 2023
 	dateStr := "2023-09-02T23:00Z"
 	if week == 2 {
 		dateStr = "2023-09-09T23:00Z"
@@ -416,31 +415,29 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 // Test Updater constructor
 // ---------------------------------------------------------------------------
 
-func newTestUpdater(t *testing.T, scoreOverride map[int64][2]int64) *Updater {
+func newTestUpdater(t *testing.T) *Updater {
 	t.Helper()
 
 	db := setupTestDB(t)
-	ts := setupTestServer(t, scoreOverride)
-
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-	)
-	t.Cleanup(restore)
+	ts := setupTestServer(t, nil)
 
 	client := &espn.FootballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 5 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeFootball,
 	}}
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
+		"",
+	))
 
-	u := &Updater{
-		DB:     db,
-		Logger: zap.NewNop().Sugar(),
-		ESPN:   client,
+	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)
+	if err != nil {
+		t.Fatalf("NewUpdater: %v", err)
 	}
 
 	return u
@@ -453,12 +450,18 @@ func seedTeamsAndSeasons(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	teamNames := []database.TeamName{
-		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide", Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true, Sport: "ncaaf"},
-		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers", Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true, Sport: "ncaaf"},
-		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats", Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true, Sport: "ncaaf"},
-		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs", Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true, Sport: "ncaaf"},
-		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles", Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true, Sport: "ncaaf"},
-		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons", Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 1, Name: "Alpha", DisplayName: "Alpha Crimson Tide",
+			Abbreviation: "ALP", Location: "Alpha", Slug: "alpha", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 2, Name: "Beta", DisplayName: "Beta Tigers",
+			Abbreviation: "BET", Location: "Beta", Slug: "beta", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 3, Name: "Gamma", DisplayName: "Gamma Wildcats",
+			Abbreviation: "GAM", Location: "Gamma", Slug: "gamma", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 4, Name: "Delta", DisplayName: "Delta Bulldogs",
+			Abbreviation: "DEL", Location: "Delta", Slug: "delta", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 5, Name: "Epsilon", DisplayName: "Epsilon Eagles",
+			Abbreviation: "EPS", Location: "Epsilon", Slug: "epsilon", IsActive: true, Sport: "ncaaf"},
+		{TeamID: 6, Name: "Zeta", DisplayName: "Zeta Falcons",
+			Abbreviation: "ZET", Location: "Zeta", Slug: "zeta", IsActive: true, Sport: "ncaaf"},
 	}
 	if err := db.Create(&teamNames).Error; err != nil {
 		t.Fatalf("seed team_names: %v", err)
@@ -499,13 +502,13 @@ func seedGames(t *testing.T, db *gorm.DB) {
 		{
 			GameID: fixtureGameID4, Season: 2023, Week: 2,
 			HomeID: 1, AwayID: 3, HomeScore: 35, AwayScore: 17,
-			Sport: "ncaaf",
+			Sport:     "ncaaf",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		{
 			GameID: fixtureGameID5, Season: 2023, Week: 2,
 			HomeID: 2, AwayID: 4, HomeScore: 24, AwayScore: 21,
-			Sport: "ncaaf",
+			Sport:     "ncaaf",
 			StartTime: time.Date(2023, 9, 9, 23, 0, 0, 0, time.UTC),
 		},
 		// FCS games

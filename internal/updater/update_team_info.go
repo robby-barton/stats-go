@@ -48,7 +48,7 @@ func apiToDB(teams []team.ParsedTeamInfo) []database.TeamName {
 }
 
 func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
-	return u.DB.Transaction(func(tx *gorm.DB) error {
+	return u.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
 			Clauses(clause.OnConflict{
 				UpdateAll: true, // upsert
@@ -62,7 +62,7 @@ func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
 }
 
 func (u *Updater) UpdateTeamInfo(ctx context.Context) (int, error) {
-	teamInfo, err := team.GetTeamInfo(ctx, u.ESPN)
+	teamInfo, err := team.GetTeamInfo(ctx, u.espn)
 	if err != nil {
 		return 0, err
 	}

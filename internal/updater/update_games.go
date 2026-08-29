@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -20,7 +21,7 @@ func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 		gameIDs = append(gameIDs, game.ID)
 	}
 	var existing []database.Game
-	if err := u.DB.Where("game_id in ? and sport = ?", gameIDs, u.sportDB()).Find(&existing).Error; err != nil {
+	if err := u.db.Where("game_id in ? and sport = ?", gameIDs, u.sportDB()).Find(&existing).Error; err != nil {
 		return nil, err
 	}
 
@@ -267,134 +268,77 @@ func (u *Updater) insertGameInfo(parsed *game.ParsedGameInfo) error {
 	}
 
 	dbGameInfo := gameInfoToDB(parsed.Info, u.sportDB())
-	dbTeamStats := teamStatsToDB(parsed.TeamStats)
-	dbPassingStats := passingStatsToDB(parsed.PassingStats)
-	dbRushingStats := rushingStatsToDB(parsed.RushingStats)
-	dbReceivingStats := receivingStatsToDB(parsed.ReceivingStats)
-	dbFumbleStats := fumbleStatsToDB(parsed.FumbleStats)
-	dbDefensiveStats := defensiveStatsToDB(parsed.DefensiveStats)
-	dbInterceptionStats := interceptionStatsToDB(parsed.InterceptionStats)
-	dbReturnStats := returnStatsToDB(parsed.ReturnStats)
-	dbKickStats := kickStatsToDB(parsed.KickStats)
-	dbPuntStats := puntStatsToDB(parsed.PuntStats)
 
-	return u.DB.Transaction(func(tx *gorm.DB) error {
+	// Upsert specs in FK-satisfying order: the game row must be inserted
+	// before the stats rows that reference it. Adding a stats table is one
+	// entry here; conflictColumns overrides the inferred conflict target when
+	// a table's unique key needs explicit columns.
+	specs := []upsertSpec{
+		{value: &dbGameInfo},
+		{value: teamStatsToDB(parsed.TeamStats)},
+		{value: passingStatsToDB(parsed.PassingStats)},
+		{value: rushingStatsToDB(parsed.RushingStats)},
+		{value: receivingStatsToDB(parsed.ReceivingStats)},
+		{value: fumbleStatsToDB(parsed.FumbleStats)},
+		{value: defensiveStatsToDB(parsed.DefensiveStats)},
+		{value: interceptionStatsToDB(parsed.InterceptionStats)},
+		{
+			value: returnStatsToDB(parsed.ReturnStats),
+			conflictColumns: []clause.Column{
+				{Name: "player_id"},
+				{Name: "team_id"},
+				{Name: "game_id"},
+				{Name: "punt_kick"},
+			},
+		},
+		{value: kickStatsToDB(parsed.KickStats)},
+		{value: puntStatsToDB(parsed.PuntStats)},
+	}
+
+	return u.db.Transaction(func(tx *gorm.DB) error {
+		return upsertAll(tx, specs)
+	})
+}
+
+// upsertSpec describes one upsert: the value to insert and, optionally, the
+// explicit conflict-target columns (nil lets the database infer them).
+type upsertSpec struct {
+	value           any
+	conflictColumns []clause.Column
+}
+
+// upsertAll runs each spec as an upsert (OnConflict UpdateAll) within the
+// given transaction, skipping empty slices. Specs must be ordered so parent
+// rows (e.g. the game) are inserted before rows that reference them.
+func upsertAll(tx *gorm.DB, specs []upsertSpec) error {
+	for _, spec := range specs {
+		if isEmptyUpsert(spec.value) {
+			continue // nothing to insert for this stats table
+		}
 		if err := tx.
 			Clauses(clause.OnConflict{
 				UpdateAll: true, // upsert
+				Columns:   spec.conflictColumns,
 			}).
-			Create(&dbGameInfo).Error; err != nil {
+			Create(spec.value).Error; err != nil {
 			return err
 		}
+	}
+	return nil
+}
 
-		if len(dbTeamStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbTeamStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbPassingStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbPassingStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbRushingStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbRushingStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbReceivingStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbReceivingStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbFumbleStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbFumbleStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbDefensiveStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbDefensiveStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbInterceptionStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbInterceptionStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbReturnStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-					Columns: []clause.Column{
-						{Name: "player_id"},
-						{Name: "team_id"},
-						{Name: "game_id"},
-						{Name: "punt_kick"},
-					},
-				}).
-				Create(&dbReturnStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbKickStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbKickStats).Error; err != nil {
-				return err
-			}
-		}
-
-		if len(dbPuntStats) > 0 {
-			if err := tx.
-				Clauses(clause.OnConflict{
-					UpdateAll: true, // upsert
-				}).
-				Create(&dbPuntStats).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+// isEmptyUpsert reports whether an upsert value carries no rows. Single-model
+// values (structs, or pointers to structs) are always inserted; slices are
+// skipped when empty.
+func isEmptyUpsert(v any) bool {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Slice {
+		return false
+	}
+	return rv.Len() == 0
 }
 
 const gamesBatchSize = 100
@@ -443,7 +387,7 @@ func (u *Updater) markGameRetry(g espn.Game) error {
 		retry.AwayScore = away.Score
 	}
 
-	return u.DB.Clauses(clause.OnConflict{
+	return u.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "game_id"}},
 		DoUpdates: clause.Assignments(map[string]any{"retry": 1}),
 	}).Create(retry).Error
@@ -457,12 +401,12 @@ func (u *Updater) processGames(ctx context.Context, games []espn.Game) (*GameUpd
 		batch := games[start:end]
 
 		for _, g := range batch {
-			stats, err := game.GetSingleGame(ctx, u.ESPN, u.Logger, g.ID)
+			stats, err := game.GetSingleGame(ctx, u.espn, u.logger, g.ID)
 			if err != nil {
-				u.Logger.Warnf("skipping game %d: %v", g.ID, err)
+				u.logger.Warnf("skipping game %d: %v", g.ID, err)
 				result.Failed = append(result.Failed, FailedGame{GameID: g.ID, Err: err})
 				if markErr := u.markGameRetry(g); markErr != nil {
-					u.Logger.Errorf("failed to mark game %d for retry: %v", g.ID, markErr)
+					u.logger.Errorf("failed to mark game %d for retry: %v", g.ID, markErr)
 				}
 				continue
 			}
@@ -470,17 +414,17 @@ func (u *Updater) processGames(ctx context.Context, games []espn.Game) (*GameUpd
 				return result, fmt.Errorf("persisting game %d: %w", g.ID, err)
 			}
 			result.Processed = append(result.Processed, stats.Info.GameID)
-			u.ESPN.Throttle(ctx)
+			u.espn.Throttle(ctx)
 		}
 
-		u.Logger.Infof("processed %d/%d games", end, len(games))
+		u.logger.Infof("processed %d/%d games", end, len(games))
 	}
 
 	return result, nil
 }
 
 func (u *Updater) UpdateCurrentWeek(ctx context.Context) (*GameUpdateResult, error) {
-	games, err := game.GetCurrentWeekGames(ctx, u.ESPN)
+	games, err := game.GetCurrentWeekGames(ctx, u.espn)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +438,7 @@ func (u *Updater) UpdateCurrentWeek(ctx context.Context) (*GameUpdateResult, err
 }
 
 func (u *Updater) UpdateGamesForYear(ctx context.Context, year int64) (*GameUpdateResult, error) {
-	games, err := game.GetGamesForSeason(ctx, u.ESPN, year)
+	games, err := game.GetGamesForSeason(ctx, u.espn, year)
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +452,7 @@ func (u *Updater) UpdateGamesForYear(ctx context.Context, year int64) (*GameUpda
 }
 
 func (u *Updater) UpdateSingleGame(ctx context.Context, gameID int64) error {
-	gameStats, err := game.GetSingleGame(ctx, u.ESPN, u.Logger, gameID)
+	gameStats, err := game.GetSingleGame(ctx, u.espn, u.logger, gameID)
 	if err != nil {
 		return err
 	}

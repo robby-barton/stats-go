@@ -19,7 +19,7 @@ type yearInfo struct {
 
 func (u *Updater) getYearInfo() ([]yearInfo, error) {
 	var yearInfo []yearInfo
-	if err := u.DB.Model(database.Game{}).
+	if err := u.db.Model(database.Game{}).
 		Select(`season as year, max(week) as weeks, max(postseason) as postseason`).
 		Where("sport = ? and season >= ?", u.sportDB(), 1936). // first official year of AP poll
 		Group("season").
@@ -36,7 +36,7 @@ func (u *Updater) getYearInfo() ([]yearInfo, error) {
 // logic and produce duplicate entries.
 func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
 	var weeks []int64
-	if err := u.DB.Model(database.Game{}).
+	if err := u.db.Model(database.Game{}).
 		Where("sport = ? and season = ? and postseason = 0", u.sportDB(), year).
 		Distinct("week").
 		Order("week").
@@ -47,7 +47,7 @@ func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
 }
 
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
-	return u.DB.Transaction(func(tx *gorm.DB) error {
+	return u.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
 			Clauses(clause.OnConflict{
 				UpdateAll: true, // upsert
@@ -92,7 +92,7 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 
 	newRanker := func(fcs bool) (*ranking.Ranker, error) {
 		in, err := load.Input(load.Options{
-			DB:    u.DB,
+			DB:    u.db,
 			Sport: sport,
 			Year:  year,
 			Week:  week,
@@ -104,7 +104,7 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 		return ranking.NewRanker(in)
 	}
 
-	if u.ESPN.SportInfo() == espn.CollegeBasketball {
+	if u.espn.SportInfo() == espn.CollegeBasketball {
 		// Basketball: single D1 ranking, no FBS/FCS split
 		ranker, err := newRanker(false)
 		if err != nil {
@@ -163,7 +163,7 @@ func (u *Updater) UpdateAllRankings() error {
 			return err
 		}
 		for _, week := range weeks {
-			u.Logger.Infof("%d/%d", year.Year, week)
+			u.logger.Infof("%d/%d", year.Year, week)
 			weekRankings, err := u.rankingForWeek(year.Year, week)
 			if err != nil {
 				return err
@@ -172,9 +172,9 @@ func (u *Updater) UpdateAllRankings() error {
 		}
 		// postseason or current week
 		if year.Postseason == 1 {
-			u.Logger.Infof("%d/Final", year.Year)
+			u.logger.Infof("%d/Final", year.Year)
 		} else {
-			u.Logger.Infof("%d/%d", year.Year, year.Weeks+1)
+			u.logger.Infof("%d/%d", year.Year, year.Weeks+1)
 		}
 		weekRankings, err := u.rankingForWeek(year.Year, 0)
 		if err != nil {

@@ -1,12 +1,3 @@
-CREATE TABLE composite (
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    average integer DEFAULT 0,
-    rating real DEFAULT 0,
-	PRIMARY KEY (team_id, year)
-);
-
-
 CREATE TABLE defensive_stats (
     player_id integer NOT NULL,
     team_id integer NOT NULL,
@@ -94,20 +85,6 @@ CREATE TABLE passing_stats (
 );
 
 
-CREATE TABLE players (
-    player_id integer NOT NULL,
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    name text NOT NULL,
-    "position" text NOT NULL,
-    rating integer DEFAULT 50,
-    grade text NOT NULL,
-    hometown text NOT NULL,
-    status text NOT NULL,
-	PRIMARY KEY (player_id, team_id, year)
-);
-
-
 CREATE TABLE punt_stats (
     player_id integer NOT NULL,
     team_id integer NOT NULL,
@@ -135,15 +112,6 @@ CREATE TABLE receiving_stats (
 );
 
 
-CREATE TABLE recruiting (
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    commits integer DEFAULT 0,
-    rating real DEFAULT 0,
-	PRIMARY KEY (team_id, year)
-);
-
-
 CREATE TABLE return_stats (
     player_id integer NOT NULL,
     team_id integer NOT NULL,
@@ -155,21 +123,6 @@ CREATE TABLE return_stats (
     ret_long integer DEFAULT 0,
 	PRIMARY KEY (player_id, team_id, game_id, punt_kick),
 	FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
-);
-
-
-CREATE TABLE roster (
-    player_id integer NOT NULL,
-    team_id integer DEFAULT 0 NOT NULL,
-    year integer NOT NULL,
-    name text,
-    num integer DEFAULT 0,
-    "position" text,
-    height integer DEFAULT 0,
-    weight integer DEFAULT 0,
-    grade text,
-    hometown text,
-	PRIMARY KEY (player_id, team_id, year)
 );
 
 
@@ -255,11 +208,9 @@ CREATE TABLE team_week_results (
     losses integer DEFAULT 0,
     srs_rank integer DEFAULT 0,
     sos_rank integer DEFAULT 0,
-    sov_rank integer DEFAULT 0,
     fbs boolean,
     name text,
     conf text,
-    sol_rank integer DEFAULT 0,
     ties integer DEFAULT 0,
 	PRIMARY KEY (team_id, year, week, postseason, sport)
 );

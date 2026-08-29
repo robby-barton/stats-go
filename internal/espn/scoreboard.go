@@ -5,9 +5,6 @@ import (
 	"errors"
 )
 
-//nolint:gochecknoglobals // overridden in tests
-var scoreboardURL string
-
 // ScoreboardESPN represents the top-level response from the ESPN scoreboard API.
 // Used primarily for basketball where the schedule endpoint lacks season metadata.
 type ScoreboardESPN struct {

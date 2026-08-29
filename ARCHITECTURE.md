@@ -4,7 +4,9 @@
 
 stats-go is a set of Go services for ranking college sports teams (football and
 basketball). Data flows in one direction: ESPN API -> parsing -> database ->
-ranking algorithm -> output.
+ranking algorithm -> database. The `stats-web` site consumes the rankings by
+querying the database directly at build time; there is no HTTP API in this
+repo.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -23,7 +25,7 @@ ranking algorithm -> output.
               └────────────┬────────────┘
                            │
               ┌────────────▼────────────┐
-              │   internal/database     │  GORM models (19 tables)
+              │   internal/database     │  GORM models (14 tables)
               │  (Postgres or SQLite)   │  Sport column on shared tables
               └────────────┬────────────┘
                            │
@@ -92,17 +94,17 @@ URLs stay inside `espn`, which converts to the persistence ID at its edge via
 Central orchestrator that ties together all internal packages:
 
 ```go
-type Updater struct {
-    DB     *gorm.DB
-    Logger *zap.SugaredLogger
-    ESPN   espn.SportClient
-}
+u, err := updater.NewUpdater(db, log, espn.NewClientForSport(sport))
 ```
+
+`NewUpdater` validates its inputs (nil DB, logger, or ESPN client, and unknown
+sports return errors — mirroring `ranking.NewRanker`); the Updater's fields are
+unexported so all wiring goes through the constructor.
 
 Responsible for: fetching games, updating the DB, and computing rankings.
 Used by `cmd/updater` in both scheduled and on-demand modes.
 Each sport gets its own `Updater` instance with a sport-specific ESPN client.
-The sport is derived from the `ESPN` client's `SportInfo()` method.
+The sport is derived from the ESPN client's `SportInfo()` method.
 
 ### Ranker Struct
 
@@ -135,8 +137,10 @@ load package's DB-backed window resolution is tested in
 ### ESPN Client
 
 HTTP client backed by the `espn.Client` struct, which holds retry and
-rate-limit configuration (`MaxRetries`, `InitialBackoff`, `RequestTimeout`,
-`RateLimit`). Retries use exponential backoff capped at 30s.
+rate-limit configuration (`MaxAttempts`, `InitialBackoff`, `RequestTimeout`,
+`RateLimit`). `MaxAttempts` is the total number of request tries; retries use
+exponential backoff capped at 30s, and no backoff sleep happens after the
+final failed attempt.
 
 Every ESPN request takes a `context.Context` so callers can cancel in-flight
 work (the scheduler threads the process context through updater operations;
@@ -146,13 +150,13 @@ one-shot CLI commands use `context.Background()`). Every multi-request path
 so the full API surface shares one rate-limit policy.
 
 Each client is bound to a sport via `NewClientForSport(sport)`, which sets
-per-client URLs for that sport's ESPN endpoints. The `NewClient()` constructor
-defaults to football and uses package-level URL vars (overridable in tests via
-`SetTestURLs`).
+per-client URLs for that sport's ESPN endpoints. Every client carries its own
+URL set (no package-level vars); tests point a single client at a mock HTTP
+server via `Client.SetURLs`.
 
 ## Database
 
-19 GORM models covering teams, games, and player statistics. Supports both
+14 GORM models covering teams, games, and player statistics. Supports both
 PostgreSQL (production) and SQLite (local development). Connection is determined
 by whether `DBParams` is nil (nil → SQLite).
 
