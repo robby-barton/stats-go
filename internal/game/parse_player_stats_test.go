@@ -3,7 +3,6 @@ package game
 import (
 	"testing"
 
-	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -94,7 +93,7 @@ func TestParsePassingStats(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    espn.PlayerStatistics
-		expected []database.PassingStats
+		expected []PassingStats
 	}{
 		{
 			name: "single player",
@@ -107,7 +106,7 @@ func TestParsePassingStats(t *testing.T) {
 					},
 				},
 			},
-			expected: []database.PassingStats{
+			expected: []PassingStats{
 				{
 					PlayerID:      42,
 					TeamID:        10,
@@ -132,7 +131,7 @@ func TestParsePassingStats(t *testing.T) {
 					},
 				},
 			},
-			expected: []database.PassingStats{
+			expected: []PassingStats{
 				{
 					PlayerID:      -1,
 					TeamID:        10,
@@ -190,7 +189,7 @@ func TestParseRushingStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.RushingStats{
+	expected := RushingStats{
 		PlayerID:   55,
 		TeamID:     20,
 		GameID:     2001,
@@ -221,7 +220,7 @@ func TestParseReceivingStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.ReceivingStats{
+	expected := ReceivingStats{
 		PlayerID:   77,
 		TeamID:     30,
 		GameID:     3001,
@@ -252,7 +251,7 @@ func TestParseFumbleStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.FumbleStats{
+	expected := FumbleStats{
 		PlayerID:    33,
 		TeamID:      40,
 		GameID:      4001,
@@ -332,7 +331,7 @@ func TestParseInterceptionStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.InterceptionStats{
+	expected := InterceptionStats{
 		PlayerID:      44,
 		TeamID:        60,
 		GameID:        6001,
@@ -372,7 +371,7 @@ func TestParseReturnStats(t *testing.T) {
 				t.Fatalf("expected 1 result, got %d", len(result))
 			}
 
-			expected := database.ReturnStats{
+			expected := ReturnStats{
 				PlayerID:   99,
 				TeamID:     70,
 				GameID:     7001,
@@ -406,7 +405,7 @@ func TestParseKickStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.KickStats{
+	expected := KickStats{
 		PlayerID: 11,
 		TeamID:   80,
 		GameID:   8001,
@@ -439,7 +438,7 @@ func TestParsePuntStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.PuntStats{
+	expected := PuntStats{
 		PlayerID:   22,
 		TeamID:     90,
 		GameID:     9001,

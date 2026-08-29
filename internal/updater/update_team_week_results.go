@@ -7,6 +7,8 @@ import (
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/ranking"
+	"github.com/robby-barton/stats-go/internal/ranking/load"
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
 type yearInfo struct {
@@ -58,7 +60,7 @@ func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	})
 }
 
-func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool, sport string) []database.TeamWeekResult {
+func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool, sport sport.Sport) []database.TeamWeekResult {
 	var retTWR []database.TeamWeekResult
 
 	for id, result := range teamList {
@@ -88,13 +90,25 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 	sport := u.sportDB()
 	var teamWeekResults []database.TeamWeekResult
 
-	if u.ESPN.SportInfo() == espn.CollegeBasketball {
-		// Basketball: single D1 ranking, no FBS/FCS split
-		ranker := ranking.Ranker{
+	newRanker := func(fcs bool) (*ranking.Ranker, error) {
+		in, err := load.Input(load.Options{
 			DB:    u.DB,
+			Sport: sport,
 			Year:  year,
 			Week:  week,
-			Sport: sport,
+			Fcs:   fcs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return ranking.NewRanker(in)
+	}
+
+	if u.ESPN.SportInfo() == espn.CollegeBasketball {
+		// Basketball: single D1 ranking, no FBS/FCS split
+		ranker, err := newRanker(false)
+		if err != nil {
+			return nil, err
 		}
 		teamList, err := ranker.CalculateRanking()
 		if err != nil {
@@ -102,11 +116,9 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 		}
 		teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(teamList, true, sport)...)
 	} else {
-		fbsRanker := ranking.Ranker{
-			DB:    u.DB,
-			Year:  year,
-			Week:  week,
-			Sport: sport,
+		fbsRanker, err := newRanker(false)
+		if err != nil {
+			return nil, err
 		}
 		fbsRanking, err := fbsRanker.CalculateRanking()
 		if err != nil {
@@ -114,12 +126,9 @@ func (u *Updater) rankingForWeek(year int64, week int64) ([]database.TeamWeekRes
 		}
 		teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fbsRanking, true, sport)...)
 
-		fcsRanker := ranking.Ranker{
-			DB:    u.DB,
-			Year:  year,
-			Week:  week,
-			Fcs:   true,
-			Sport: sport,
+		fcsRanker, err := newRanker(true)
+		if err != nil {
+			return nil, err
 		}
 		fcsRanking, err := fcsRanker.CalculateRanking()
 		if err != nil {

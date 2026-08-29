@@ -3,6 +3,7 @@
 package updater
 
 import (
+	"context"
 	"testing"
 
 	"github.com/robby-barton/stats-go/internal/database"
@@ -12,7 +13,7 @@ import (
 func TestUpdateSingleGame(t *testing.T) {
 	u := newTestUpdater(t, nil)
 
-	if err := u.UpdateSingleGame(fixtureGameID1); err != nil {
+	if err := u.UpdateSingleGame(context.Background(), fixtureGameID1); err != nil {
 		t.Fatalf("UpdateSingleGame: %v", err)
 	}
 
@@ -53,7 +54,7 @@ func TestUpdateSingleGame(t *testing.T) {
 func TestUpdateCurrentWeek(t *testing.T) {
 	u := newTestUpdater(t, nil)
 
-	result, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestUpdateCurrentWeek(t *testing.T) {
 	}
 
 	// Re-run should be a no-op (checkGames filters already-stored games with matching scores)
-	result2, err := u.UpdateCurrentWeek()
+	result2, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek re-run: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 	// First run: normal scores
 	u := newTestUpdater(t, nil)
 
-	_, err := u.UpdateCurrentWeek()
+	_, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("initial UpdateCurrentWeek: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 	restore := newTestURLs(t, ts2.URL)
 	defer restore()
 
-	result, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek with score change: %v", err)
 	}
@@ -144,7 +145,7 @@ func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 func TestUpdateTeamInfo(t *testing.T) {
 	u := newTestUpdater(t, nil)
 
-	count, err := u.UpdateTeamInfo()
+	count, err := u.UpdateTeamInfo(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateTeamInfo: %v", err)
 	}
@@ -174,7 +175,7 @@ func TestUpdateTeamInfo(t *testing.T) {
 func TestUpdateTeamSeasons(t *testing.T) {
 	u := newTestUpdater(t, nil)
 
-	count, err := u.UpdateTeamSeasons(true)
+	count, err := u.UpdateTeamSeasons(context.Background(), true)
 	if err != nil {
 		t.Fatalf("UpdateTeamSeasons: %v", err)
 	}

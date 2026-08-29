@@ -3,6 +3,7 @@
 package updater
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -336,7 +337,7 @@ func seedBasketballGames(t *testing.T, db *gorm.DB) {
 func TestBasketball_UpdateSingleGame(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 
-	if err := u.UpdateSingleGame(bbFixtureGameID1); err != nil {
+	if err := u.UpdateSingleGame(context.Background(), bbFixtureGameID1); err != nil {
 		t.Fatalf("UpdateSingleGame: %v", err)
 	}
 
@@ -376,7 +377,7 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 
-	result, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek: %v", err)
 	}
@@ -407,7 +408,7 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	}
 
 	// Re-run should be a no-op
-	result2, err := u.UpdateCurrentWeek()
+	result2, err := u.UpdateCurrentWeek(context.Background())
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek re-run: %v", err)
 	}
@@ -419,7 +420,7 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 func TestBasketball_UpdateTeamSeasons(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 
-	count, err := u.UpdateTeamSeasons(true)
+	count, err := u.UpdateTeamSeasons(context.Background(), true)
 	if err != nil {
 		t.Fatalf("UpdateTeamSeasons: %v", err)
 	}

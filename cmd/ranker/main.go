@@ -12,6 +12,8 @@ import (
 	"github.com/robby-barton/stats-go/internal/config"
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/ranking"
+	"github.com/robby-barton/stats-go/internal/ranking/load"
+	sportpkg "github.com/robby-barton/stats-go/internal/sport"
 )
 
 func main() {
@@ -66,12 +68,24 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 		Use:   use,
 		Short: short,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			r := ranking.Ranker{
+			sp, err := sportpkg.Parse(sport)
+			if err != nil {
+				return err
+			}
+
+			in, err := load.Input(load.Options{
 				DB:    db,
+				Sport: sp,
 				Year:  year,
 				Week:  week,
 				Fcs:   fcs,
-				Sport: sport,
+			})
+			if err != nil {
+				return err
+			}
+			r, err := ranking.NewRanker(in)
+			if err != nil {
+				return err
 			}
 
 			start := time.Now()

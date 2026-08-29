@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"fmt"
 	"maps"
 
@@ -35,21 +36,21 @@ func (u *Updater) seasonsExist(year int64) (bool, error) {
 }
 
 // UpdateTeamSeasons updates team season records for the current ESPN season.
-func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
-	currentSeason, err := u.ESPN.DefaultSeason()
+func (u *Updater) UpdateTeamSeasons(ctx context.Context, force bool) (int, error) {
+	currentSeason, err := u.ESPN.DefaultSeason(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return u.updateTeamSeasonsForYear(currentSeason, force)
+	return u.updateTeamSeasonsForYear(ctx, currentSeason, force)
 }
 
 // UpdateTeamSeasonsForYear updates team season records for a specific year.
 // Use force=true to overwrite existing records.
-func (u *Updater) UpdateTeamSeasonsForYear(year int64, force bool) (int, error) {
-	return u.updateTeamSeasonsForYear(year, force)
+func (u *Updater) UpdateTeamSeasonsForYear(ctx context.Context, year int64, force bool) (int, error) {
+	return u.updateTeamSeasonsForYear(ctx, year, force)
 }
 
-func (u *Updater) updateTeamSeasonsForYear(year int64, force bool) (int, error) {
+func (u *Updater) updateTeamSeasonsForYear(ctx context.Context, year int64, force bool) (int, error) {
 	if !force {
 		exists, err := u.seasonsExist(year)
 		if err != nil {
@@ -63,14 +64,14 @@ func (u *Updater) updateTeamSeasonsForYear(year int64, force bool) (int, error) 
 
 	sport := u.sportDB()
 
-	teamConfs, err := u.ESPN.TeamConferencesByYear(year)
+	teamConfs, err := u.ESPN.TeamConferencesByYear(ctx, year)
 	if err != nil {
 		return 0, err
 	}
 
 	var teamSeasons []database.TeamSeason
 
-	confResult, err := u.ESPN.ConferenceMap()
+	confResult, err := u.ESPN.ConferenceMap(ctx)
 	if err != nil {
 		return 0, err
 	}

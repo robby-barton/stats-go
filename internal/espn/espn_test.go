@@ -1,6 +1,7 @@
 package espn
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
 func setupTestServer(t *testing.T) *httptest.Server {
@@ -70,7 +73,7 @@ func TestGetCurrentWeekGames(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	games, err := client.GetCurrentWeekGames(FBS)
+	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}
@@ -97,7 +100,7 @@ func TestGetGamesByWeek(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	res, err := client.GetGamesByWeek(2023, 1, FBS, Regular)
+	res, err := client.GetGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
 	if err != nil {
 		t.Fatalf("GetGamesByWeek: %v", err)
 	}
@@ -118,7 +121,7 @@ func TestGetCompletedGamesByWeek(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	games, err := client.GetCompletedGamesByWeek(2023, 1, FBS, Regular)
+	games, err := client.GetCompletedGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
 	if err != nil {
 		t.Fatalf("GetCompletedGamesByWeek: %v", err)
 	}
@@ -133,7 +136,7 @@ func TestGetWeeksInSeason(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	weeks, err := client.GetWeeksInSeason(2023)
+	weeks, err := client.GetWeeksInSeason(context.Background(), 2023)
 	if err != nil {
 		t.Fatalf("GetWeeksInSeason: %v", err)
 	}
@@ -152,7 +155,7 @@ func TestHasPostseasonStarted(t *testing.T) {
 	// Postseason starts 2023-12-16T08:00Z
 	// Test with time before postseason
 	before := time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
-	started, err := client.HasPostseasonStarted(2023, before)
+	started, err := client.HasPostseasonStarted(context.Background(), 2023, before)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
@@ -162,7 +165,7 @@ func TestHasPostseasonStarted(t *testing.T) {
 
 	// Test with time after postseason
 	after := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	started, err = client.HasPostseasonStarted(2023, after)
+	started, err = client.HasPostseasonStarted(context.Background(), 2023, after)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
@@ -176,7 +179,7 @@ func TestGetGameStats(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	res, err := client.GetGameStats(1001)
+	res, err := client.GetGameStats(context.Background(), 1001)
 	if err != nil {
 		t.Fatalf("GetGameStats: %v", err)
 	}
@@ -207,7 +210,7 @@ func TestGetTeamInfo(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	res, err := client.GetTeamInfo()
+	res, err := client.GetTeamInfo(context.Background())
 	if err != nil {
 		t.Fatalf("GetTeamInfo: %v", err)
 	}
@@ -235,7 +238,7 @@ func TestDefaultSeason(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	year, err := client.DefaultSeason()
+	year, err := client.DefaultSeason(context.Background())
 	if err != nil {
 		t.Fatalf("DefaultSeason: %v", err)
 	}
@@ -257,7 +260,7 @@ func TestMakeRequestNon2xx(t *testing.T) {
 	t.Cleanup(restore)
 	client := newTestClient()
 
-	_, err := client.DefaultSeason()
+	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
 		t.Fatal("expected error for 404 response, got nil")
 	}
@@ -279,7 +282,7 @@ func TestMakeRequestMalformedJSON(t *testing.T) {
 	t.Cleanup(restore)
 	client := newTestClient()
 
-	_, err := client.DefaultSeason()
+	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
 		t.Fatal("expected error for malformed JSON, got nil")
 	}
@@ -302,7 +305,7 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	client := newTestClient()
 
 	// Empty response fails validation because schedule data is missing.
-	_, err := client.DefaultSeason()
+	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
 		t.Fatal("expected error for empty response, got nil")
 	}
@@ -377,11 +380,11 @@ func TestGameInfoValidate(t *testing.T) {
 }
 
 func TestSportDB(t *testing.T) {
-	if got := CollegeFootball.SportDB(); got != "ncaaf" {
-		t.Errorf("CollegeFootball.SportDB() = %q, want %q", got, "ncaaf")
+	if got := CollegeFootball.DBSport(); got != sport.Football {
+		t.Errorf("CollegeFootball.DBSport() = %q, want %q", got, sport.Football)
 	}
-	if got := CollegeBasketball.SportDB(); got != "ncaam" {
-		t.Errorf("CollegeBasketball.SportDB() = %q, want %q", got, "ncaam")
+	if got := CollegeBasketball.DBSport(); got != sport.Basketball {
+		t.Errorf("CollegeBasketball.DBSport() = %q, want %q", got, sport.Basketball)
 	}
 }
 
@@ -549,7 +552,7 @@ func TestBasketball_DefaultSeason(t *testing.T) {
 	ts := setupBasketballTestServer(t)
 	client := newBasketballTestClient(t, ts.URL)
 
-	year, err := client.DefaultSeason()
+	year, err := client.DefaultSeason(context.Background())
 	if err != nil {
 		t.Fatalf("DefaultSeason: %v", err)
 	}
@@ -562,7 +565,7 @@ func TestBasketball_GetWeeksInSeason(t *testing.T) {
 	ts := setupBasketballTestServer(t)
 	client := newBasketballTestClient(t, ts.URL)
 
-	weeks, err := client.GetWeeksInSeason(2024)
+	weeks, err := client.GetWeeksInSeason(context.Background(), 2024)
 	if err != nil {
 		t.Fatalf("GetWeeksInSeason: %v", err)
 	}
@@ -578,7 +581,7 @@ func TestBasketball_HasPostseasonStarted(t *testing.T) {
 	client := newBasketballTestClient(t, ts.URL)
 
 	// Scoreboard fixture has season type 2 (regular), so postseason has not started
-	started, err := client.HasPostseasonStarted(2024, time.Now())
+	started, err := client.HasPostseasonStarted(context.Background(), 2024, time.Now())
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
@@ -591,7 +594,7 @@ func TestBasketball_GetCurrentWeekGames(t *testing.T) {
 	ts := setupBasketballTestServer(t)
 	client := newBasketballTestClient(t, ts.URL)
 
-	games, err := client.GetCurrentWeekGames(D1Basketball)
+	games, err := client.GetCurrentWeekGames(context.Background(), D1Basketball)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}
@@ -648,7 +651,7 @@ func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
 	overrideURLs(t, ts.URL)
 	client := newTestClient()
 
-	if _, err := client.GetGamesBySeason(2023, FBS); err != nil {
+	if _, err := client.GetGamesBySeason(context.Background(), 2023, FBS); err != nil {
 		t.Fatalf("GetGamesBySeason: %v", err)
 	}
 

@@ -181,7 +181,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		result, err := u.UpdateCurrentWeek()
+		result, err := u.UpdateCurrentWeek(ctx)
 		if err != nil {
 			log.Error(err)
 		} else {
@@ -206,7 +206,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedTeams, err := u.UpdateTeamInfo()
+		addedTeams, err := u.UpdateTeamInfo(ctx)
 		if err != nil {
 			log.Error(err)
 			return
@@ -225,7 +225,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedSeasons, err := u.UpdateTeamSeasons(false)
+		addedSeasons, err := u.UpdateTeamSeasons(ctx, false)
 		log.Infof("%s: added %d seasons", ss.Name, addedSeasons)
 		if err != nil {
 			log.Error(err)
@@ -294,12 +294,15 @@ func scheduleCommand(
 			signal.Notify(end, syscall.SIGINT, syscall.SIGTERM)
 
 			<-end
+			// Cancel the process context before shutting down the scheduler so
+			// in-flight ESPN requests, retries, and rate-limit sleeps are
+			// interrupted promptly instead of blocking s.Shutdown().
+			cancel()
 			if err := s.Shutdown(); err != nil {
 				log.Error(err)
 			}
-			// Stop the ranking workers and join them so no goroutine can call
-			// d.Trigger() after the trigger channel is closed below.
-			cancel()
+			// Join the ranking workers so no goroutine can call d.Trigger()
+			// after the trigger channel is closed below.
 			wg.Wait()
 			d.stop()
 
@@ -335,7 +338,7 @@ func sportCommand(
 		Short: "One-time game update",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if gamesSingle > 0 {
-				if err := u.UpdateSingleGame(gamesSingle); err != nil {
+				if err := u.UpdateSingleGame(context.Background(), gamesSingle); err != nil {
 					return fmt.Errorf("game %d: %w", gamesSingle, err)
 				}
 				log.Infof("Game %d updated", gamesSingle)
@@ -346,12 +349,12 @@ func sportCommand(
 			var err error
 			switch {
 			case gamesYear > 0:
-				result, err = u.UpdateGamesForYear(gamesYear)
+				result, err = u.UpdateGamesForYear(context.Background(), gamesYear)
 			case gamesAll:
 				year, _, _ := time.Now().Date()
-				result, err = u.UpdateGamesForYear(int64(year))
+				result, err = u.UpdateGamesForYear(context.Background(), int64(year))
 			default:
-				result, err = u.UpdateCurrentWeek()
+				result, err = u.UpdateCurrentWeek(context.Background())
 			}
 			if err != nil {
 				return err
@@ -389,7 +392,7 @@ func sportCommand(
 		Use:   "teams",
 		Short: "Update team info",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			addedTeams, err := u.UpdateTeamInfo()
+			addedTeams, err := u.UpdateTeamInfo(context.Background())
 			if err != nil {
 				return err
 			}
@@ -408,9 +411,9 @@ func sportCommand(
 				err          error
 			)
 			if seasonYear > 0 {
-				addedSeasons, err = u.UpdateTeamSeasonsForYear(seasonYear, true)
+				addedSeasons, err = u.UpdateTeamSeasonsForYear(context.Background(), seasonYear, true)
 			} else {
-				addedSeasons, err = u.UpdateTeamSeasons(true)
+				addedSeasons, err = u.UpdateTeamSeasons(context.Background(), true)
 			}
 			if err != nil {
 				return err
@@ -437,13 +440,13 @@ Example:
 			for year := backfillFrom; year <= backfillTo; year++ {
 				log.Infof("Backfilling %s year %d...", use, year)
 
-				n, err := u.UpdateTeamSeasonsForYear(year, false)
+				n, err := u.UpdateTeamSeasonsForYear(context.Background(), year, false)
 				if err != nil {
 					return fmt.Errorf("team seasons %d: %w", year, err)
 				}
 				log.Infof("  seasons: %d teams", n)
 
-				result, err := u.UpdateGamesForYear(year)
+				result, err := u.UpdateGamesForYear(context.Background(), year)
 				if err != nil {
 					return fmt.Errorf("games %d: %w", year, err)
 				}

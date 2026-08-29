@@ -23,7 +23,7 @@ ranking algorithm -> output.
               └────────────┬────────────┘
                            │
               ┌────────────▼────────────┐
-              │   internal/database     │  GORM models (14 tables)
+              │   internal/database     │  GORM models (19 tables)
               │  (Postgres or SQLite)   │  Sport column on shared tables
               └────────────┬────────────┘
                            │
@@ -52,9 +52,10 @@ ESPN package (`espn.CollegeFootball`, `espn.CollegeBasketball`). Each sport has:
 - **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV caps
 - **Division structure:** Football has FBS/FCS; basketball has D1 only
 
-The `Updater` and `Ranker` structs each carry a sport identifier. The CLI
-exposes sport subcommands (`football`, `basketball`). The `schedule` command runs
-both sports in a single process with sport-appropriate cron schedules.
+The `Updater` and `Ranker` structs each carry a typed sport identifier
+(`sport.Sport`, converted to the ESPN slug via `espn.Sport`). The CLI exposes
+sport subcommands (`ncaaf`, `ncaam`). The `schedule` command runs both sports
+in a single process with sport-appropriate cron schedules.
 
 ## Package Dependency Rules
 
@@ -62,19 +63,27 @@ Dependencies flow **downward only**. Packages must not import from peers at the
 same level or from `cmd/`.
 
 ```
-cmd/ranker   → config, database, ranking
+cmd/ranker   → config, database, ranking, ranking/load, sport
 cmd/updater  → config, database, logger, updater, espn
 cmd/migrate  → database
 
-updater      → database, espn, game, ranking, team
-game         → database, espn
+updater      → database, espn, game, ranking, ranking/load, sport, team
+game         → espn
 team         → espn
-ranking      → database
-espn         → (external: net/http only)
+ranking      → sport (no database or espn imports)
+ranking/load → database, ranking, sport
+espn         → sport (URLs/slugs only; persistence IDs via DBSport)
 config       → (external: godotenv)
 logger       → (external: zap)
-database     → (external: gorm)
+database     → gorm, sport
+sport        → (leaf: no internal dependencies)
 ```
+
+The `internal/sport` package owns the persistence identifiers
+(`sport.Football` = `"ncaaf"`, `sport.Basketball` = `"ncaam"`) shared by the
+database models, ranking, updater, and CLI wiring. ESPN-specific slugs and
+URLs stay inside `espn`, which converts to the persistence ID at its edge via
+`Sport.DBSport()`.
 
 ## Key Abstractions
 
@@ -99,18 +108,29 @@ The sport is derived from the `ESPN` client's `SportInfo()` method.
 
 ```go
 type Ranker struct {
-    DB    *gorm.DB
-    Year  int64
-    Week  int64
-    Fcs   bool
-    Sport string  // "ncaaf" or "ncaam"
+    in Input  // Year, Week, Sport (sport.Sport), Teams, Games, Backfill
 }
 ```
 
-Executes the ranking pipeline: `setup → record → srs → sos → finalRanking`.
-All computation happens in-memory after initial DB queries. Sport-dependent
-constants (required games, years of history, MOV caps) are selected via
-`sportConfig()`.
+Constructed via `NewRanker(Input)`, which validates the sport (unknown sports
+return an error instead of panicking mid-computation). Teams, games, and the
+resolved ranking window are loaded once at the persistence edge —
+`internal/ranking/load.Input` queries the database for them up front — so the
+ranking pipeline is GORM-free and computes entirely on plain values:
+`setup → record → srs → sos → finalRanking`.
+
+One part of the input is deliberately not loaded eagerly: pre-window game
+backfill (the "James Madison problem" search in `srs`). Eagerly resolving it
+for every team would over-fetch, since only teams short on division games
+need it. Instead, the loader injects a `ranking.BackfillFunc` — a query seam
+implemented in `internal/ranking/load` — and the SRS stage invokes it on
+demand for those teams. The seam keeps the pipeline GORM-free: the ranking
+package sees a plain function returning games, never a database handle.
+Sport-dependent constants
+(required games, years of history, MOV caps) are selected via
+`sportConfig()`. Algorithm tests construct `Input` values directly; the
+load package's DB-backed window resolution is tested in
+`internal/ranking/load`.
 
 ### ESPN Client
 
@@ -118,9 +138,12 @@ HTTP client backed by the `espn.Client` struct, which holds retry and
 rate-limit configuration (`MaxRetries`, `InitialBackoff`, `RequestTimeout`,
 `RateLimit`). Retries use exponential backoff capped at 30s.
 
-Every multi-request path (season week loops, basketball date loops, per-game
-fetches in `game/` and `updater/`) calls `SportClient.Throttle()` after each
-sequential request, so the full API surface shares one rate-limit policy.
+Every ESPN request takes a `context.Context` so callers can cancel in-flight
+work (the scheduler threads the process context through updater operations;
+one-shot CLI commands use `context.Background()`). Every multi-request path
+(season week loops, basketball date loops, per-game fetches in `game/` and
+`updater/`) calls `SportClient.Throttle(ctx)` after each sequential request,
+so the full API surface shares one rate-limit policy.
 
 Each client is bound to a sport via `NewClientForSport(sport)`, which sets
 per-client URLs for that sport's ESPN endpoints. The `NewClient()` constructor

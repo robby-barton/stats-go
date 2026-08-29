@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robby-barton/stats-go/internal/database"
+	"go.uber.org/zap"
+
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
-func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
+func parseTeamStats(stats []espn.TeamStatistics, tgs *TeamGameStats, log *zap.SugaredLogger) {
 	// ESPN occasionally throws in extra dashes into stats
 	var re = regexp.MustCompile(`\-+`)
 
@@ -60,16 +61,16 @@ func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
 		case "turnovers":
 
 		default:
-			fmt.Printf("Not found {%s}\n", statName) //nolint:forbidigo // allow for this case
+			log.Warnf("game %d: unrecognized team stat %q", tgs.GameID, statName)
 		}
 	}
 }
 
-func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN) {
-	homeTeam := database.TeamGameStats{
+func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN, log *zap.SugaredLogger) {
+	homeTeam := TeamGameStats{
 		GameID: gameInfo.GamePackage.Header.ID,
 	}
-	awayTeam := database.TeamGameStats{
+	awayTeam := TeamGameStats{
 		GameID: gameInfo.GamePackage.Header.ID,
 	}
 
@@ -91,9 +92,9 @@ func (s *ParsedGameInfo) parseTeamInfo(gameInfo *espn.GameInfoESPN) {
 
 		switch id := teamStats.Team.ID; id {
 		case homeTeam.TeamID:
-			parseTeamStats(teamStats.Statistics, &homeTeam)
+			parseTeamStats(teamStats.Statistics, &homeTeam, log)
 		case awayTeam.TeamID:
-			parseTeamStats(teamStats.Statistics, &awayTeam)
+			parseTeamStats(teamStats.Statistics, &awayTeam, log)
 		default:
 			continue
 		}

@@ -5,6 +5,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/robby-barton/stats-go/internal/espn"
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
 type Updater struct {
@@ -13,7 +14,7 @@ type Updater struct {
 	ESPN   espn.SportClient
 }
 
-// sportDB returns the short database identifier for the updater's sport.
-func (u *Updater) sportDB() string {
-	return u.ESPN.SportInfo().SportDB()
+// sportDB returns the persistence identifier for the updater's sport.
+func (u *Updater) sportDB() sport.Sport {
+	return u.ESPN.SportInfo().DBSport()
 }

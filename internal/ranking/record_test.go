@@ -1,32 +1,40 @@
 package ranking
 
 import (
-	"math"
 	"testing"
-	"time"
+
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
+// allGamesExceptWeeks returns the football fixture games, optionally limited
+// to a subset of weeks (mirroring the StartTime filter the load package
+// applies when resolving the ranking window).
+func gamesThroughWeek(weeks int64) []Game {
+	var games []Game
+	for _, g := range footballGames() {
+		if g.Season == 2023 && g.Week > weeks {
+			continue
+		}
+		games = append(games, g)
+	}
+	// Descending start-time order, as the loader provides.
+	for i, j := 0, len(games)-1; i < j; i, j = i+1, j-1 {
+		games[i], games[j] = games[j], games[i]
+	}
+	return games
+}
+
 func TestRecord_BasicRecords(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
+	r := newTestRanker(t, Input{
+		Year:  2023,
+		Sport: sport.Football,
+		Teams: footballTeams(),
+		Games: gamesThroughWeek(5), // all games
+	})
 
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC), // after all games
-	}
+	teamList := fbsTeamList()
 
-	teamList := TeamList{
-		1: &Team{Name: "Alpha"},
-		2: &Team{Name: "Beta"},
-		3: &Team{Name: "Gamma"},
-		4: &Team{Name: "Delta"},
-	}
-
-	if err := r.record(teamList); err != nil {
-		t.Fatalf("record: %v", err)
-	}
+	r.record(teamList)
 
 	// Alpha: 4W-0L-0T (games 1001,1003,1005,1008 wins)
 	// Record = (1+4+0)/(2+4) = 5/6 ≈ 0.833
@@ -46,27 +54,17 @@ func TestRecord_BasicRecords(t *testing.T) {
 }
 
 func TestRecord_PartialSeason(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
+	// Window through week 2 only (before week 3 games)
+	r := newTestRanker(t, Input{
+		Year:  2023,
+		Sport: sport.Football,
+		Teams: footballTeams(),
+		Games: gamesThroughWeek(2),
+	})
 
-	// startTime through week 2 only (before week 3 games)
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 9, 18, 0, 0, 0, 0, time.UTC),
-	}
+	teamList := fbsTeamList()
 
-	teamList := TeamList{
-		1: &Team{Name: "Alpha"},
-		2: &Team{Name: "Beta"},
-		3: &Team{Name: "Gamma"},
-		4: &Team{Name: "Delta"},
-	}
-
-	if err := r.record(teamList); err != nil {
-		t.Fatalf("record: %v", err)
-	}
+	r.record(teamList)
 
 	// After weeks 1-2 only:
 	// Alpha: 2W (1001,1003)
@@ -77,24 +75,19 @@ func TestRecord_PartialSeason(t *testing.T) {
 }
 
 func TestRecord_TieHandling(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
-
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
+	r := newTestRanker(t, Input{
+		Year:  2023,
+		Sport: sport.Football,
+		Teams: footballTeams(),
+		Games: gamesThroughWeek(5),
+	})
 
 	teamList := TeamList{
 		3: &Team{Name: "Gamma"},
 		4: &Team{Name: "Delta"},
 	}
 
-	if err := r.record(teamList); err != nil {
-		t.Fatalf("record: %v", err)
-	}
+	r.record(teamList)
 
 	if teamList[3].Record.Ties != 1 {
 		t.Errorf("Gamma ties = %d, want 1", teamList[3].Record.Ties)
@@ -104,18 +97,20 @@ func TestRecord_TieHandling(t *testing.T) {
 	}
 }
 
-func assertRecord(t *testing.T, name string, team *Team, wins, losses, ties int64, record float64) {
-	t.Helper()
-	if team.Record.Wins != wins {
-		t.Errorf("%s Wins = %d, want %d", name, team.Record.Wins, wins)
-	}
-	if team.Record.Losses != losses {
-		t.Errorf("%s Losses = %d, want %d", name, team.Record.Losses, losses)
-	}
-	if team.Record.Ties != ties {
-		t.Errorf("%s Ties = %d, want %d", name, team.Record.Ties, ties)
-	}
-	if math.Abs(team.Record.Record-record) > 0.001 {
-		t.Errorf("%s Record = %f, want %f", name, team.Record.Record, record)
-	}
+// TestRecord_IgnoreOtherSeasons verifies that record only counts games from
+// the input's season, even when older games are loaded in the window.
+func TestRecord_IgnoreOtherSeasons(t *testing.T) {
+	r := newTestRanker(t, Input{
+		Year:  2023,
+		Sport: sport.Football,
+		Teams: footballTeams(),
+		Games: gamesThroughWeek(5), // includes the two 2022 games
+	})
+
+	teamList := fbsTeamList()
+	r.record(teamList)
+
+	// Alpha played a 2022 game (901); it must not affect the 2023 record.
+	assertRecord(t, "Alpha", teamList[1], 4, 0, 0, 5.0/6.0)
+	assertRecord(t, "Beta", teamList[2], 3, 2, 0, 4.0/7.0)
 }

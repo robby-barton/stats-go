@@ -18,6 +18,11 @@ type Client struct {
 	RateLimit      time.Duration // delay between batch API calls
 	Sport          Sport         // sport this client fetches data for
 
+	// Shared HTTP transport. Set by the constructors; callers that build a
+	// Client directly (tests) fall back to a per-request client with the
+	// configured timeout.
+	httpClient *http.Client
+
 	// Per-client URL overrides. When non-empty, these take precedence over
 	// the package-level vars. This allows multiple clients (one per sport) to
 	// coexist in the same process.
@@ -37,6 +42,7 @@ func NewClient() SportClient {
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      500 * time.Millisecond,
 		Sport:          CollegeFootball,
+		httpClient:     &http.Client{Timeout: 1 * time.Second},
 	}}
 }
 
@@ -49,6 +55,7 @@ func NewClientForSport(sport Sport) SportClient {
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      500 * time.Millisecond,
 		Sport:          sport,
+		httpClient:     &http.Client{Timeout: 1 * time.Second},
 		scheduleURL:    urls.Schedule,
 		gameStatsURL:   urls.GameStats,
 		teamInfoURL:    urls.TeamInfo,
@@ -105,16 +112,27 @@ type validatable interface {
 	validate() error
 }
 
+// Responses constrains the response types makeRequest can decode. Every
+// ESPN response implements validate, so decoded payloads are checked at the
+// transport boundary.
 type Responses interface {
 	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN
 	validatable
 }
 
-func (c *Client) makeRequest(endpoint string, data any) error {
-	httpClient := &http.Client{
-		Timeout: c.RequestTimeout,
+// makeRequest fetches endpoint and decodes the JSON body into out. It retries
+// 5xx responses with exponential backoff and aborts as soon as ctx is
+// cancelled. out is validated after decoding.
+func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, out *T) error {
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: c.RequestTimeout}
 	}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("building request for %q: %w", endpoint, err)
+	}
 
 	headers := map[string]string{
 		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -126,19 +144,29 @@ func (c *Client) makeRequest(endpoint string, data any) error {
 	}
 
 	var res *http.Response
-	var err error
 	for attempt := range c.MaxRetries {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, err)
+		}
+
 		res, err = httpClient.Do(req)
 		if err == nil {
 			if res.StatusCode >= 500 {
 				res.Body.Close()
 				err = fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
-				time.Sleep(c.backoff(attempt))
+				if sleepErr := c.sleep(ctx, c.backoff(attempt)); sleepErr != nil {
+					return fmt.Errorf("request cancelled for %q: %w", endpoint, sleepErr)
+				}
 				continue
 			}
 			break
 		}
-		time.Sleep(c.backoff(attempt))
+		if ctx.Err() != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, ctx.Err())
+		}
+		if sleepErr := c.sleep(ctx, c.backoff(attempt)); sleepErr != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, sleepErr)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("error from %q: %w", endpoint, err)
@@ -150,11 +178,26 @@ func (c *Client) makeRequest(endpoint string, data any) error {
 		return fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(data); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
 		return fmt.Errorf("decoding response from %q: %w", endpoint, err)
 	}
 
-	return data.(validatable).validate()
+	return (*out).validate()
+}
+
+// sleep waits for d, returning early if ctx is cancelled.
+func (c *Client) sleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (c *Client) backoff(attempt int) time.Duration {

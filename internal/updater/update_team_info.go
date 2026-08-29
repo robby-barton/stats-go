@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"strings"
 
 	"gorm.io/gorm"
@@ -60,8 +61,8 @@ func (u *Updater) insertTeamsToDB(teams []database.TeamName) error {
 	})
 }
 
-func (u *Updater) UpdateTeamInfo() (int, error) {
-	teamInfo, err := team.GetTeamInfo(u.ESPN)
+func (u *Updater) UpdateTeamInfo(ctx context.Context) (int, error) {
+	teamInfo, err := team.GetTeamInfo(ctx, u.ESPN)
 	if err != nil {
 		return 0, err
 	}

@@ -1,11 +1,11 @@
 package game
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/robby-barton/stats-go/internal/database"
+	"go.uber.org/zap"
+
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -64,12 +64,12 @@ func parsePassingStats(
 	gameID int64,
 	teamID int64,
 	passStats espn.PlayerStatistics,
-) []database.PassingStats {
-	var retStats []database.PassingStats
+) []PassingStats {
+	var retStats []PassingStats
 
 	statMaps := createStatMaps(passStats)
 	for _, statMap := range statMaps {
-		player := database.PassingStats{
+		player := PassingStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -99,12 +99,12 @@ func parseRushingStats(
 	gameID int64,
 	teamID int64,
 	rushStats espn.PlayerStatistics,
-) []database.RushingStats {
-	var retStats []database.RushingStats
+) []RushingStats {
+	var retStats []RushingStats
 
 	statMaps := createStatMaps(rushStats)
 	for _, statMap := range statMaps {
-		player := database.RushingStats{
+		player := RushingStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -134,12 +134,12 @@ func parseReceivingStats(
 	gameID int64,
 	teamID int64,
 	recStats espn.PlayerStatistics,
-) []database.ReceivingStats {
-	var retStats []database.ReceivingStats
+) []ReceivingStats {
+	var retStats []ReceivingStats
 
 	statMaps := createStatMaps(recStats)
 	for _, statMap := range statMaps {
-		player := database.ReceivingStats{
+		player := ReceivingStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -169,12 +169,12 @@ func parseFumbleStats(
 	gameID int64,
 	teamID int64,
 	fumbleStats espn.PlayerStatistics,
-) []database.FumbleStats {
-	var retStats []database.FumbleStats
+) []FumbleStats {
+	var retStats []FumbleStats
 
 	statMaps := createStatMaps(fumbleStats)
 	for _, statMap := range statMaps {
-		player := database.FumbleStats{
+		player := FumbleStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -202,12 +202,12 @@ func parseDefensiveStats(
 	gameID int64,
 	teamID int64,
 	defStats espn.PlayerStatistics,
-) []database.DefensiveStats {
-	var retStats []database.DefensiveStats
+) []DefensiveStats {
+	var retStats []DefensiveStats
 
 	statMaps := createStatMaps(defStats)
 	for _, statMap := range statMaps {
-		player := database.DefensiveStats{
+		player := DefensiveStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -243,12 +243,12 @@ func parseInterceptionStats(
 	gameID int64,
 	teamID int64,
 	intStats espn.PlayerStatistics,
-) []database.InterceptionStats {
-	var retStats []database.InterceptionStats
+) []InterceptionStats {
+	var retStats []InterceptionStats
 
 	statMaps := createStatMaps(intStats)
 	for _, statMap := range statMaps {
-		player := database.InterceptionStats{
+		player := InterceptionStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -277,12 +277,12 @@ func parseReturnStats(
 	teamID int64,
 	returnStats espn.PlayerStatistics,
 	returnType string,
-) []database.ReturnStats {
-	var retStats []database.ReturnStats
+) []ReturnStats {
+	var retStats []ReturnStats
 
 	statMaps := createStatMaps(returnStats)
 	for _, statMap := range statMaps {
-		player := database.ReturnStats{
+		player := ReturnStats{
 			TeamID:   teamID,
 			GameID:   gameID,
 			PuntKick: returnType,
@@ -313,12 +313,12 @@ func parseKickStats(
 	gameID int64,
 	teamID int64,
 	kickStats espn.PlayerStatistics,
-) []database.KickStats {
-	var retStats []database.KickStats
+) []KickStats {
+	var retStats []KickStats
 
 	statMaps := createStatMaps(kickStats)
 	for _, statMap := range statMaps {
-		player := database.KickStats{
+		player := KickStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -348,12 +348,12 @@ func parsePuntStats(
 	gameID int64,
 	teamID int64,
 	puntStats espn.PlayerStatistics,
-) []database.PuntStats {
-	var retStats []database.PuntStats
+) []PuntStats {
+	var retStats []PuntStats
 
 	statMaps := createStatMaps(puntStats)
 	for _, statMap := range statMaps {
-		player := database.PuntStats{
+		player := PuntStats{
 			TeamID: teamID,
 			GameID: gameID,
 		}
@@ -381,7 +381,7 @@ func parsePuntStats(
 	return retStats
 }
 
-func (s *ParsedGameInfo) parsePlayerStats(gameInfo *espn.GameInfoESPN) {
+func (s *ParsedGameInfo) parsePlayerStats(gameInfo *espn.GameInfoESPN, log *zap.SugaredLogger) {
 	gameID := gameInfo.GamePackage.Header.ID
 	players := gameInfo.GamePackage.Boxscore.Players
 	for _, playerStats := range players {
@@ -419,7 +419,7 @@ func (s *ParsedGameInfo) parsePlayerStats(gameInfo *espn.GameInfoESPN) {
 				s.PuntStats =
 					append(s.PuntStats, parsePuntStats(gameID, teamID, stat)...)
 			default:
-				fmt.Printf("Not found {%s}\n", stat.Name) //nolint:forbidigo // allow for this case
+				log.Warnf("game %d: unrecognized player stat category %q", gameID, stat.Name)
 			}
 		}
 	}

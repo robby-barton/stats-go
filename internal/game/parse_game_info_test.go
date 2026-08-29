@@ -38,7 +38,7 @@ func TestParseGameInfo_Standard(t *testing.T) {
 		t.Fatalf("parseGameInfo: %v", err)
 	}
 
-	game := s.GameInfo
+	game := s.Info
 	if game.GameID != 401234567 {
 		t.Errorf("GameID = %d, want 401234567", game.GameID)
 	}
@@ -106,7 +106,7 @@ func TestParseGameInfo_Postseason_NeutralSite(t *testing.T) {
 		t.Fatalf("parseGameInfo: %v", err)
 	}
 
-	game := s.GameInfo
+	game := s.Info
 	if game.GameID != 401999999 {
 		t.Errorf("GameID = %d, want 401999999", game.GameID)
 	}

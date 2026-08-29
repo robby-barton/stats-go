@@ -1,6 +1,8 @@
 package team
 
 import (
+	"context"
+
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -23,10 +25,10 @@ type ParsedTeamInfo struct {
 	Slug             string
 }
 
-func GetTeamInfo(client espn.SportClient) ([]ParsedTeamInfo, error) {
+func GetTeamInfo(ctx context.Context, client espn.SportClient) ([]ParsedTeamInfo, error) {
 	var parsedTeamInfo []ParsedTeamInfo
 
-	res, err := client.GetTeamInfo()
+	res, err := client.GetTeamInfo(ctx)
 	if err != nil {
 		return nil, err
 	}

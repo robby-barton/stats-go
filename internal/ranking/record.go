@@ -1,32 +1,20 @@
 package ranking
 
-import (
-	"github.com/robby-barton/stats-go/internal/database"
-)
-
-func (r *Ranker) record(teamList TeamList) error {
-	sport := r.sportFilter()
-
-	var games []database.Game
-	if err := r.DB.Where("sport = ? and season = ? and start_time <= ?", sport, r.Year, r.startTime).
-		Find(&games).Error; err != nil {
-		return err
-	}
-
-	var allTeams []int64
-	if err := r.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", sport, r.Year).
-		Pluck("team_id", &allTeams).Error; err != nil {
-		return err
-	}
-
+// record computes won-loss-tie records for the ranking window from the
+// loaded games. Records are tracked for every team of the sport/year (not
+// just the division being ranked), matching the original behavior.
+func (r *Ranker) record(teamList TeamList) {
 	allowedTeam := map[int64]bool{}
 	teamRecords := make(map[int64]*Record)
-	for _, team := range allTeams {
-		allowedTeam[team] = true
-		teamRecords[team] = &Record{}
+	for _, team := range r.in.Teams {
+		allowedTeam[team.ID] = true
+		teamRecords[team.ID] = &Record{}
 	}
 
-	for _, game := range games {
+	for _, game := range r.in.Games {
+		if game.Season != r.in.Year {
+			continue // record covers the current season only
+		}
 		if allowedTeam[game.HomeID] {
 			homeRecord := teamRecords[game.HomeID]
 			switch {
@@ -60,6 +48,4 @@ func (r *Ranker) record(teamList TeamList) error {
 			team.Record = *record
 		}
 	}
-
-	return nil
 }

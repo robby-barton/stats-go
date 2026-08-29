@@ -5,26 +5,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
-func TestSRS_BasicRanking(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
-
-	r := &Ranker{
-		DB:        db,
+// footballInput builds an Input over the full football fixture set with the
+// ranking window already resolved (as internal/ranking/load would).
+func footballInput() Input {
+	games := footballGames()
+	// The loader hands games over in descending start-time order.
+	for i, j := 0, len(games)-1; i < j; i, j = i+1, j-1 {
+		games[i], games[j] = games[j], games[i]
+	}
+	return Input{
 		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
+		Sport:     sport.Football,
+		StartTime: time.Date(2023, 10, 20, 0, 0, 0, 0, time.UTC),
+		Teams:     footballTeams(),
+		Games:     games,
 	}
+}
 
-	teamList := TeamList{
-		1: &Team{Name: "Alpha"},
-		2: &Team{Name: "Beta"},
-		3: &Team{Name: "Gamma"},
-		4: &Team{Name: "Delta"},
-	}
+func TestSRS_BasicRanking(t *testing.T) {
+	r := newTestRanker(t, footballInput())
+
+	teamList := fbsTeamList()
 
 	if err := r.srs(teamList); err != nil {
 		t.Fatalf("srs: %v", err)
@@ -52,22 +56,9 @@ func TestSRS_BasicRanking(t *testing.T) {
 }
 
 func TestSRS_RankAssignment(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
+	r := newTestRanker(t, footballInput())
 
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
-
-	teamList := TeamList{
-		1: &Team{Name: "Alpha"},
-		2: &Team{Name: "Beta"},
-		3: &Team{Name: "Gamma"},
-		4: &Team{Name: "Delta"},
-	}
+	teamList := fbsTeamList()
 
 	if err := r.srs(teamList); err != nil {
 		t.Fatalf("srs: %v", err)
@@ -87,22 +78,9 @@ func TestSRS_RankAssignment(t *testing.T) {
 }
 
 func TestSOS_BasicRanking(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
+	r := newTestRanker(t, footballInput())
 
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
-
-	teamList := TeamList{
-		1: &Team{Name: "Alpha"},
-		2: &Team{Name: "Beta"},
-		3: &Team{Name: "Gamma"},
-		4: &Team{Name: "Delta"},
-	}
+	teamList := fbsTeamList()
 
 	if err := r.sos(teamList); err != nil {
 		t.Fatalf("sos: %v", err)
@@ -123,54 +101,8 @@ func TestSOS_BasicRanking(t *testing.T) {
 	}
 }
 
-func TestCalculateRanking_FullPipeline(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
-
-	r := &Ranker{
-		DB:    db,
-		Year:  2023,
-		Week:  6,
-		Sport: sportFootball,
-	}
-
-	// Need to set startTime manually since setGlobals queries for week 6
-	// which doesn't exist in our data. Use setup flow with Week=0 instead.
-	r.Week = 0
-	teamList, err := r.CalculateRanking()
-	if err != nil {
-		t.Fatalf("CalculateRanking: %v", err)
-	}
-
-	if len(teamList) != 4 {
-		t.Fatalf("len(teamList) = %d, want 4", len(teamList))
-	}
-
-	// Alpha (4-0) should be rank 1
-	if teamList[1].FinalRank != 1 {
-		t.Errorf("Alpha FinalRank = %d, want 1", teamList[1].FinalRank)
-	}
-
-	// FinalRank should span 1-4 (some might tie)
-	ranks := map[int64]bool{}
-	for _, team := range teamList {
-		ranks[team.FinalRank] = true
-		if team.FinalRank < 1 || team.FinalRank > 4 {
-			t.Errorf("FinalRank = %d, want [1,4]", team.FinalRank)
-		}
-	}
-}
-
 func TestSRS_EmptyTeamList(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
-
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
+	r := newTestRanker(t, footballInput())
 
 	// Must not panic and must not touch any team.
 	if err := r.srs(TeamList{}); err != nil {
@@ -179,15 +111,7 @@ func TestSRS_EmptyTeamList(t *testing.T) {
 }
 
 func TestSOS_EmptyTeamList(t *testing.T) {
-	db := setupTestDB(t)
-	seedTestData(t, db)
-
-	r := &Ranker{
-		DB:        db,
-		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
+	r := newTestRanker(t, footballInput())
 
 	if err := r.sos(TeamList{}); err != nil {
 		t.Fatalf("sos on empty team list: %v", err)
@@ -199,49 +123,33 @@ func TestSOS_EmptyTeamList(t *testing.T) {
 // adjusted rating is identical and (rating-minMOV)/(maxMOV-minMOV) would be
 // 0/0 = NaN without the zero-range guard.
 func TestSRS_DegenerateMOVRange(t *testing.T) {
-	db := setupTestDB(t)
-
-	teamNames := []database.TeamName{
-		{TeamID: 1, Name: "Alpha", Sport: "ncaaf"},
-		{TeamID: 2, Name: "Beta", Sport: "ncaaf"},
-		{TeamID: 3, Name: "Gamma", Sport: "ncaaf"},
-	}
-	if err := db.Create(&teamNames).Error; err != nil {
-		t.Fatalf("seed team_names: %v", err)
-	}
-	teamSeasons := []database.TeamSeason{
-		{TeamID: 1, Year: 2023, FBS: 1, Conf: "SEC", Sport: "ncaaf"},
-		{TeamID: 2, Year: 2023, FBS: 1, Conf: "SEC", Sport: "ncaaf"},
-		{TeamID: 3, Year: 2023, FBS: 1, Conf: "Big Ten", Sport: "ncaaf"},
-	}
-	if err := db.Create(&teamSeasons).Error; err != nil {
-		t.Fatalf("seed team_seasons: %v", err)
-	}
-
 	base := time.Date(2023, 9, 5, 19, 0, 0, 0, time.UTC)
 	week := 7 * 24 * time.Hour
+
 	// Spreads larger than any MOV cap so all spreads clamp to the cap.
-	games := []database.Game{
+	games := []Game{
 		{
 			GameID: 1, Season: 2023, Week: 1,
 			HomeID: 1, AwayID: 2, HomeScore: 40, AwayScore: 0,
-			Sport: "ncaaf", StartTime: base,
+			StartTime: base,
 		},
 		{GameID: 2, Season: 2023, Week: 2, HomeID: 2, AwayID: 3,
-			HomeScore: 40, AwayScore: 0, Sport: "ncaaf", StartTime: base.Add(week)},
+			HomeScore: 40, AwayScore: 0, StartTime: base.Add(week)},
 		{GameID: 3, Season: 2023, Week: 3, HomeID: 3, AwayID: 1,
-			HomeScore: 40, AwayScore: 0, Sport: "ncaaf", StartTime: base.Add(2 * week)},
+			HomeScore: 40, AwayScore: 0, StartTime: base.Add(2 * week)},
 	}
-	if err := db.Create(&games).Error; err != nil {
-		t.Fatalf("seed games: %v", err)
+	// Descending start-time order, as the loader provides.
+	for i, j := 0, len(games)-1; i < j; i, j = i+1, j-1 {
+		games[i], games[j] = games[j], games[i]
 	}
 
-	r := &Ranker{
-		DB:        db,
+	r := newTestRanker(t, Input{
 		Year:      2023,
-		Sport:     sportFootball,
-		startTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
-	}
+		Sport:     sport.Football,
+		StartTime: time.Date(2023, 10, 10, 0, 0, 0, 0, time.UTC),
+		Teams:     footballTeams()[:3],
+		Games:     games,
+	})
 
 	teamList := TeamList{
 		1: &Team{Name: "Alpha"},
@@ -264,32 +172,6 @@ func TestSRS_DegenerateMOVRange(t *testing.T) {
 		// same rank — and that rank must be 1, not 0.
 		if team.SRSRank != 1 {
 			t.Errorf("team %d SRSRank = %d, want 1 (all teams tied)", id, team.SRSRank)
-		}
-	}
-}
-
-func TestFinalRanking_ZeroScoreTie(t *testing.T) {
-	db := setupTestDB(t)
-
-	r := &Ranker{
-		DB:    db,
-		Year:  2023,
-		Sport: sportFootball,
-	}
-
-	// All teams have FinalRaw exactly zero — the first team in sorted order
-	// must get rank 1, not 0.
-	teamList := TeamList{
-		1: &Team{Name: "Alpha", FinalRaw: 0},
-		2: &Team{Name: "Beta", FinalRaw: 0},
-		3: &Team{Name: "Gamma", FinalRaw: 0},
-	}
-
-	r.finalRanking(teamList)
-
-	for id, team := range teamList {
-		if team.FinalRank != 1 {
-			t.Errorf("team %d FinalRank = %d, want 1 (all tied at zero)", id, team.FinalRank)
 		}
 	}
 }

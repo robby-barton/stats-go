@@ -1,6 +1,7 @@
 package espn
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"sync"
@@ -20,7 +21,7 @@ var _ SportClient = (*BasketballClient)(nil)
 
 // DefaultSeason returns the current ESPN season year. Only successful lookups
 // are cached; a transient failure is retried on the next call.
-func (bc *BasketballClient) DefaultSeason() (int64, error) {
+func (bc *BasketballClient) DefaultSeason(ctx context.Context) (int64, error) {
 	bc.seasonMu.Lock()
 	defer bc.seasonMu.Unlock()
 
@@ -28,7 +29,7 @@ func (bc *BasketballClient) DefaultSeason() (int64, error) {
 		return bc.cachedSeason, nil
 	}
 
-	sb, err := bc.GetScoreboard()
+	sb, err := bc.GetScoreboard(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -40,8 +41,8 @@ func (bc *BasketballClient) DefaultSeason() (int64, error) {
 // validateCurrentSeason returns an error if year does not match the current ESPN season.
 // Used only for methods that have no historical equivalent (GetWeeksInSeason,
 // HasPostseasonStarted) and are only called by the current-season scheduler.
-func (bc *BasketballClient) validateCurrentSeason(year int64) error {
-	current, err := bc.DefaultSeason()
+func (bc *BasketballClient) validateCurrentSeason(ctx context.Context, year int64) error {
+	current, err := bc.DefaultSeason(ctx)
 	if err != nil {
 		return err
 	}
@@ -51,15 +52,15 @@ func (bc *BasketballClient) validateCurrentSeason(year int64) error {
 	return nil
 }
 
-func (bc *BasketballClient) GetWeeksInSeason(year int64) (int64, error) {
-	if err := bc.validateCurrentSeason(year); err != nil {
+func (bc *BasketballClient) GetWeeksInSeason(ctx context.Context, year int64) (int64, error) {
+	if err := bc.validateCurrentSeason(ctx, year); err != nil {
 		return 0, err
 	}
-	return bc.getWeeksInSeasonFromScoreboard()
+	return bc.getWeeksInSeasonFromScoreboard(ctx)
 }
 
-func (bc *BasketballClient) getWeeksInSeasonFromScoreboard() (int64, error) {
-	sb, err := bc.GetScoreboard()
+func (bc *BasketballClient) getWeeksInSeasonFromScoreboard(ctx context.Context) (int64, error) {
+	sb, err := bc.GetScoreboard(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -79,11 +80,11 @@ func (bc *BasketballClient) getWeeksInSeasonFromScoreboard() (int64, error) {
 	return weeks, nil
 }
 
-func (bc *BasketballClient) HasPostseasonStarted(year int64, _ time.Time) (bool, error) {
-	if err := bc.validateCurrentSeason(year); err != nil {
+func (bc *BasketballClient) HasPostseasonStarted(ctx context.Context, year int64, _ time.Time) (bool, error) {
+	if err := bc.validateCurrentSeason(ctx, year); err != nil {
 		return false, err
 	}
-	sb, err := bc.GetScoreboard()
+	sb, err := bc.GetScoreboard(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -105,13 +106,13 @@ func (bc *BasketballClient) historicalSeasonDates(year int64) []string {
 // getSeasonDates returns game dates for the given year.
 // For the current season it uses the scoreboard calendar (exact game dates only).
 // For historical seasons it generates the full date range for the season window.
-func (bc *BasketballClient) getSeasonDates(year int64) ([]string, error) {
-	current, err := bc.DefaultSeason()
+func (bc *BasketballClient) getSeasonDates(ctx context.Context, year int64) ([]string, error) {
+	current, err := bc.DefaultSeason(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if year == current {
-		return bc.GetSeasonDates()
+		return bc.GetSeasonDates(ctx)
 	}
 	return bc.historicalSeasonDates(year), nil
 }
@@ -121,14 +122,14 @@ func (bc *BasketballClient) getSeasonDates(year int64) ([]string, error) {
 // for basketball is a single day. If a late-night game finishes after ESPN
 // rolls to the next day, the base method would miss it permanently. Fetching
 // two days ensures the 5-minute cron has a full day of retries to catch it.
-func (bc *BasketballClient) GetCurrentWeekGames(group Group) ([]Game, error) {
+func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
 	now := time.Now()
 	var allGames []Game
 	seen := make(map[int64]bool)
 
 	for daysBack := 0; daysBack <= 1; daysBack++ {
 		date := now.AddDate(0, 0, -daysBack).Format("20060102")
-		games, err := bc.GetCompletedGamesByDate(date, group)
+		games, err := bc.GetCompletedGamesByDate(ctx, date, group)
 		if err != nil {
 			return nil, err
 		}
@@ -138,39 +139,39 @@ func (bc *BasketballClient) GetCurrentWeekGames(group Group) ([]Game, error) {
 				allGames = append(allGames, g)
 			}
 		}
-		bc.Throttle()
+		bc.Throttle(ctx)
 	}
 
 	return allGames, nil
 }
 
-func (bc *BasketballClient) GetGamesBySeason(year int64, group Group) ([]Game, error) {
-	dates, err := bc.getSeasonDates(year)
+func (bc *BasketballClient) GetGamesBySeason(ctx context.Context, year int64, group Group) ([]Game, error) {
+	dates, err := bc.getSeasonDates(ctx, year)
 	if err != nil {
 		return nil, err
 	}
-	return bc.getGamesByDates(dates, group)
+	return bc.getGamesByDates(ctx, dates, group)
 }
 
-func (bc *BasketballClient) getGamesByDates(dates []string, group Group) ([]Game, error) {
+func (bc *BasketballClient) getGamesByDates(ctx context.Context, dates []string, group Group) ([]Game, error) {
 	var allGames []Game
 	for _, dateStr := range dates {
 		date := dateToParam(dateStr)
 		if date == "" {
 			continue
 		}
-		games, err := bc.GetCompletedGamesByDate(date, group)
+		games, err := bc.GetCompletedGamesByDate(ctx, date, group)
 		if err != nil {
 			return nil, err
 		}
 		allGames = append(allGames, games...)
-		bc.Throttle()
+		bc.Throttle(ctx)
 	}
 	return allGames, nil
 }
 
-func (bc *BasketballClient) TeamConferencesByYear(year int64) (map[int64]int64, error) {
-	dates, err := bc.getSeasonDates(year)
+func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
+	dates, err := bc.getSeasonDates(ctx, year)
 	if err != nil {
 		return nil, err
 	}
@@ -182,24 +183,24 @@ func (bc *BasketballClient) TeamConferencesByYear(year int64) (map[int64]int64, 
 			if date == "" {
 				continue
 			}
-			games, err := bc.GetGamesByDate(date, group)
+			games, err := bc.GetGamesByDate(ctx, date, group)
 			if err != nil {
 				return nil, err
 			}
 			maps.Copy(teamConfs, extractTeamConfs(games))
-			bc.Throttle()
+			bc.Throttle(ctx)
 		}
 	}
 
 	return teamConfs, nil
 }
 
-func (bc *BasketballClient) ConferenceMap() (ConferenceMapResult, error) {
+func (bc *BasketballClient) ConferenceMap(ctx context.Context) (ConferenceMapResult, error) {
 	// Use a mid-season date to guarantee regular-season conference data.
 	// During March Madness the default schedule page returns only tournament
 	// groupings (NCAA Tournament, NIT, etc.) whose parentGroupId is nil,
 	// causing the D1 conference list to come back empty.
-	current, err := bc.DefaultSeason()
+	current, err := bc.DefaultSeason(ctx)
 	if err != nil {
 		return ConferenceMapResult{}, err
 	}
@@ -207,7 +208,7 @@ func (bc *BasketballClient) ConferenceMap() (ConferenceMapResult, error) {
 
 	var res GameScheduleESPN
 	url := bc.WeekURL() + fmt.Sprintf("&date=%s", midSeasonDate)
-	if err := bc.makeRequest(url, &res); err != nil {
+	if err := makeRequest(ctx, bc.Client, url, &res); err != nil {
 		return ConferenceMapResult{}, err
 	}
 

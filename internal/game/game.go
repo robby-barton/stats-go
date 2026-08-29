@@ -1,22 +1,28 @@
 package game
 
 import (
-	"github.com/robby-barton/stats-go/internal/database"
+	"context"
+
+	"go.uber.org/zap"
+
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
+// ParsedGameInfo is a fully-parsed single game: header, team stats, and (for
+// football) player stats. It uses the game package's domain types; mapping to
+// the GORM persistence models happens in internal/updater.
 type ParsedGameInfo struct {
-	GameInfo          database.Game
-	TeamStats         []database.TeamGameStats
-	PassingStats      []database.PassingStats
-	RushingStats      []database.RushingStats
-	ReceivingStats    []database.ReceivingStats
-	FumbleStats       []database.FumbleStats
-	DefensiveStats    []database.DefensiveStats
-	InterceptionStats []database.InterceptionStats
-	ReturnStats       []database.ReturnStats
-	KickStats         []database.KickStats
-	PuntStats         []database.PuntStats
+	Info              Info
+	TeamStats         []TeamGameStats
+	PassingStats      []PassingStats
+	RushingStats      []RushingStats
+	ReceivingStats    []ReceivingStats
+	FumbleStats       []FumbleStats
+	DefensiveStats    []DefensiveStats
+	InterceptionStats []InterceptionStats
+	ReturnStats       []ReturnStats
+	KickStats         []KickStats
+	PuntStats         []PuntStats
 }
 
 func combineGames(gamesLists [][]espn.Game) []espn.Game {
@@ -37,15 +43,15 @@ func combineGames(gamesLists [][]espn.Game) []espn.Game {
 
 // GetCurrentWeekGames fetches completed games for the current week across all
 // groups defined for the client's sport.
-func GetCurrentWeekGames(client espn.SportClient) ([]espn.Game, error) {
+func GetCurrentWeekGames(ctx context.Context, client espn.SportClient) ([]espn.Game, error) {
 	var allGames [][]espn.Game
 	for _, group := range client.SportInfo().Groups() {
-		games, err := client.GetCurrentWeekGames(group)
+		games, err := client.GetCurrentWeekGames(ctx, group)
 		if err != nil {
 			return nil, err
 		}
 		allGames = append(allGames, games)
-		client.Throttle()
+		client.Throttle(ctx)
 	}
 
 	return combineGames(allGames), nil
@@ -53,22 +59,29 @@ func GetCurrentWeekGames(client espn.SportClient) ([]espn.Game, error) {
 
 // GetGamesForSeason fetches all completed games for a season across all groups
 // defined for the client's sport.
-func GetGamesForSeason(client espn.SportClient, year int64) ([]espn.Game, error) {
+func GetGamesForSeason(ctx context.Context, client espn.SportClient, year int64) ([]espn.Game, error) {
 	var allGames [][]espn.Game
 	for _, group := range client.SportInfo().Groups() {
-		games, err := client.GetGamesBySeason(year, group)
+		games, err := client.GetGamesBySeason(ctx, year, group)
 		if err != nil {
 			return nil, err
 		}
 		allGames = append(allGames, games)
-		client.Throttle()
+		client.Throttle(ctx)
 	}
 
 	return combineGames(allGames), nil
 }
 
-func GetSingleGame(client espn.SportClient, gameID int64) (*ParsedGameInfo, error) {
-	res, err := client.GetGameStats(gameID)
+// GetSingleGame fetches and parses one game's box score. Unknown stat names
+// are reported through the logger instead of stdout.
+func GetSingleGame(
+	ctx context.Context,
+	client espn.SportClient,
+	log *zap.SugaredLogger,
+	gameID int64,
+) (*ParsedGameInfo, error) {
+	res, err := client.GetGameStats(ctx, gameID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +90,9 @@ func GetSingleGame(client espn.SportClient, gameID int64) (*ParsedGameInfo, erro
 	if err := parsedGame.parseGameInfo(res); err != nil {
 		return nil, err
 	}
-	parsedGame.GameInfo.Sport = client.SportInfo().SportDB()
-	parsedGame.parseTeamInfo(res)
+	parsedGame.parseTeamInfo(res, log)
 	if client.SportInfo() == espn.CollegeFootball {
-		parsedGame.parsePlayerStats(res)
+		parsedGame.parsePlayerStats(res, log)
 	}
 
 	return parsedGame, nil

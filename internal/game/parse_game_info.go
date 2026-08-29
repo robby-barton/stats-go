@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
-// parseGameInfo converts the ESPN game header into a database.Game. It
+// parseGameInfo converts the ESPN game header into a game.Info. It
 // validates cardinality before indexing so malformed upstream data produces a
 // contextual error instead of a panic or zero-value corruption.
 func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) error {
@@ -28,32 +27,32 @@ func (s *ParsedGameInfo) parseGameInfo(gameInfo *espn.GameInfoESPN) error {
 		return fmt.Errorf("game %d: parsing start time %q: %w", header.ID, competition.Date, err)
 	}
 
-	var game database.Game
-	game.GameID = header.ID
-	game.StartTime = startTime
-	game.Week = header.Week
-	game.Season = header.Season.Year
-	game.Postseason = header.Season.Type - int64(espn.Regular)
-	game.ConfGame = competition.ConfGame
-	game.Neutral = competition.Neutral
+	var info Info
+	info.GameID = header.ID
+	info.StartTime = startTime
+	info.Week = header.Week
+	info.Season = header.Season.Year
+	info.Postseason = header.Season.Type - int64(espn.Regular)
+	info.ConfGame = competition.ConfGame
+	info.Neutral = competition.Neutral
 
 	var homeID, awayID int64
 	for _, team := range competition.Competitors {
 		switch team.HomeAway {
 		case "home":
 			homeID = team.ID
-			game.HomeScore = team.Score
+			info.HomeScore = team.Score
 		case "away":
 			awayID = team.ID
-			game.AwayScore = team.Score
+			info.AwayScore = team.Score
 		}
 	}
 	if homeID == 0 || awayID == 0 {
 		return fmt.Errorf("game %d: missing home or away competitor", header.ID)
 	}
-	game.HomeID = homeID
-	game.AwayID = awayID
+	info.HomeID = homeID
+	info.AwayID = awayID
 
-	s.GameInfo = game
+	s.Info = info
 	return nil
 }
