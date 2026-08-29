@@ -32,16 +32,25 @@ func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 		existingGame, ok := existsMap[game.ID]
 		if !ok {
 			newGames = append(newGames, game)
-		} else {
-			teams := game.Competitions[0]
-			home := teams.Competitors[0]
-			away := teams.Competitors[1]
-			if home.HomeAway == "away" {
-				home, away = away, home
-			}
-			if existingGame.HomeScore != home.Score || existingGame.AwayScore != away.Score {
-				newGames = append(newGames, game)
-			}
+			continue
+		}
+
+		// Malformed schedule entries cannot be score-compared; send them
+		// through the full single-game path (which validates strictly) rather
+		// than indexing blindly.
+		if len(game.Competitions) == 0 || len(game.Competitions[0].Competitors) < 2 {
+			newGames = append(newGames, game)
+			continue
+		}
+
+		teams := game.Competitions[0]
+		home := teams.Competitors[0]
+		away := teams.Competitors[1]
+		if home.HomeAway == "away" {
+			home, away = away, home
+		}
+		if existingGame.HomeScore != home.Score || existingGame.AwayScore != away.Score {
+			newGames = append(newGames, game)
 		}
 	}
 

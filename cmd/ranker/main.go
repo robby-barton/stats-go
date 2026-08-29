@@ -15,7 +15,14 @@ import (
 )
 
 func main() {
-	cfg := config.SetupConfig()
+	os.Exit(run())
+}
+
+func run() int {
+	cfg, err := config.SetupConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
@@ -35,7 +42,12 @@ func main() {
 
 	rootCmd.AddCommand(ncaafCmd, ncaamCmd)
 
-	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
+	// Cobra prints the error itself (SilenceErrors is not set), so just map
+	// failures to a non-zero exit status for cron/deploy scripts.
+	if err := rootCmd.Execute(); err != nil {
+		return 1
+	}
+	return 0
 }
 
 func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {

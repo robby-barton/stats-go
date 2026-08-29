@@ -22,37 +22,35 @@ func parseTeamStats(stats []espn.TeamStatistics, tgs *database.TeamGameStats) {
 			tgs.FirstDowns, _ = strconv.ParseInt(statValue, 10, 64)
 		case "thirdDownEff":
 			cleaned := re.ReplaceAllString(statValue, "-")
-			downsSplit := strings.Split(cleaned, "-")
-			tgs.ThirdDownsConv, _ = strconv.ParseInt(downsSplit[0], 10, 64)
-			tgs.ThirdDowns, _ = strconv.ParseInt(downsSplit[1], 10, 64)
+			tgs.ThirdDownsConv, tgs.ThirdDowns = splitPair(cleaned, "-")
 		case "fourthDownEff":
 			cleaned := re.ReplaceAllString(statValue, "-")
-			downsSplit := strings.Split(cleaned, "-")
-			tgs.FourthDownsConv, _ = strconv.ParseInt(downsSplit[0], 10, 64)
-			tgs.FourthDowns, _ = strconv.ParseInt(downsSplit[1], 10, 64)
+			tgs.FourthDownsConv, tgs.FourthDowns = splitPair(cleaned, "-")
 		case "netPassingYards":
 			tgs.PassYards, _ = strconv.ParseInt(statValue, 10, 64)
 		case "completionAttempts":
 			cleaned := re.ReplaceAllString(statValue, "/")
-			downsSplit := strings.Split(cleaned, "/")
-			tgs.Completions, _ = strconv.ParseInt(downsSplit[0], 10, 64)
-			tgs.CompletionAttempts, _ = strconv.ParseInt(downsSplit[1], 10, 64)
+			tgs.Completions, tgs.CompletionAttempts = splitPair(cleaned, "/")
 		case "rushingYards":
 			tgs.RushYards, _ = strconv.ParseInt(statValue, 10, 64)
 		case "rushingAttempts":
 			tgs.RushAttempts, _ = strconv.ParseInt(statValue, 10, 64)
 		case "totalPenaltiesYards":
 			cleaned := re.ReplaceAllString(statValue, "-")
-			downsSplit := strings.Split(cleaned, "-")
-			tgs.Penalties, _ = strconv.ParseInt(downsSplit[0], 10, 64)
-			tgs.PenaltyYards, _ = strconv.ParseInt(downsSplit[1], 10, 64)
+			tgs.Penalties, tgs.PenaltyYards = splitPair(cleaned, "-")
 		case "fumblesLost":
 			tgs.Fumbles, _ = strconv.ParseInt(statValue, 10, 64)
 		case "interceptions":
 			tgs.Interceptions, _ = strconv.ParseInt(statValue, 10, 64)
 		case "possessionTime":
 			splitTime := strings.Split(statValue, ":")
-			seconds, _ := time.ParseDuration(fmt.Sprintf("%sm%ss", splitTime[0], splitTime[1]))
+			if len(splitTime) != 2 {
+				break // malformed clock value: leave possession at zero
+			}
+			seconds, err := time.ParseDuration(fmt.Sprintf("%sm%ss", splitTime[0], splitTime[1]))
+			if err != nil {
+				break // malformed duration: leave possession at zero
+			}
 			tgs.Possession = int64(seconds.Seconds())
 
 		// These are stats from the API that can be derived

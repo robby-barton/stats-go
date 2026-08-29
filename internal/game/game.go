@@ -72,7 +72,9 @@ func GetSingleGame(client espn.SportClient, gameID int64) (*ParsedGameInfo, erro
 	}
 
 	parsedGame := &ParsedGameInfo{}
-	parsedGame.parseGameInfo(res)
+	if err := parsedGame.parseGameInfo(res); err != nil {
+		return nil, err
+	}
 	parsedGame.GameInfo.Sport = client.SportInfo().SportDB()
 	parsedGame.parseTeamInfo(res)
 	if client.SportInfo() == espn.CollegeFootball {

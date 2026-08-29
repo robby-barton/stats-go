@@ -13,6 +13,19 @@ const playerID = "playerId"
 const yds = "YDS"
 const long = "LONG"
 
+// splitPair parses "a<sep>b" stat values (e.g. "20/30", "5-12") into two
+// integers. Malformed or missing values (ESPN occasionally sends "--", "N/A",
+// or truncated strings) return zeros instead of panicking on a short split.
+func splitPair(value, sep string) (int64, int64) {
+	parts := strings.Split(value, sep)
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	a, _ := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	b, _ := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	return a, b
+}
+
 func createStatMaps(stats espn.PlayerStatistics) []map[string]interface{} {
 	var statMaps []map[string]interface{}
 
@@ -21,6 +34,9 @@ func createStatMaps(stats espn.PlayerStatistics) []map[string]interface{} {
 	if len(stats.Totals) > 0 {
 		totals := make(map[string]interface{})
 		for i, key := range keys {
+			if i >= len(stats.Totals) {
+				break // labels/totals length mismatch: skip missing values
+			}
 			totals[key] = stats.Totals[i]
 		}
 		totals[playerID] = int64(-1)
@@ -31,6 +47,9 @@ func createStatMaps(stats espn.PlayerStatistics) []map[string]interface{} {
 	for _, athlete := range stats.Athletes {
 		playerStats := make(map[string]interface{})
 		for i, key := range keys {
+			if i >= len(athlete.Stats) {
+				break // labels/stats length mismatch: skip missing values
+			}
 			playerStats[key] = athlete.Stats[i]
 		}
 		playerStats[playerID] = athlete.Athlete.ID
@@ -60,9 +79,7 @@ func parsePassingStats(
 			case playerID:
 				player.PlayerID = value.(int64)
 			case "C/ATT":
-				compSplit := strings.Split(value.(string), "/")
-				player.Completions, _ = strconv.ParseInt(compSplit[0], 10, 64)
-				player.Attempts, _ = strconv.ParseInt(compSplit[1], 10, 64)
+				player.Completions, player.Attempts = splitPair(value.(string), "/")
 			case yds:
 				player.Yards, _ = strconv.ParseInt(value.(string), 10, 64)
 			case "TD":
@@ -311,15 +328,11 @@ func parseKickStats(
 			case playerID:
 				player.PlayerID = value.(int64)
 			case "FG":
-				compSplit := strings.Split(value.(string), "/")
-				player.FGM, _ = strconv.ParseInt(compSplit[0], 10, 64)
-				player.FGA, _ = strconv.ParseInt(compSplit[1], 10, 64)
+				player.FGM, player.FGA = splitPair(value.(string), "/")
 			case long:
 				player.FGLong, _ = strconv.ParseInt(value.(string), 10, 64)
 			case "XP":
-				compSplit := strings.Split(value.(string), "/")
-				player.XPM, _ = strconv.ParseInt(compSplit[0], 10, 64)
-				player.XPA, _ = strconv.ParseInt(compSplit[1], 10, 64)
+				player.XPM, player.XPA = splitPair(value.(string), "/")
 			case "PTS":
 				player.Points, _ = strconv.ParseInt(value.(string), 10, 64)
 			}

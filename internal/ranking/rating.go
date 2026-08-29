@@ -29,6 +29,10 @@ func (r *Ranker) sos(teamList TeamList) error {
 		teamOrder = append(teamOrder, id)
 	}
 
+	if len(teamOrder) == 0 {
+		return nil // nothing to rank
+	}
+
 	teamOrderMap := map[int64]int{}
 	for idx, team := range teamOrder {
 		teamOrderMap[team] = idx
@@ -115,7 +119,10 @@ func (r *Ranker) sos(teamList TeamList) error {
 
 	maxSOS := teamList[teamOrder[0]].SOS
 	minSOS := teamList[teamOrder[len(teamOrder)-1]].SOS
-	var prev float64
+	// Initialize prev to NaN so the first team always takes the rank-assignment
+	// branch, even when its score is exactly zero (0 == 0 would otherwise
+	// assign rank 0 via the uninitialized prevRank).
+	prev := math.NaN()
 	var prevRank int64
 	for rank, id := range teamOrder {
 		team := teamList[id]
@@ -242,7 +249,12 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 		for id, rating := range ratings {
 			team := teamList[id]
-			norm := (rating - minMOV) / (maxMOV - minMOV)
+			norm := 0.0
+			// Guard against a degenerate range: when all MOVs are equal
+			// (maxMOV == minMOV) the normalization would be 0/0 = NaN.
+			if maxMOV > minMOV {
+				norm = (rating - minMOV) / (maxMOV - minMOV)
+			}
 			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i+1)
 		}
 	}
@@ -254,9 +266,15 @@ func (r *Ranker) srs(teamList TeamList) error {
 	sort.Slice(teamIDs, func(i, j int) bool {
 		return teamList[teamIDs[i]].SRS > teamList[teamIDs[j]].SRS
 	})
+
+	if len(teamIDs) == 0 {
+		return nil // nothing to rank
+	}
+
 	maxSRS := teamList[teamIDs[0]].SRS
 	minSRS := teamList[teamIDs[len(teamIDs)-1]].SRS
-	var prev float64
+	// NaN seed: see the note in sos about first-team rank assignment.
+	prev := math.NaN()
 	var prevRank int64
 	for rank, id := range teamIDs {
 		team := teamList[id]

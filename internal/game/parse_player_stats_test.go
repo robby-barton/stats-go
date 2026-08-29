@@ -499,3 +499,88 @@ func TestParseRushingStats_WithTotals(t *testing.T) {
 		t.Errorf("totals RushYards = %d, want 150", result[0].RushYards)
 	}
 }
+
+// TestParsePassingStats_MalformedCATT verifies that a malformed C/ATT value
+// (ESPN sometimes sends "--" or other non-numeric junk) leaves the fields at
+// zero instead of panicking on a short split.
+func TestParsePassingStats_MalformedCATT(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"C/ATT", "YDS", "TD", "INT"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 300},
+				Stats:   []string{"--", "50", "0", "0"},
+			},
+		},
+	}
+
+	result := parsePassingStats(1, 10, stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	player := result[0]
+	if player.PlayerID != 300 {
+		t.Errorf("PlayerID = %d, want 300", player.PlayerID)
+	}
+	if player.Completions != 0 || player.Attempts != 0 {
+		t.Errorf("Completions/Attempts = %d/%d, want 0/0 for malformed value",
+			player.Completions, player.Attempts)
+	}
+	if player.Yards != 50 {
+		t.Errorf("Yards = %d, want 50", player.Yards)
+	}
+}
+
+// TestParseKickStats_MalformedSplits covers malformed FG/XP split values.
+func TestParseKickStats_MalformedSplits(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"FG", "LONG", "XP", "PTS"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 400},
+				Stats:   []string{"N/A", "45", "2", "8"},
+			},
+		},
+	}
+
+	result := parseKickStats(1, 10, stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	kicker := result[0]
+	if kicker.FGM != 0 || kicker.FGA != 0 {
+		t.Errorf("FGM/FGA = %d/%d, want 0/0 for malformed value", kicker.FGM, kicker.FGA)
+	}
+	if kicker.XPM != 0 || kicker.XPA != 0 {
+		t.Errorf("XPM/XPA = %d/%d, want 0/0 for value without separator", kicker.XPM, kicker.XPA)
+	}
+}
+
+// TestCreateStatMaps_LabelStatsMismatch verifies that a labels slice longer
+// than the stats slice does not panic; missing values are simply skipped.
+func TestCreateStatMaps_LabelStatsMismatch(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"C/ATT", "YDS", "TD", "INT"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 500},
+				Stats:   []string{"10/20"}, // truncated stats list
+			},
+		},
+	}
+
+	result := createStatMaps(stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	player := result[0]
+	if player["C/ATT"] != "10/20" {
+		t.Errorf("C/ATT = %v, want 10/20", player["C/ATT"])
+	}
+	if _, ok := player["YDS"]; ok {
+		t.Error("YDS should be absent when stats list is truncated")
+	}
+}

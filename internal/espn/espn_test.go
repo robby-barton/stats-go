@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -608,6 +610,66 @@ func TestBasketball_GetCurrentWeekGames(t *testing.T) {
 		if !ids[want] {
 			t.Errorf("missing game ID %d", want)
 		}
+	}
+}
+
+// TestGetGamesBySeason_CoversAllRegularSeasonWeeks verifies that the season
+// fetch requests every regular-season week (1..N, including the final week)
+// plus postseason week 1.
+func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
+	var mu sync.Mutex
+	var regularWeeks, postseasonWeeks []int64
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		week := r.URL.Query().Get("week")
+		seasonType := r.URL.Query().Get("seasonType")
+		// GetWeeksInSeason probes the same endpoint without week/seasonType
+		// params; only count actual week fetches.
+		if week == "" {
+			return
+		}
+		n, _ := strconv.ParseInt(week, 10, 64)
+		if seasonType == strconv.FormatInt(int64(Postseason), 10) {
+			postseasonWeeks = append(postseasonWeeks, n)
+		} else {
+			regularWeeks = append(regularWeeks, n)
+		}
+	})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	overrideURLs(t, ts.URL)
+	client := newTestClient()
+
+	if _, err := client.GetGamesBySeason(2023, FBS); err != nil {
+		t.Fatalf("GetGamesBySeason: %v", err)
+	}
+
+	// Regular season: calendar has 15 weeks (1..15) — every week must be
+	// requested, including the final one.
+	if len(regularWeeks) != 15 {
+		t.Errorf("regular season requests = %d, want 15", len(regularWeeks))
+	}
+	requested := map[int64]bool{}
+	for _, week := range regularWeeks {
+		requested[week] = true
+	}
+	for week := int64(1); week <= 15; week++ {
+		if !requested[week] {
+			t.Errorf("regular season week %d was never requested", week)
+		}
+	}
+
+	// Postseason week 1 is fetched separately.
+	if len(postseasonWeeks) != 1 || postseasonWeeks[0] != 1 {
+		t.Errorf("postseason requests = %v, want [1]", postseasonWeeks)
 	}
 }
 

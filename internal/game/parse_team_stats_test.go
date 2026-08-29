@@ -128,3 +128,31 @@ func TestParseTeamStats_IgnoredStats(t *testing.T) {
 		t.Errorf("FirstDowns = %d, want 20", tgs.FirstDowns)
 	}
 }
+
+// TestParseTeamStats_MalformedValues verifies that malformed stat values
+// (ESPN occasionally sends "--", "N/A", or empty strings) leave fields at
+// zero instead of panicking on short splits.
+func TestParseTeamStats_MalformedValues(t *testing.T) {
+	stats := []espn.TeamStatistics{
+		{Name: "thirdDownEff", DisplayValue: "--"},
+		{Name: "completionAttempts", DisplayValue: "N/A"},
+		{Name: "possessionTime", DisplayValue: "N/A"},
+		{Name: "firstDowns", DisplayValue: "not-a-number"},
+	}
+
+	var tgs database.TeamGameStats
+	parseTeamStats(stats, &tgs) // must not panic
+
+	if tgs.ThirdDownsConv != 0 || tgs.ThirdDowns != 0 {
+		t.Errorf("ThirdDowns = %d/%d, want 0/0", tgs.ThirdDownsConv, tgs.ThirdDowns)
+	}
+	if tgs.Completions != 0 || tgs.CompletionAttempts != 0 {
+		t.Errorf("Completions = %d/%d, want 0/0", tgs.Completions, tgs.CompletionAttempts)
+	}
+	if tgs.Possession != 0 {
+		t.Errorf("Possession = %d, want 0", tgs.Possession)
+	}
+	if tgs.FirstDowns != 0 {
+		t.Errorf("FirstDowns = %d, want 0", tgs.FirstDowns)
+	}
+}

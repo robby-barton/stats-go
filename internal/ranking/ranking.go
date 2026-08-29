@@ -2,6 +2,7 @@ package ranking
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -151,7 +152,10 @@ func (r *Ranker) finalRanking(teamList TeamList) {
 		return teamList[ids[i]].FinalRaw > teamList[ids[j]].FinalRaw
 	})
 
-	var prev float64
+	// NaN seed: ensures the first team always takes the rank-assignment branch,
+	// even when its score is exactly zero (otherwise it would get rank 0 via
+	// the uninitialized prevRank).
+	prev := math.NaN()
 	var prevRank int64
 	for rank, id := range ids {
 		team := teamList[id]

@@ -83,7 +83,10 @@ basketball only ranks D1 teams as a single group. The `FBS` column in
 - **PostgreSQL** is used in production (DigitalOcean managed database).
 - **SQLite** is used for local development and the ranker CLI, avoiding the need
   for a running Postgres instance.
-- The choice is implicit: if `DBParams` is nil (no PG env vars), SQLite is used.
+- The choice is implicit: if no `PG_*` environment variable is set at all,
+  `DBParams` is nil and SQLite is used. A *partial* Postgres configuration
+  (some `PG_*` vars set but required ones missing, or a malformed `PG_PORT`)
+  is a configuration error — it never falls back to SQLite silently.
 - Both use `SkipDefaultTransaction: true` because all transactions are managed
   explicitly where needed.
 
@@ -110,6 +113,10 @@ background goroutine with a buffered channel of size 1. Multiple ranking updates
 in quick succession coalesce into a single deploy — if one is already queued,
 extra triggers are dropped. This prevents deploy storms during rapid back-to-back
 ranking runs. If `DEPLOY_SCRIPT` is empty, the hook is a no-op.
+
+On shutdown, the ranking workers are cancelled and joined (via a process-level
+context and WaitGroup) *before* the deployer's trigger channel is closed, so a
+worker can never send on a closed channel.
 
 ## Scheduled Updates During Season
 

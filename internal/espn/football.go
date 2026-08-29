@@ -67,7 +67,10 @@ func (fc *FootballClient) GetGamesBySeason(year int64, group Group) ([]Game, err
 		return nil, err
 	}
 
-	for i := int64(1); i < numWeeks; i++ {
+	// GetWeeksInSeason returns the number of regular-season weeks (calendar
+	// entry 0 excludes the postseason), numbered 1..N. Fetch every one of them;
+	// postseason week 1 is fetched separately below.
+	for i := int64(1); i <= numWeeks; i++ {
 		games, err := fc.GetCompletedGamesByWeek(year, i, group, Regular)
 		if err != nil {
 			return nil, err
@@ -95,7 +98,7 @@ func (fc *FootballClient) TeamConferencesByYear(year int64) (map[int64]int64, er
 	}
 
 	for _, group := range fc.Sport.Groups() {
-		for i := int64(1); i < numWeeks; i++ {
+		for i := int64(1); i <= numWeeks; i++ {
 			games, err := fc.GetGamesByWeek(year, i, group, Regular)
 			if err != nil {
 				return nil, err

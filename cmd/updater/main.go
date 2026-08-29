@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,10 +23,17 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	log := logger.NewLogger().Sugar()
 	defer log.Sync()
 
-	cfg := config.SetupConfig()
+	cfg, err := config.SetupConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
@@ -35,8 +43,9 @@ func main() {
 	defer sqlDB.Close()
 
 	rootCmd := &cobra.Command{
-		Use:   "updater",
-		Short: "College sports data updater",
+		Use:           "updater",
+		Short:         "College sports data updater",
+		SilenceErrors: true, // errors are logged once at the command boundary
 	}
 	rootCmd.SilenceUsage = true
 
@@ -46,7 +55,11 @@ func main() {
 
 	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
 
-	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
+	if err := rootCmd.Execute(); err != nil {
+		log.Error(err)
+		return 1
+	}
+	return 0
 }
 
 func newUpdater(
@@ -64,10 +77,14 @@ func newUpdater(
 // deployer runs a deploy script in the background after rankings are updated.
 // Calls to Trigger are coalesced: if a deploy is already queued, extra triggers
 // are dropped so at most one deploy is pending at a time.
+// stop() closes the trigger channel; it must only be called after all producers
+// (ranking workers) have been joined, otherwise Trigger could send on a closed
+// channel. stop is idempotent.
 type deployer struct {
-	script  string
-	log     *zap.SugaredLogger
-	trigger chan struct{}
+	script   string
+	log      *zap.SugaredLogger
+	trigger  chan struct{}
+	stopOnce sync.Once
 }
 
 func newDeployer(log *zap.SugaredLogger, script string) *deployer {
@@ -92,7 +109,7 @@ func (d *deployer) Trigger() {
 }
 
 func (d *deployer) stop() {
-	close(d.trigger)
+	d.stopOnce.Do(func() { close(d.trigger) })
 }
 
 func (d *deployer) run() {
@@ -116,18 +133,23 @@ type sportSchedule struct {
 	NewSeasonCron string // season initialization
 }
 
-// registerJobs adds the three cron jobs for a sport to the scheduler and
-// returns a stop function that shuts down the ranking-update goroutine.
+// registerJobs adds the three cron jobs for a sport to the scheduler and starts
+// the ranking-update worker goroutine. The worker runs until ctx is cancelled;
+// wg is released once the worker has exited so callers can join it before
+// shutting down the deployer (whose only Trigger producer is this worker).
 func (ss sportSchedule) registerJobs(
+	ctx context.Context,
 	s gocron.Scheduler,
 	log *zap.SugaredLogger,
 	u updater.Updater,
 	d *deployer,
-) func() {
+	wg *sync.WaitGroup,
+) {
 	update := make(chan bool, 1)
-	stop := make(chan bool, 1)
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-update:
@@ -145,7 +167,7 @@ func (ss sportSchedule) registerJobs(
 					log.Infof("%s rankings updated", ss.Name)
 					d.Trigger()
 				}()
-			case <-stop:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -207,8 +229,6 @@ func (ss sportSchedule) registerJobs(
 	})); err != nil {
 		panic(err)
 	}
-
-	return func() { stop <- true }
 }
 
 func scheduleCommand(
@@ -220,6 +240,11 @@ func scheduleCommand(
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// Process-level context: cancelled on shutdown so ranking workers
+			// stop before the deployer's trigger channel is closed.
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			s, err := gocron.NewScheduler(gocron.WithLocation(time.Local))
 			if err != nil {
 				panic(err)
@@ -251,11 +276,10 @@ func scheduleCommand(
 				},
 			}
 
-			var stopFuncs []func()
+			var wg sync.WaitGroup
 			for _, sp := range sports {
 				u := newUpdater(log, db, sp.sport)
-				stopFn := sp.schedule.registerJobs(s, log, u, d)
-				stopFuncs = append(stopFuncs, stopFn)
+				sp.schedule.registerJobs(ctx, s, log, u, d, &wg)
 			}
 
 			s.Start()
@@ -267,9 +291,10 @@ func scheduleCommand(
 			if err := s.Shutdown(); err != nil {
 				log.Error(err)
 			}
-			for _, fn := range stopFuncs {
-				fn()
-			}
+			// Stop the ranking workers and join them so no goroutine can call
+			// d.Trigger() after the trigger channel is closed below.
+			cancel()
+			wg.Wait()
 			d.stop()
 
 			return nil
@@ -305,10 +330,9 @@ func sportCommand(
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if gamesSingle > 0 {
 				if err := u.UpdateSingleGame(gamesSingle); err != nil {
-					log.Error(err)
-				} else {
-					log.Infof("Game %d updated", gamesSingle)
+					return fmt.Errorf("game %d: %w", gamesSingle, err)
 				}
+				log.Infof("Game %d updated", gamesSingle)
 				return nil
 			}
 
@@ -324,10 +348,9 @@ func sportCommand(
 				addedGames, err = u.UpdateCurrentWeek()
 			}
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Added %d games: %v", len(addedGames), addedGames)
+				return err
 			}
+			log.Infof("Added %d games: %v", len(addedGames), addedGames)
 			return nil
 		},
 	}
@@ -347,10 +370,7 @@ func sportCommand(
 			} else {
 				err = u.UpdateRecentRankings()
 			}
-			if err != nil {
-				log.Error(err)
-			}
-			return nil
+			return err
 		},
 	}
 	rankingCmd.Flags().BoolVar(&rankingAll, "all", false, "update all rankings")
@@ -361,10 +381,9 @@ func sportCommand(
 		RunE: func(_ *cobra.Command, _ []string) error {
 			addedTeams, err := u.UpdateTeamInfo()
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Updated %d teams", addedTeams)
+				return err
 			}
+			log.Infof("Updated %d teams", addedTeams)
 			return nil
 		},
 	}
@@ -384,10 +403,9 @@ func sportCommand(
 				addedSeasons, err = u.UpdateTeamSeasons(true)
 			}
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Added %d seasons", addedSeasons)
+				return err
 			}
+			log.Infof("Added %d seasons", addedSeasons)
 			return nil
 		},
 	}
