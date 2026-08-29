@@ -218,15 +218,16 @@ func TestInput_WeekSpecified(t *testing.T) {
 	if in.Week != 3 {
 		t.Errorf("Week = %d, want 3", in.Week)
 	}
-	// startTime should be set to the Tuesday of week 3's first game
+	// startTime should be set to midnight Eastern on the Tuesday of week 3's
+	// first game (2023-09-19 04:00 UTC, September = EDT).
 	if in.StartTime.IsZero() {
 		t.Error("startTime is zero")
 	}
 	if in.StartTime.Weekday() != time.Tuesday {
 		t.Errorf("startTime weekday = %v, want Tuesday", in.StartTime.Weekday())
 	}
-	if !in.StartTime.Equal(time.Date(2023, 9, 19, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("startTime = %v, want 2023-09-19 00:00 UTC", in.StartTime)
+	if !in.StartTime.Equal(time.Date(2023, 9, 19, 4, 0, 0, 0, time.UTC)) {
+		t.Errorf("startTime = %v, want 2023-09-19 00:00 ET (04:00 UTC)", in.StartTime)
 	}
 }
 
@@ -391,11 +392,11 @@ func TestInput_WeekCutoffBoundary(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)
 
-	// With Week 3 the window start resolves to Tuesday 2023-09-19 00:00 UTC
-	// (the Tuesday of week 3's first game). Seed two extra games straddling
-	// the cutoff: one starting exactly at it (must be included) and one a
-	// second after it (must be excluded).
-	cutoff := time.Date(2023, 9, 19, 0, 0, 0, 0, time.UTC)
+	// With Week 3 the window start resolves to midnight Eastern on Tuesday
+	// 2023-09-19 (04:00 UTC, September = EDT), the Tuesday of week 3's first
+	// game. Seed two extra games straddling the cutoff: one starting exactly
+	// at it (must be included) and one a second after it (must be excluded).
+	cutoff := time.Date(2023, 9, 19, 4, 0, 0, 0, time.UTC)
 	boundary := []database.Game{
 		{
 			GameID: 1011, Season: 2023, Week: 2, HomeID: 3, AwayID: 5,
@@ -435,6 +436,70 @@ func TestInput_WeekCutoffBoundary(t *testing.T) {
 			t.Errorf("game %d (after cutoff) leaked into loaded games", id)
 		}
 	}
+}
+
+func TestInput_WeekCutoffIsEasternMidnight(t *testing.T) {
+	db := setupTestDB(t)
+	seedTestData(t, db)
+
+	// Pins finding: the week boundary is midnight Eastern expressed as a UTC
+	// instant, not midnight UTC. Week 3's first game is Tuesday 2023-09-19
+	// 19:00 UTC, so the cutoff is 2023-09-19 00:00 ET = 04:00 UTC (EDT).
+	// A Monday 8pm ET tip (00:00 UTC Tuesday) must be included even though
+	// its UTC instant is past the naive UTC-midnight cutoff that once
+	// dropped such games; a 12:30am ET Tuesday tip (04:30 UTC) must be
+	// excluded. Boundary games sit in week 2 so the week-3 anchor game is
+	// untouched.
+	boundary := []database.Game{
+		{
+			GameID: 1013, Season: 2023, Week: 2, HomeID: 1, AwayID: 3,
+			HomeScore: 21, AwayScore: 20, Sport: "ncaaf",
+			// Monday 2023-09-18 20:00 ET = 2023-09-19 00:00 UTC. Built in ET
+			// and converted to a UTC instant (how the DB round-trips rows;
+			// SQLite compares stored strings, so offsets must not leak in).
+			StartTime: time.Date(2023, 9, 18, 20, 0, 0, 0, nyLoc(t)).UTC(),
+		},
+		{
+			GameID: 1014, Season: 2023, Week: 2, HomeID: 2, AwayID: 4,
+			HomeScore: 30, AwayScore: 28, Sport: "ncaaf",
+			// Tuesday 2023-09-19 00:30 ET = 2023-09-19 04:30 UTC.
+			StartTime: time.Date(2023, 9, 19, 0, 30, 0, 0, nyLoc(t)).UTC(),
+		},
+	}
+	if err := db.Create(&boundary).Error; err != nil {
+		t.Fatalf("seed boundary games: %v", err)
+	}
+
+	in, err := Input(Options{DB: db, Sport: sport.Football, Year: 2023, Week: 3})
+	if err != nil {
+		t.Fatalf("Input: %v", err)
+	}
+	want := time.Date(2023, 9, 19, 4, 0, 0, 0, time.UTC)
+	if !in.StartTime.Equal(want) {
+		t.Fatalf("StartTime = %v, want %v (midnight ET as a UTC instant)", in.StartTime, want)
+	}
+
+	loaded := make(map[int64]bool, len(in.Games))
+	for _, g := range in.Games {
+		loaded[g.GameID] = true
+	}
+	if !loaded[1013] {
+		t.Error("game 1013 (8pm ET on the day before the cutoff) excluded; boundary must be ET midnight")
+	}
+	if loaded[1014] {
+		t.Error("game 1014 (12:30am ET on the cutoff day) included; boundary must be ET midnight")
+	}
+}
+
+// nyLoc loads America/New_York for test assertions, skipping if the zone
+// database is unavailable (mirroring the production fallback to UTC).
+func nyLoc(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("cannot load America/New_York: %v", err)
+	}
+	return loc
 }
 
 func TestInput_GamesOrderedDescending(t *testing.T) {

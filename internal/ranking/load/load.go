@@ -15,6 +15,21 @@ import (
 	"github.com/robby-barton/stats-go/internal/sport"
 )
 
+// boundaryLoc is the fixed timezone in which the week boundary DATE is
+// derived. The cutoff has always been midnight Eastern (the pre-refactor
+// code used the server's local zone, America/New_York in production); a
+// midnight-UTC cutoff silently drops games played 7pm-midnight Eastern on
+// the boundary day, which matters for basketball's late tips. Pinning the
+// zone keeps rankings deterministic across servers while matching the old
+// behavior. Falls back to UTC if the zone database is unavailable.
+var boundaryLoc = func() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}()
+
 // Options configures what Input loads.
 type Options struct {
 	DB    *gorm.DB
@@ -68,9 +83,14 @@ func Input(opts Options) (ranking.Input, error) {
 			return ranking.Input{}, err
 		}
 		if game != (database.Game{}) {
-			y, m, d := game.StartTime.
-				AddDate(0, 0, -int(game.StartTime.Weekday()-time.Tuesday)).Date()
-			in.StartTime = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+			// The boundary date is a local-timezone concept: derive the
+			// Tuesday of the week in the fixed boundary zone (a late game
+			// can land on a different UTC calendar day), then express
+			// midnight of that date as a UTC instant for comparisons.
+			et := game.StartTime.In(boundaryLoc)
+			y, m, d := et.
+				AddDate(0, 0, -int(et.Weekday()-time.Tuesday)).Date()
+			in.StartTime = time.Date(y, m, d, 0, 0, 0, 0, boundaryLoc).UTC()
 		} else {
 			in.Week = 0
 		}
