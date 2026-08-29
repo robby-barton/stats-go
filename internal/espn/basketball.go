@@ -10,24 +10,31 @@ import (
 // BasketballClient wraps a shared *Client with basketball-specific season logic.
 type BasketballClient struct {
 	*Client
-	cachedSeason     int64
-	cachedSeasonErr  error
-	cachedSeasonOnce sync.Once
+	seasonMu     sync.Mutex
+	seasonCached bool
+	cachedSeason int64
 }
 
 // Compile-time interface check.
 var _ SportClient = (*BasketballClient)(nil)
 
+// DefaultSeason returns the current ESPN season year. Only successful lookups
+// are cached; a transient failure is retried on the next call.
 func (bc *BasketballClient) DefaultSeason() (int64, error) {
-	bc.cachedSeasonOnce.Do(func() {
-		sb, err := bc.GetScoreboard()
-		if err != nil {
-			bc.cachedSeasonErr = err
-			return
-		}
-		bc.cachedSeason = sb.Leagues[0].Season.Year
-	})
-	return bc.cachedSeason, bc.cachedSeasonErr
+	bc.seasonMu.Lock()
+	defer bc.seasonMu.Unlock()
+
+	if bc.seasonCached {
+		return bc.cachedSeason, nil
+	}
+
+	sb, err := bc.GetScoreboard()
+	if err != nil {
+		return 0, err
+	}
+	bc.cachedSeason = sb.Leagues[0].Season.Year
+	bc.seasonCached = true
+	return bc.cachedSeason, nil
 }
 
 // validateCurrentSeason returns an error if year does not match the current ESPN season.
@@ -131,9 +138,7 @@ func (bc *BasketballClient) GetCurrentWeekGames(group Group) ([]Game, error) {
 				allGames = append(allGames, g)
 			}
 		}
-		if daysBack < 1 {
-			time.Sleep(bc.RateLimit)
-		}
+		bc.Throttle()
 	}
 
 	return allGames, nil
@@ -159,7 +164,7 @@ func (bc *BasketballClient) getGamesByDates(dates []string, group Group) ([]Game
 			return nil, err
 		}
 		allGames = append(allGames, games...)
-		time.Sleep(bc.RateLimit)
+		bc.Throttle()
 	}
 	return allGames, nil
 }
@@ -182,7 +187,7 @@ func (bc *BasketballClient) TeamConferencesByYear(year int64) (map[int64]int64, 
 				return nil, err
 			}
 			maps.Copy(teamConfs, extractTeamConfs(games))
-			time.Sleep(bc.RateLimit)
+			bc.Throttle()
 		}
 	}
 

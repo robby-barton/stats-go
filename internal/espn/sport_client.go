@@ -17,7 +17,7 @@ type ConferenceMapResult struct {
 type SportClient interface {
 	// Metadata
 	SportInfo() Sport
-	RateLimitDuration() time.Duration
+	Throttle()
 
 	// Game data (sport-agnostic)
 	GetCurrentWeekGames(group Group) ([]Game, error)
@@ -38,7 +38,9 @@ func (c *Client) SportInfo() Sport {
 	return c.Sport
 }
 
-// RateLimitDuration returns the delay between batch API calls.
-func (c *Client) RateLimitDuration() time.Duration {
-	return c.RateLimit
+// Throttle pauses between sequential ESPN API calls so every multi-request
+// path (week loops, date loops, per-game fetches) shares one rate-limit
+// policy. Call it after each request in a batch.
+func (c *Client) Throttle() {
+	time.Sleep(c.RateLimit)
 }

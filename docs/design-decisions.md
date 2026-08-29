@@ -82,7 +82,9 @@ basketball only ranks D1 teams as a single group. The `FBS` column in
 
 - **PostgreSQL** is used in production (DigitalOcean managed database).
 - **SQLite** is used for local development and the ranker CLI, avoiding the need
-  for a running Postgres instance.
+  for a running Postgres instance. SQLite connections enable foreign-key
+  enforcement via the `_foreign_keys=on` DSN parameter (the PRAGMA is
+  per-connection, so a DSN is the only reliable way to set it).
 - The choice is implicit: if no `PG_*` environment variable is set at all,
   `DBParams` is nil and SQLite is used. A *partial* Postgres configuration
   (some `PG_*` vars set but required ones missing, or a malformed `PG_PORT`)
@@ -99,11 +101,38 @@ frontend. See [espn-api.md](espn-api.md) for endpoint details.
 Key design choices:
 - **Filter on `STATUS_FINAL` only** — Only completed games are ingested to
   avoid partial data.
-- **500ms rate limiting** between sequential API calls (in `game/` package) to
-  avoid being blocked.
+- **Centralized rate limiting** — 500ms pause (`espn.Client.RateLimit`) between
+  sequential API calls, applied via `espn.SportClient.Throttle()`. Every
+  multi-request path (football week loops, basketball date loops, per-game
+  fetches) calls it, so no request loop can bypass the shared policy.
 - **5 retries with 1s backoff** on HTTP failures (in `espn/request.go`).
 - **URL vars as fallback** — ESPN endpoint URLs are `var` not `const`
   so tests can override them with a mock HTTP server.
+
+## Failed Game Fetches: Durable Retry via `games.retry`
+
+When a single-game ESPN fetch fails during `processGames`, the failure is not
+silently dropped: the game is recorded in `games` with `retry = 1` (upserting
+only the flag if the row already exists, otherwise seeding a minimal row from
+the schedule entry). `checkGames` always re-queues `retry = 1` games on the
+next cycle, and a successful fetch clears the flag via the normal full-row
+upsert.
+
+`processGames` returns a structured `GameUpdateResult` (processed game IDs +
+per-game failures) so callers — the scheduler, one-shot CLI commands, and
+backfills — can report partial results explicitly. Whether partial failure is
+tolerable is decided at the caller boundary, not inside the core operation.
+
+## Schema Initialization: One-Shot Compose Service
+
+`docker-compose.yml` runs a `migrate-schema` service (built from the same
+image, entrypoint overridden to `cmd/migrate-schema`) that applies the GORM
+schema via `database.MigrateSchema` before the updater starts. It is additive
+and idempotent — it creates missing tables/columns/indexes and never drops —
+so it is safe on every `docker compose up`. A fresh deployment therefore
+cannot reach a state where the updater starts against an empty or partial
+schema. The updater only starts after this service exits successfully
+(`depends_on: service_completed_successfully`).
 
 ## Post-Rankings Deploy Hook
 

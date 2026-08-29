@@ -49,8 +49,7 @@ CREATE TABLE games (
     start_time timestamp with time zone,
     home_score integer DEFAULT 0,
     away_score integer DEFAULT 0,
-	PRIMARY KEY (game_id),
-	FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
+	PRIMARY KEY (game_id)
 );
 
 

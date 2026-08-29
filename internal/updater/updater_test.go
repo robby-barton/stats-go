@@ -53,7 +53,7 @@ func TestUpdateSingleGame(t *testing.T) {
 func TestUpdateCurrentWeek(t *testing.T) {
 	u := newTestUpdater(t, nil)
 
-	gameIDs, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek()
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek: %v", err)
 	}
@@ -62,12 +62,12 @@ func TestUpdateCurrentWeek(t *testing.T) {
 	// GetCurrentWeekGames deduplicates via combineGames.
 	// Fixture has 4 final games (IDs 401001, 401002, 401004, 401005)
 	// and 2 in-progress (filtered out).
-	if len(gameIDs) != 4 {
-		t.Fatalf("len(gameIDs) = %d, want 4", len(gameIDs))
+	if len(result.Processed) != 4 {
+		t.Fatalf("len(Processed) = %d, want 4", len(result.Processed))
 	}
 
 	idSet := map[int64]bool{}
-	for _, id := range gameIDs {
+	for _, id := range result.Processed {
 		idSet[id] = true
 	}
 	for _, expected := range []int64{fixtureGameID1, fixtureGameID2, fixtureGameID4, fixtureGameID5} {
@@ -84,12 +84,12 @@ func TestUpdateCurrentWeek(t *testing.T) {
 	}
 
 	// Re-run should be a no-op (checkGames filters already-stored games with matching scores)
-	gameIDs2, err := u.UpdateCurrentWeek()
+	result2, err := u.UpdateCurrentWeek()
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek re-run: %v", err)
 	}
-	if len(gameIDs2) != 0 {
-		t.Errorf("re-run returned %d games, want 0 (no-op)", len(gameIDs2))
+	if len(result2.Processed) != 0 {
+		t.Errorf("re-run returned %d games, want 0 (no-op)", len(result2.Processed))
 	}
 }
 
@@ -118,14 +118,14 @@ func TestUpdateCurrentWeek_ScoreChange(t *testing.T) {
 	restore := newTestURLs(t, ts2.URL)
 	defer restore()
 
-	gameIDs, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek()
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek with score change: %v", err)
 	}
 
 	// Only game 401001 should be re-fetched (score changed)
 	found := false
-	for _, id := range gameIDs {
+	for _, id := range result.Processed {
 		if id == fixtureGameID1 {
 			found = true
 		}

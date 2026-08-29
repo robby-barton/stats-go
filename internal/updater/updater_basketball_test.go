@@ -376,19 +376,19 @@ func TestBasketball_UpdateSingleGame(t *testing.T) {
 func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 
-	gameIDs, err := u.UpdateCurrentWeek()
+	result, err := u.UpdateCurrentWeek()
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek: %v", err)
 	}
 
 	// Basketball has only 1 group (D1Basketball), so no duplicate fetching.
 	// Fixture has 3 final games and 1 in-progress (filtered).
-	if len(gameIDs) != 3 {
-		t.Fatalf("len(gameIDs) = %d, want 3", len(gameIDs))
+	if len(result.Processed) != 3 {
+		t.Fatalf("len(Processed) = %d, want 3", len(result.Processed))
 	}
 
 	idSet := map[int64]bool{}
-	for _, id := range gameIDs {
+	for _, id := range result.Processed {
 		idSet[id] = true
 	}
 	for _, expected := range []int64{bbFixtureGameID1, bbFixtureGameID2, bbFixtureGameID4} {
@@ -407,12 +407,12 @@ func TestBasketball_UpdateCurrentWeek(t *testing.T) {
 	}
 
 	// Re-run should be a no-op
-	gameIDs2, err := u.UpdateCurrentWeek()
+	result2, err := u.UpdateCurrentWeek()
 	if err != nil {
 		t.Fatalf("UpdateCurrentWeek re-run: %v", err)
 	}
-	if len(gameIDs2) != 0 {
-		t.Errorf("re-run returned %d games, want 0 (no-op)", len(gameIDs2))
+	if len(result2.Processed) != 0 {
+		t.Errorf("re-run returned %d games, want 0 (no-op)", len(result2.Processed))
 	}
 }
 

@@ -118,6 +118,10 @@ HTTP client backed by the `espn.Client` struct, which holds retry and
 rate-limit configuration (`MaxRetries`, `InitialBackoff`, `RequestTimeout`,
 `RateLimit`). Retries use exponential backoff capped at 30s.
 
+Every multi-request path (season week loops, basketball date loops, per-game
+fetches in `game/` and `updater/`) calls `SportClient.Throttle()` after each
+sequential request, so the full API surface shares one rate-limit policy.
+
 Each client is bound to a sport via `NewClientForSport(sport)`, which sets
 per-client URLs for that sport's ESPN endpoints. The `NewClient()` constructor
 defaults to football and uses package-level URL vars (overridable in tests via
@@ -139,5 +143,9 @@ so `team_names` requires `(team_id, sport)` to store per-sport team metadata.
 ## Deployment
 
 - **Docker:** Multi-stage build (`golang:1.26-alpine` → `alpine:latest`)
+- **Schema migrations:** A one-shot `migrate-schema` Compose service applies
+  the GORM schema (additive, idempotent) and must complete successfully before
+  the `updater` service starts (`depends_on:
+  service_completed_successfully`)
 - **Production:** `updater schedule` running in a container alongside PostgreSQL
 - **CI/CD:** GitHub Actions — lint and test on PR, build+push on merge to master

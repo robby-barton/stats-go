@@ -181,12 +181,18 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedGames, err := u.UpdateCurrentWeek()
-		log.Infof("%s: added %d games: %v", ss.Name, len(addedGames), addedGames)
+		result, err := u.UpdateCurrentWeek()
 		if err != nil {
 			log.Error(err)
-		} else if len(addedGames) > 0 {
-			update <- true
+		} else {
+			log.Infof("%s: added %d games: %v", ss.Name, len(result.Processed), result.Processed)
+			if len(result.Failed) > 0 {
+				log.Errorf("%s: failed to fetch %d games (marked for retry): %v",
+					ss.Name, len(result.Failed), result.FailedIDs())
+			}
+			if len(result.Processed) > 0 {
+				update <- true
+			}
 		}
 	})); err != nil {
 		panic(err)
@@ -336,21 +342,25 @@ func sportCommand(
 				return nil
 			}
 
-			var addedGames []int64
+			var result *updater.GameUpdateResult
 			var err error
 			switch {
 			case gamesYear > 0:
-				addedGames, err = u.UpdateGamesForYear(gamesYear)
+				result, err = u.UpdateGamesForYear(gamesYear)
 			case gamesAll:
 				year, _, _ := time.Now().Date()
-				addedGames, err = u.UpdateGamesForYear(int64(year))
+				result, err = u.UpdateGamesForYear(int64(year))
 			default:
-				addedGames, err = u.UpdateCurrentWeek()
+				result, err = u.UpdateCurrentWeek()
 			}
 			if err != nil {
 				return err
 			}
-			log.Infof("Added %d games: %v", len(addedGames), addedGames)
+			log.Infof("Added %d games: %v", len(result.Processed), result.Processed)
+			if len(result.Failed) > 0 {
+				log.Errorf("Failed to fetch %d games (marked for retry): %v",
+					len(result.Failed), result.FailedIDs())
+			}
 			return nil
 		},
 	}
@@ -433,11 +443,15 @@ Example:
 				}
 				log.Infof("  seasons: %d teams", n)
 
-				addedGames, err := u.UpdateGamesForYear(year)
+				result, err := u.UpdateGamesForYear(year)
 				if err != nil {
 					return fmt.Errorf("games %d: %w", year, err)
 				}
-				log.Infof("  games: %d added", len(addedGames))
+				log.Infof("  games: %d added", len(result.Processed))
+				if len(result.Failed) > 0 {
+					log.Errorf("  games: %d failed (marked for retry): %v",
+						len(result.Failed), result.FailedIDs())
+				}
 			}
 
 			log.Infof("Recomputing all %s rankings...", use)

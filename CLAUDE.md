@@ -30,9 +30,10 @@ here. See [docs/multi-repo-workflow.md](docs/multi-repo-workflow.md).
 
 ```
 cmd/
-  ranker/     CLI tool to calculate and print rankings
-  updater/    Service that fetches games and updates DB on a schedule
-  migrate/    One-time migration from PostgreSQL to SQLite
+  ranker/         CLI tool to calculate and print rankings
+  updater/        Service that fetches games and updates DB on a schedule
+  migrate/        One-time migration from PostgreSQL to SQLite
+  migrate-schema/ One-shot schema initializer (runs before updater in Compose)
 internal/
   config/     Environment-based configuration (godotenv)
   database/   GORM models and DB initialization (Postgres + SQLite)
@@ -66,8 +67,9 @@ Key patterns:
   of the ranker CLI output (enforced via `forbidigo` lint).
 - Errors are propagated up — panics are only recovered at the scheduler level
   in `cmd/updater`.
-- ESPN API calls use `espn.Client.RateLimit` (default 500ms) between batch
-  requests (in `game/`).
+- ESPN API calls are rate-limited via `espn.SportClient.Throttle()` (default
+  500ms pause, `espn.Client.RateLimit`), which every multi-request path (week
+  loops, date loops, per-game fetches) calls between sequential requests.
 - The HTTP client in `espn/request.go` retries with exponential backoff
   (`InitialBackoff * 2^attempt`, capped at 30s). Defaults: 5 retries, 1s initial backoff.
 - Test files use `_test.go` suffix. ESPN tests use a mock HTTP server pattern

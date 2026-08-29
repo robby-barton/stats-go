@@ -45,6 +45,7 @@ func GetCurrentWeekGames(client espn.SportClient) ([]espn.Game, error) {
 			return nil, err
 		}
 		allGames = append(allGames, games)
+		client.Throttle()
 	}
 
 	return combineGames(allGames), nil
@@ -60,6 +61,7 @@ func GetGamesForSeason(client espn.SportClient, year int64) ([]espn.Game, error)
 			return nil, err
 		}
 		allGames = append(allGames, games)
+		client.Throttle()
 	}
 
 	return combineGames(allGames), nil

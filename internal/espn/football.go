@@ -77,6 +77,7 @@ func (fc *FootballClient) GetGamesBySeason(year int64, group Group) ([]Game, err
 		}
 
 		allGames = append(allGames, games...)
+		fc.Throttle()
 	}
 
 	games, err := fc.GetCompletedGamesByWeek(year, int64(1), group, Postseason)
@@ -104,6 +105,7 @@ func (fc *FootballClient) TeamConferencesByYear(year int64) (map[int64]int64, er
 				return nil, err
 			}
 			maps.Copy(teamConfs, extractTeamConfs(games))
+			fc.Throttle()
 		}
 
 		games, err := fc.GetGamesByWeek(year, int64(1), group, Postseason)

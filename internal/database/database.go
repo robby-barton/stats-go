@@ -41,7 +41,38 @@ func postgresDB(params *DBParams) (*gorm.DB, error) {
 }
 
 func sqliteDB() (*gorm.DB, error) {
-	return gorm.Open(sqlite.Open("db/stats.db"), &gorm.Config{
+	// _foreign_keys=on enables SQLite FK enforcement on every pooled
+	// connection (the PRAGMA is per-connection, so the DSN is the only
+	// reliable way to set it).
+	return gorm.Open(sqlite.Open("db/stats.db?_foreign_keys=on"), &gorm.Config{
 		SkipDefaultTransaction: true, // handle my own transactions
 	})
+}
+
+// MigrateSchema applies the GORM schema (all tables) to the database.
+// It is additive only — creates missing tables, columns, and indexes, and
+// never drops existing data — so it is safe to run on every deployment.
+// It is wired into docker-compose as a one-shot service that must succeed
+// before the updater starts.
+func MigrateSchema(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&TeamName{},
+		&TeamSeason{},
+		&TeamWeekResult{},
+		&Game{},
+		&TeamGameStats{},
+		&Composite{},
+		&Recruiting{},
+		&Roster{},
+		&Player{},
+		&PassingStats{},
+		&RushingStats{},
+		&ReceivingStats{},
+		&ReturnStats{},
+		&KickStats{},
+		&PuntStats{},
+		&InterceptionStats{},
+		&FumbleStats{},
+		&DefensiveStats{},
+	)
 }

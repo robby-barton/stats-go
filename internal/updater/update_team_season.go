@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"fmt"
 	"maps"
 
 	"gorm.io/gorm"
@@ -24,14 +25,13 @@ func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
 	})
 }
 
-func (u *Updater) seasonsExist(year int64) bool {
+func (u *Updater) seasonsExist(year int64) (bool, error) {
 	var count int64
 	err := u.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
 	if err != nil {
-		u.Logger.Error(err)
-		return false
+		return false, err
 	}
-	return count > 0
+	return count > 0, nil
 }
 
 // UpdateTeamSeasons updates team season records for the current ESPN season.
@@ -50,9 +50,15 @@ func (u *Updater) UpdateTeamSeasonsForYear(year int64, force bool) (int, error) 
 }
 
 func (u *Updater) updateTeamSeasonsForYear(year int64, force bool) (int, error) {
-	if !force && u.seasonsExist(year) {
-		u.Logger.Info("Not updating")
-		return 0, nil
+	if !force {
+		exists, err := u.seasonsExist(year)
+		if err != nil {
+			return 0, fmt.Errorf("checking existing team seasons for %d: %w", year, err)
+		}
+		if exists {
+			u.Logger.Info("Not updating")
+			return 0, nil
+		}
 	}
 
 	sport := u.sportDB()
