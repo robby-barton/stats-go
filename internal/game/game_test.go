@@ -80,7 +80,7 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(espn.SiteScoreboardESPN{
-			Leagues: []espn.SiteScoreboardLeague{{}},
+			Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2023}}},
 			Season:  espn.SiteSeason{Year: 2023, Type: 2},
 			Week:    espn.SiteWeek{Number: 1},
 			Events: []espn.SiteEvent{
@@ -90,8 +90,8 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 					Competitions: []espn.SiteCompetition{{
 						Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
 						Competitors: []espn.Competitor{
-							{ID: 10, Team: espn.ScheduleTeam{ID: 10, ConferenceID: 100}, Score: 28, HomeAway: "home"},
-							{ID: 20, Team: espn.ScheduleTeam{ID: 20, ConferenceID: 100}, Score: 14, HomeAway: "away"},
+							{ID: 10, Team: espn.ScheduleTeam{ID: 10, ConferenceID: espn.FlexInt64(100)}, Score: 28, HomeAway: "home"},
+							{ID: 20, Team: espn.ScheduleTeam{ID: 20, ConferenceID: espn.FlexInt64(100)}, Score: 14, HomeAway: "away"},
 						},
 					}},
 				},
@@ -101,8 +101,8 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 					Competitions: []espn.SiteCompetition{{
 						Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
 						Competitors: []espn.Competitor{
-							{ID: 30, Team: espn.ScheduleTeam{ID: 30, ConferenceID: 200}, Score: 21, HomeAway: "home"},
-							{ID: 40, Team: espn.ScheduleTeam{ID: 40, ConferenceID: 200}, Score: 10, HomeAway: "away"},
+							{ID: 30, Team: espn.ScheduleTeam{ID: 30, ConferenceID: espn.FlexInt64(200)}, Score: 21, HomeAway: "home"},
+							{ID: 40, Team: espn.ScheduleTeam{ID: 40, ConferenceID: espn.FlexInt64(200)}, Score: 10, HomeAway: "away"},
 						},
 					}},
 				},
@@ -124,6 +124,7 @@ func overrideGameURLs(t *testing.T, client *espn.Client, serverURL string) {
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
+		"",
 	))
 }
 
@@ -219,6 +220,7 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		"",
+		"",
 	))
 
 	parsed, err := GetSingleGame(context.Background(), client, zap.NewNop().Sugar(), 2001)
@@ -264,6 +266,7 @@ func TestGetCurrentWeekGames_Basketball(t *testing.T) {
 		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
 		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		"",
 		"",
 	))
 

@@ -40,8 +40,10 @@ type Competitor struct {
 }
 
 type ScheduleTeam struct {
-	ID           int64 `json:"id,string"`
-	ConferenceID int64 `json:"conferenceId,string"`
+	ID int64 `json:"id,string"`
+	// ConferenceID arrives as a JSON number on site.api scoreboard responses
+	// and as a quoted string on cdn schedule responses, hence FlexInt64.
+	ConferenceID FlexInt64 `json:"conferenceId"`
 }
 
 type Status struct {

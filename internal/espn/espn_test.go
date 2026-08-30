@@ -43,6 +43,44 @@ func setupTestServer(t *testing.T) *httptest.Server {
 		}
 	})
 
+	// site.api scoreboard — plain requests (DefaultSeason, GetCurrentWeekGames)
+	// get the week-1 fixture; requests carrying the `dates` parameter
+	// (GetWeeksInSeason, HasPostseasonStarted) get the calendar fixture.
+	siteScoreboardPath := "/apis/site/v2/sports/football/college-football/scoreboard"
+	mux.HandleFunc(siteScoreboardPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fixture := siteScoreboardFixture
+		if r.URL.Query().Get("dates") != "" {
+			fixture = siteScoreboardCalendarFixture
+		}
+		if _, err := w.Write([]byte(fixture)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// site.api scoreboard/conferences — the fixture depends on the division
+	// group requested; ConferenceMap requests FBS, FCS, DII and DIII.
+	mux.HandleFunc(siteScoreboardPath+"/conferences", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var fixture string
+		switch r.URL.Query().Get("groups") {
+		case "80":
+			fixture = siteConferencesFBSFixture
+		case "81":
+			fixture = siteConferencesFCSFixture
+		case "57":
+			fixture = siteConferencesDIIFixture
+		case "58":
+			fixture = siteConferencesDIIIFixture
+		default:
+			http.Error(w, "unknown groups parameter", http.StatusBadRequest)
+			return
+		}
+		if _, err := w.Write([]byte(fixture)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -54,7 +92,8 @@ func overrideURLs(t *testing.T, client *Client, serverURL string) {
 		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-		"",
+		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
+		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
 	))
 }
 
@@ -109,12 +148,14 @@ func TestGetWeeksInSeason(t *testing.T) {
 	client := newTestClient()
 	overrideURLs(t, client.Client, ts.URL)
 
-	weeks, err := client.GetWeeksInSeason(context.Background(), 2023)
+	weeks, err := client.GetWeeksInSeason(context.Background(), 2026)
 	if err != nil {
 		t.Fatalf("GetWeeksInSeason: %v", err)
 	}
 
-	// Calendar[0] has 15 weeks
+	// The calendar fixture's Regular Season entry lists 15 week entries
+	// (captured live for the 2026 season). The postseason is a separate
+	// calendar entry and must not be counted.
 	if weeks != 15 {
 		t.Errorf("weeks = %d, want 15", weeks)
 	}
@@ -125,25 +166,23 @@ func TestHasPostseasonStarted(t *testing.T) {
 	client := newTestClient()
 	overrideURLs(t, client.Client, ts.URL)
 
-	// Postseason starts 2023-12-16T08:00Z
-	// Test with time before postseason
-	before := time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
-	started, err := client.HasPostseasonStarted(context.Background(), 2023, before)
+	// The calendar fixture's Postseason entry starts 2026-12-13T08:00Z.
+	before := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	started, err := client.HasPostseasonStarted(context.Background(), 2026, before)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
 	if started {
-		t.Error("postseason should not have started before 2023-12-16")
+		t.Error("postseason should not have started before 2026-12-13")
 	}
 
-	// Test with time after postseason
-	after := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	started, err = client.HasPostseasonStarted(context.Background(), 2023, after)
+	after := time.Date(2026, 12, 20, 0, 0, 0, 0, time.UTC)
+	started, err = client.HasPostseasonStarted(context.Background(), 2026, after)
 	if err != nil {
 		t.Fatalf("HasPostseasonStarted: %v", err)
 	}
 	if !started {
-		t.Error("postseason should have started after 2024-01-01")
+		t.Error("postseason should have started after 2026-12-13")
 	}
 }
 
@@ -216,8 +255,8 @@ func TestDefaultSeason(t *testing.T) {
 		t.Fatalf("DefaultSeason: %v", err)
 	}
 
-	if year != 2023 {
-		t.Errorf("year = %d, want 2023", year)
+	if year != 2026 {
+		t.Errorf("year = %d, want 2026", year)
 	}
 }
 
@@ -230,7 +269,7 @@ func TestMakeRequestNon2xx(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -251,7 +290,7 @@ func TestMakeRequestMalformedJSON(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -272,9 +311,9 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
 
-	// Empty response fails validation because schedule data is missing.
+	// Empty response fails validation because the leagues list is missing.
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
 		t.Fatal("expected error for empty response, got nil")
@@ -493,6 +532,13 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 		}
 	})
 
+	mux.HandleFunc(scoreboardPath+"/conferences", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(siteConferencesD1Fixture)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -513,6 +559,7 @@ func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
 		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/conferences",
 	))
 	return c
 }
@@ -602,8 +649,8 @@ func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
 		}
 		week := r.URL.Query().Get("week")
 		seasonType := r.URL.Query().Get("seasonType")
-		// GetWeeksInSeason probes the same endpoint without week/seasonType
-		// params; only count actual week fetches.
+		// GetWeeksInSeason probes the scoreboard endpoint (below), not this
+		// one; only count actual week fetches.
 		if week == "" {
 			return
 		}
@@ -614,6 +661,17 @@ func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
 			regularWeeks = append(regularWeeks, n)
 		}
 	})
+
+	// GetWeeksInSeason fetches the season calendar off the site.api scoreboard
+	// (?dates=…); the calendar fixture lists 15 regular-season weeks, matching
+	// the cdn schedule fixture.
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/scoreboard",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if _, err := w.Write([]byte(siteScoreboardCalendarFixture)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -706,7 +764,7 @@ func TestMakeRequestMaxAttempts(t *testing.T) {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
 
 	start := time.Now()
 	_, err := client.DefaultSeason(context.Background())
@@ -754,7 +812,7 @@ func TestMakeRequestRetries202Challenge(t *testing.T) {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/scoreboard"))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/scoreboard", ""))
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {

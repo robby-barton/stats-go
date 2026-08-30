@@ -3,9 +3,6 @@ package espn
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
-	"strconv"
 	"time"
 )
 
@@ -18,9 +15,7 @@ var _ SportClient = (*FootballClient)(nil)
 // GetCurrentWeekGames fetches completed games for the current week from the
 // site.api scoreboard, filtered server-side to the given division group via
 // the `groups` query parameter (verified for FBS 80 / FCS 81; the cdn-style
-// `group` parameter is indeed ignored by site.api). Unlike the cdn schedule
-// response, the scoreboard carries no calendar or conference API data, so
-// season navigation and historical-week fetching stay on cdn for now.
+// `group` parameter is indeed ignored by site.api).
 func (fc *FootballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
 	url := fc.ScoreboardURL() + fmt.Sprintf("?groups=%d", group)
 
@@ -32,48 +27,64 @@ func (fc *FootballClient) GetCurrentWeekGames(ctx context.Context, group Group) 
 	return res.finalGames()
 }
 
+// DefaultSeason returns the current ESPN season year from the site.api
+// scoreboard's leagues[0].season object.
 func (fc *FootballClient) DefaultSeason(ctx context.Context) (int64, error) {
-	var res GameScheduleESPN
-	err := makeRequest(ctx, fc.Client, fc.WeekURL(), &res)
+	var res SiteScoreboardESPN
+	err := makeRequest(ctx, fc.Client, fc.ScoreboardURL(), &res)
 	if err != nil {
 		return 0, err
 	}
 
-	return res.Content.Defaults.Year, nil
+	return res.Leagues[0].Season.Year, nil
 }
 
+// getCalendarForYear fetches the season calendar for a year off the site.api
+// scoreboard. The calendar is only included when a `dates` parameter is
+// passed (verified 2026-08-29); the plain scoreboard response omits it.
+func (fc *FootballClient) getCalendarForYear(ctx context.Context, year int64) (*SiteScoreboardESPN, error) {
+	url := fc.ScoreboardURL() + fmt.Sprintf("?dates=%d", year)
+
+	var res SiteScoreboardESPN
+	if err := makeRequest(ctx, fc.Client, url, &res); err != nil {
+		return nil, err
+	}
+	if res.calendarType(Regular) == nil && res.calendarType(Postseason) == nil {
+		return nil, fmt.Errorf("scoreboard response missing calendar for year %d", year)
+	}
+	return &res, nil
+}
+
+// GetWeeksInSeason returns the number of regular-season weeks from the
+// scoreboard calendar. The Regular Season entry lists one entry per week,
+// numbered 1..N (the postseason is a separate calendar entry).
 func (fc *FootballClient) GetWeeksInSeason(ctx context.Context, year int64) (int64, error) {
-	url := fc.WeekURL() + fmt.Sprintf("&year=%d", year)
-
-	var res GameScheduleESPN
-	err := makeRequest(ctx, fc.Client, url, &res)
+	sb, err := fc.getCalendarForYear(ctx, year)
 	if err != nil {
 		return 0, err
 	}
 
-	if len(res.Content.Calendar) == 0 || len(res.Content.Calendar[0].Weeks) == 0 {
-		return 0, fmt.Errorf("schedule response missing calendar/weeks for year %d", year)
+	regular := sb.calendarType(Regular)
+	if len(regular.Entries) == 0 {
+		return 0, fmt.Errorf("calendar has no regular-season week entries for year %d", year)
 	}
 
-	return int64(len(res.Content.Calendar[0].Weeks)), nil
+	return int64(len(regular.Entries)), nil
 }
 
+// HasPostseasonStarted reports whether the postseason phase of the given
+// season has begun by startTime. It compares against the Postseason calendar
+// entry's start date (the cdn implementation used the same date via
+// calendar[1]; matching by season-type value is equivalent but robust
+// against entry reordering).
 func (fc *FootballClient) HasPostseasonStarted(ctx context.Context, year int64, startTime time.Time) (bool, error) {
-	url := fc.WeekURL() + fmt.Sprintf("&year=%d", year)
-
-	var res GameScheduleESPN
-	err := makeRequest(ctx, fc.Client, url, &res)
+	sb, err := fc.getCalendarForYear(ctx, year)
 	if err != nil {
 		return false, err
 	}
 
-	if len(res.Content.Calendar) < 2 {
-		return false, fmt.Errorf("schedule response has %d calendar entries, need at least 2 for postseason",
-			len(res.Content.Calendar))
-	}
-
-	postSeasonStart, _ := time.Parse("2006-01-02T15:04Z",
-		res.Content.Calendar[1].StartDate)
+	postseason := sb.calendarType(Postseason)
+	postSeasonStart, _ := time.Parse("2006-01-02T15:04Z", postseason.StartDate)
 	return postSeasonStart.Before(startTime), nil
 }
 
@@ -108,77 +119,120 @@ func (fc *FootballClient) GetGamesBySeason(ctx context.Context, year int64, grou
 	return allGames, nil
 }
 
-func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
-	teamConfs := map[int64]int64{}
+// TeamConferencesByYear extracts team → conference ID mappings from the cdn
+// schedule for every week of the given year. This remains on cdn.espn.com
+// because no site.api endpoint covers it in bulk: the /teams rows carry no
+// conferenceId, and scoreboard responses cap events (~25) and only expand a
+// single date per request. See docs/tech-debt.md.
+// parseESPNTime parses scoreboard calendar timestamps, which omit seconds
+// (e.g. "2026-08-22T07:00Z") unlike strict RFC 3339.
+func parseESPNTime(v string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04Z", "2006-01-02T15:04:05Z0700", "2006-01-02"} {
+		t, err := time.Parse(layout, v)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized timestamp %q", v)
+}
 
-	numWeeks, err := fc.GetWeeksInSeason(ctx, year)
+// TeamConferencesByYear builds team ID -> conference ID for every team that
+// plays in the given season. The site.api scoreboard honours a `dates` range
+// parameter (verified 2026-08-30; `week`/`year` are ignored) and each
+// competitor carries team.conferenceId, so the season's calendar span is
+// walked in weekly chunks per division group. Postseason is included: a few
+// teams only appear there (e.g. bowl-only scheduling edge cases).
+func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
+	cal, err := fc.getCalendarForYear(ctx, year)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, group := range fc.Sport.Groups() {
-		for i := int64(1); i <= numWeeks; i++ {
-			games, err := fc.GetGamesByWeek(ctx, year, i, group, Regular)
-			if err != nil {
-				return nil, err
-			}
-			maps.Copy(teamConfs, extractTeamConfs(games))
-			fc.Throttle(ctx)
+	teamConfs := map[int64]int64{}
+	for _, seasonType := range []SeasonType{Regular, Postseason} {
+		ct := cal.calendarType(seasonType)
+		if ct == nil {
+			continue
+		}
+		start, err := parseESPNTime(ct.StartDate)
+		if err != nil {
+			return nil, fmt.Errorf("calendar start date %q: %w", ct.StartDate, err)
+		}
+		end, err := parseESPNTime(ct.EndDate)
+		if err != nil {
+			return nil, fmt.Errorf("calendar end date %q: %w", ct.EndDate, err)
 		}
 
-		games, err := fc.GetGamesByWeek(ctx, year, int64(1), group, Postseason)
-		if err != nil {
-			return nil, err
+		for _, group := range fc.Sport.Groups() {
+			for cur := start; !cur.After(end); cur = cur.AddDate(0, 0, 7) {
+				chunkEnd := cur.AddDate(0, 0, 6)
+				if chunkEnd.After(end) {
+					chunkEnd = end
+				}
+				url := fc.ScoreboardURL() + fmt.Sprintf("?dates=%s-%s&groups=%d",
+					cur.Format("20060102"), chunkEnd.Format("20060102"), group)
+				var res SiteScoreboardESPN
+				if err := makeRequest(ctx, fc.Client, url, &res); err != nil {
+					return nil, err
+				}
+				for _, ev := range res.Events {
+					for _, comp := range ev.Competitions {
+						for _, c := range comp.Competitors {
+							if c.Team.ConferenceID != 0 {
+								teamConfs[c.Team.ID] = int64(c.Team.ConferenceID)
+							}
+						}
+					}
+				}
+				fc.Throttle(ctx)
+			}
 		}
-		maps.Copy(teamConfs, extractTeamConfs(games))
 	}
 
+	if len(teamConfs) == 0 {
+		return nil, fmt.Errorf("no teams found for the %d season", year)
+	}
 	return teamConfs, nil
 }
 
+// ConferenceMap fetches conference metadata off the site.api
+// scoreboard/conferences endpoint, one request per division group (FBS, FCS,
+// DII, DIII). The plain endpoint returns FBS only, so FCS/DII/DIII need an
+// explicit `groups` value — verified live 2026-08-29. The DII/DIII
+// "sub-groups" are the child conference group IDs of each division, matching
+// what the cdn schedule's conferenceAPI subGroups arrays used to provide.
 func (fc *FootballClient) ConferenceMap(ctx context.Context) (ConferenceMapResult, error) {
-	var res GameScheduleESPN
-	err := makeRequest(ctx, fc.Client, fc.WeekURL(), &res)
+	fbsRes, err := fc.GetConferences(ctx, FBS)
+	if err != nil {
+		return ConferenceMapResult{}, err
+	}
+	fc.Throttle(ctx)
+
+	fcsRes, err := fc.GetConferences(ctx, FCS)
+	if err != nil {
+		return ConferenceMapResult{}, err
+	}
+	fc.Throttle(ctx)
+
+	diiRes, err := fc.GetConferences(ctx, DII)
+	if err != nil {
+		return ConferenceMapResult{}, err
+	}
+	fc.Throttle(ctx)
+
+	diiiRes, err := fc.GetConferences(ctx, DIII)
 	if err != nil {
 		return ConferenceMapResult{}, err
 	}
 
-	conferences := res.Content.ConferenceAPI.Conferences
-
-	fbs := map[int64]string{}
-	fcs := map[int64]string{}
-	dii := []int64{}
-	diii := []int64{}
-
-	for _, conference := range conferences {
-		switch int64(conference.ParentGroupID) {
-		case int64(FBS):
-			fbs[conference.GroupID] = conference.ShortName
-		case int64(FCS):
-			fcs[conference.GroupID] = conference.ShortName
-		default:
-			if slices.Contains([]int64{int64(DII), int64(DIII)}, conference.GroupID) {
-				for _, conf := range conference.SubGroups {
-					group, _ := strconv.ParseInt(conf, 10, 64)
-					switch conference.GroupID {
-					case int64(DII):
-						dii = append(dii, group)
-					case int64(DIII):
-						diii = append(diii, group)
-					}
-				}
-			}
-		}
-	}
-
 	return ConferenceMapResult{
 		Conferences: map[Group]map[int64]string{ //nolint:exhaustive // football doesn't have D1Basketball
-			FBS: fbs,
-			FCS: fcs,
+			FBS: fbsRes.conferenceShortNames(FBS),
+			FCS: fcsRes.conferenceShortNames(FCS),
 		},
 		SubGroups: map[Group][]int64{ //nolint:exhaustive // only DII/DIII have sub-groups
-			DII:  dii,
-			DIII: diii,
+			DII:  diiRes.conferenceSubGroups(DII),
+			DIII: diiiRes.conferenceSubGroups(DIII),
 		},
 	}, nil
 }

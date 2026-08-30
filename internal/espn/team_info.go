@@ -82,10 +82,11 @@ func (r TeamInfoESPN) validate() error {
 // SportURLs returns the ESPN URL templates for a given sport.
 // SportURLConfig holds ESPN URL templates for a sport.
 type SportURLConfig struct {
-	Schedule   string
-	GameStats  string
-	TeamInfo   string
-	Scoreboard string
+	Schedule    string
+	GameStats   string
+	TeamInfo    string
+	Scoreboard  string
+	Conferences string
 }
 
 // SportURLs returns the ESPN URL templates for a given sport.
@@ -97,6 +98,8 @@ func SportURLs(sport Sport) SportURLConfig {
 			GameStats:  "https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+			Conferences: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
+				"mens-college-basketball/scoreboard/conferences",
 		}
 	case CollegeFootball:
 		return SportURLConfig{
@@ -105,9 +108,10 @@ func SportURLs(sport Sport) SportURLConfig {
 			// serving empty-body 202 bot challenges since 2026-08-29; the site.api
 			// summary carries the same header/boxscore data — see
 			// GameInfoESPN.UnmarshalJSON for the dual-shape handling).
-			GameStats:  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=%d",
-			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
-			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
+			GameStats:   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=%d",
+			TeamInfo:    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
+			Scoreboard:  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
+			Conferences: "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard/conferences",
 		}
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", sport))

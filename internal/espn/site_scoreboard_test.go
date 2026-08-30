@@ -46,7 +46,7 @@ func setupSiteTestServer(t *testing.T) *httptest.Server {
 func TestGetCurrentWeekGames_SiteAPI(t *testing.T) {
 	ts := setupSiteTestServer(t)
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard"))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard", ""))
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {
@@ -139,9 +139,17 @@ func TestSiteScoreboardValidate(t *testing.T) {
 			wantErr: "missing season year",
 		},
 		{
-			name: "valid with no events (e.g. season boundary)",
+			// The top-level season object is absent from ?dates= payloads; the
+			// leagues[0].season year is what validate must require.
+			name: "valid with no events and no top-level season (dates payload)",
 			resp: SiteScoreboardESPN{
-				Leagues: []SiteScoreboardLeague{{}},
+				Leagues: []SiteScoreboardLeague{{Season: SiteScoreboardLeagueSeason{Year: 2026}}},
+			},
+		},
+		{
+			name: "valid with top-level season (plain payload)",
+			resp: SiteScoreboardESPN{
+				Leagues: []SiteScoreboardLeague{{Season: SiteScoreboardLeagueSeason{Year: 2026}}},
 				Season:  SiteSeason{Year: 2026, Type: 2},
 			},
 		},
@@ -168,7 +176,7 @@ func TestSiteScoreboardValidate(t *testing.T) {
 func TestGetGameStats_SiteAPISummary(t *testing.T) {
 	ts := setupSiteTestServer(t)
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", ts.URL+"/apis/site/v2/sports/football/college-football/summary?event=%d", "", ""))
+	t.Cleanup(client.SetURLs("", ts.URL+"/apis/site/v2/sports/football/college-football/summary?event=%d", "", "", ""))
 
 	res, err := client.GetGameStats(context.Background(), 401864494)
 	if err != nil {

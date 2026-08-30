@@ -156,13 +156,17 @@ server via `Client.SetURLs`.
 
 Endpoint ownership by host (since 2026-09): cdn.espn.com has been
 intermittently serving empty-body 202 bot challenges to automated clients, so
-the current-week games fetch and the football box-score fetch moved to
-site.api.espn.com (scoreboard with `groups` param, and the summary endpoint
-respectively — see `SiteScoreboardESPN` and the dual-shape
-`GameInfoESPN.UnmarshalJSON`). cdn.espn.com still serves the football season
-calendar/historical weeks (`GetGamesByWeek`, `GetGamesBySeason`,
-`TeamConferencesByYear`, `ConferenceMap`) and all basketball schedule and
-box-score fetches. See docs/tech-debt.md for the remaining cdn dependencies.
+the current-week games fetch, the football box-score fetch, the football
+season metadata (`DefaultSeason`, `GetWeeksInSeason`, `HasPostseasonStarted`
+via the scoreboard's object-shaped calendar) and `ConferenceMap` (both
+sports, via the `scoreboard/conferences` endpoint) moved to
+site.api.espn.com. cdn.espn.com still serves the historical week/date
+schedule fetches (`GetGamesByWeek`, `GetGamesBySeason`,
+`TeamConferencesByYear`) — no site.api endpoint provides a bulk team→
+conference mapping (teams rows lack `conferenceId`; scoreboard responses
+cap events and only expand a single date) — plus all remaining basketball
+schedule and box-score fetches. See docs/tech-debt.md for the remaining cdn
+dependencies.
 
 ## Database
 
