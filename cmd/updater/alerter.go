@@ -76,6 +76,9 @@ func newAlerter(log *zap.SugaredLogger) *alerter {
 
 // failure records a failed job run and alerts on threshold crossings.
 func (a *alerter) failure(job string, jobErr error) {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	a.failures++
 	n := a.failures
@@ -83,7 +86,7 @@ func (a *alerter) failure(job string, jobErr error) {
 		a.failures = 0
 	}
 	a.mu.Unlock()
-	if a == nil || a.to == "" || a.host == "" || n < alertThreshold {
+	if a.to == "" || a.host == "" || n < alertThreshold {
 		return
 	}
 
