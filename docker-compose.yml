@@ -32,6 +32,7 @@ services:
       <<: *pg-environment
       TZ: ${TZ:-America/New_York}
       DEPLOY_SCRIPT: ${DEPLOY_SCRIPT:-/scripts/deploy-web.sh}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
       CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
       CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
