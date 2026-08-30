@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"context"
+	"fmt"
 	"maps"
 
 	"gorm.io/gorm"
@@ -11,7 +13,7 @@ import (
 )
 
 func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
-	return u.DB.Transaction(func(tx *gorm.DB) error {
+	return u.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.
 			Clauses(clause.OnConflict{
 				UpdateAll: true, // upsert
@@ -24,52 +26,57 @@ func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
 	})
 }
 
-func (u *Updater) seasonsExist(year int64) bool {
+func (u *Updater) seasonsExist(year int64) (bool, error) {
 	var count int64
-	err := u.DB.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
+	err := u.db.Model(database.TeamSeason{}).Where("sport = ? and year = ?", u.sportDB(), year).Count(&count).Error
 	if err != nil {
-		u.Logger.Error(err)
-		return false
+		return false, err
 	}
-	return count > 0
+	return count > 0, nil
 }
 
 // UpdateTeamSeasons updates team season records for the current ESPN season.
-func (u *Updater) UpdateTeamSeasons(force bool) (int, error) {
-	currentSeason, err := u.ESPN.DefaultSeason()
+func (u *Updater) UpdateTeamSeasons(ctx context.Context, force bool) (int, error) {
+	currentSeason, err := u.espn.DefaultSeason(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return u.updateTeamSeasonsForYear(currentSeason, force)
+	return u.updateTeamSeasonsForYear(ctx, currentSeason, force)
 }
 
 // UpdateTeamSeasonsForYear updates team season records for a specific year.
 // Use force=true to overwrite existing records.
-func (u *Updater) UpdateTeamSeasonsForYear(year int64, force bool) (int, error) {
-	return u.updateTeamSeasonsForYear(year, force)
+func (u *Updater) UpdateTeamSeasonsForYear(ctx context.Context, year int64, force bool) (int, error) {
+	return u.updateTeamSeasonsForYear(ctx, year, force)
 }
 
-func (u *Updater) updateTeamSeasonsForYear(year int64, force bool) (int, error) {
-	if !force && u.seasonsExist(year) {
-		u.Logger.Info("Not updating")
-		return 0, nil
+func (u *Updater) updateTeamSeasonsForYear(ctx context.Context, year int64, force bool) (int, error) {
+	if !force {
+		exists, err := u.seasonsExist(year)
+		if err != nil {
+			return 0, fmt.Errorf("checking existing team seasons for %d: %w", year, err)
+		}
+		if exists {
+			u.logger.Info("Not updating")
+			return 0, nil
+		}
 	}
 
 	sport := u.sportDB()
 
-	teamConfs, err := u.ESPN.TeamConferencesByYear(year)
+	teamConfs, err := u.espn.TeamConferencesByYear(ctx, year)
 	if err != nil {
 		return 0, err
 	}
 
 	var teamSeasons []database.TeamSeason
 
-	confResult, err := u.ESPN.ConferenceMap()
+	confResult, err := u.espn.ConferenceMap(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	if u.ESPN.SportInfo() == espn.CollegeBasketball {
+	if u.espn.SportInfo() == espn.CollegeBasketball {
 		// Basketball: all D1 teams are top-division (FBS=1). Conference names
 		// come from the conference API but there's no FBS/FCS split.
 		d1Confs := confResult.Conferences[espn.D1Basketball]

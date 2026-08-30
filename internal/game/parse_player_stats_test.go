@@ -3,7 +3,6 @@ package game
 import (
 	"testing"
 
-	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -94,7 +93,7 @@ func TestParsePassingStats(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    espn.PlayerStatistics
-		expected []database.PassingStats
+		expected []PassingStats
 	}{
 		{
 			name: "single player",
@@ -107,7 +106,7 @@ func TestParsePassingStats(t *testing.T) {
 					},
 				},
 			},
-			expected: []database.PassingStats{
+			expected: []PassingStats{
 				{
 					PlayerID:      42,
 					TeamID:        10,
@@ -132,7 +131,7 @@ func TestParsePassingStats(t *testing.T) {
 					},
 				},
 			},
-			expected: []database.PassingStats{
+			expected: []PassingStats{
 				{
 					PlayerID:      -1,
 					TeamID:        10,
@@ -190,7 +189,7 @@ func TestParseRushingStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.RushingStats{
+	expected := RushingStats{
 		PlayerID:   55,
 		TeamID:     20,
 		GameID:     2001,
@@ -221,7 +220,7 @@ func TestParseReceivingStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.ReceivingStats{
+	expected := ReceivingStats{
 		PlayerID:   77,
 		TeamID:     30,
 		GameID:     3001,
@@ -252,7 +251,7 @@ func TestParseFumbleStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.FumbleStats{
+	expected := FumbleStats{
 		PlayerID:    33,
 		TeamID:      40,
 		GameID:      4001,
@@ -332,7 +331,7 @@ func TestParseInterceptionStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.InterceptionStats{
+	expected := InterceptionStats{
 		PlayerID:      44,
 		TeamID:        60,
 		GameID:        6001,
@@ -372,7 +371,7 @@ func TestParseReturnStats(t *testing.T) {
 				t.Fatalf("expected 1 result, got %d", len(result))
 			}
 
-			expected := database.ReturnStats{
+			expected := ReturnStats{
 				PlayerID:   99,
 				TeamID:     70,
 				GameID:     7001,
@@ -406,7 +405,7 @@ func TestParseKickStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.KickStats{
+	expected := KickStats{
 		PlayerID: 11,
 		TeamID:   80,
 		GameID:   8001,
@@ -439,7 +438,7 @@ func TestParsePuntStats(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
 
-	expected := database.PuntStats{
+	expected := PuntStats{
 		PlayerID:   22,
 		TeamID:     90,
 		GameID:     9001,
@@ -497,5 +496,90 @@ func TestParseRushingStats_WithTotals(t *testing.T) {
 	}
 	if result[0].RushYards != 150 {
 		t.Errorf("totals RushYards = %d, want 150", result[0].RushYards)
+	}
+}
+
+// TestParsePassingStats_MalformedCATT verifies that a malformed C/ATT value
+// (ESPN sometimes sends "--" or other non-numeric junk) leaves the fields at
+// zero instead of panicking on a short split.
+func TestParsePassingStats_MalformedCATT(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"C/ATT", "YDS", "TD", "INT"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 300},
+				Stats:   []string{"--", "50", "0", "0"},
+			},
+		},
+	}
+
+	result := parsePassingStats(1, 10, stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	player := result[0]
+	if player.PlayerID != 300 {
+		t.Errorf("PlayerID = %d, want 300", player.PlayerID)
+	}
+	if player.Completions != 0 || player.Attempts != 0 {
+		t.Errorf("Completions/Attempts = %d/%d, want 0/0 for malformed value",
+			player.Completions, player.Attempts)
+	}
+	if player.Yards != 50 {
+		t.Errorf("Yards = %d, want 50", player.Yards)
+	}
+}
+
+// TestParseKickStats_MalformedSplits covers malformed FG/XP split values.
+func TestParseKickStats_MalformedSplits(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"FG", "LONG", "XP", "PTS"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 400},
+				Stats:   []string{"N/A", "45", "2", "8"},
+			},
+		},
+	}
+
+	result := parseKickStats(1, 10, stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	kicker := result[0]
+	if kicker.FGM != 0 || kicker.FGA != 0 {
+		t.Errorf("FGM/FGA = %d/%d, want 0/0 for malformed value", kicker.FGM, kicker.FGA)
+	}
+	if kicker.XPM != 0 || kicker.XPA != 0 {
+		t.Errorf("XPM/XPA = %d/%d, want 0/0 for value without separator", kicker.XPM, kicker.XPA)
+	}
+}
+
+// TestCreateStatMaps_LabelStatsMismatch verifies that a labels slice longer
+// than the stats slice does not panic; missing values are simply skipped.
+func TestCreateStatMaps_LabelStatsMismatch(t *testing.T) {
+	stats := espn.PlayerStatistics{
+		Labels: []string{"C/ATT", "YDS", "TD", "INT"},
+		Athletes: []espn.AthleteStats{
+			{
+				Athlete: espn.Athlete{ID: 500},
+				Stats:   []string{"10/20"}, // truncated stats list
+			},
+		},
+	}
+
+	result := createStatMaps(stats)
+
+	if len(result) != 1 {
+		t.Fatalf("len(result) = %d, want 1", len(result))
+	}
+	player := result[0]
+	if player["C/ATT"] != "10/20" {
+		t.Errorf("C/ATT = %v, want 10/20", player["C/ATT"])
+	}
+	if _, ok := player["YDS"]; ok {
+		t.Error("YDS should be absent when stats list is truncated")
 	}
 }

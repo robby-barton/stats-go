@@ -1,4 +1,4 @@
-.PHONY: fmt refresh-module download-modules modules clean migrate updater ranker test test-integration test-all
+.PHONY: format refresh-module download-modules modules clean migrate updater ranker test test-integration test-all
 
 format:
 	@go fmt ./...
@@ -8,9 +8,6 @@ migrate:
 
 updater:
 	@go run ./cmd/updater ${OPTS}
-
-update-all-rankings:
-	@go run ./cmd/updater ranking --all
 
 ranker:
 	@go run ./cmd/ranker ${OPTS}

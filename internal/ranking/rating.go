@@ -8,8 +8,6 @@ import (
 	"sort"
 
 	"gonum.org/v1/gonum/mat"
-
-	"github.com/robby-barton/stats-go/internal/database"
 )
 
 const runs int = 10000
@@ -21,7 +19,31 @@ type gameResults struct {
 	oScore   int64
 }
 
+// inSeasonGames returns the loaded games restricted to the current season and
+// to games between the ranked teams.
+func (r *Ranker) inSeasonGames(teamList TeamList) []Game {
+	return r.windowGames(teamList, r.in.Year)
+}
+
+// windowGames returns the loaded games restricted to games between the ranked
+// teams, optionally filtered to a season (season 0 means no filter). The
+// loaded order (start time descending) is preserved.
+func (r *Ranker) windowGames(teamList TeamList, season int64) []Game {
+	var games []Game
+	for _, game := range r.in.Games {
+		if season != 0 && game.Season != season {
+			continue
+		}
+		if teamList.teamExists(game.HomeID) && teamList.teamExists(game.AwayID) {
+			games = append(games, game)
+		}
+	}
+	return games
+}
+
 func (r *Ranker) sos(teamList TeamList) error {
+	gameList := r.inSeasonGames(teamList)
+
 	// range order over a map is not deterministic, so create a slice to ensure
 	// order when creating vectors/matrices for SoE
 	var teamOrder []int64
@@ -29,19 +51,13 @@ func (r *Ranker) sos(teamList TeamList) error {
 		teamOrder = append(teamOrder, id)
 	}
 
+	if len(teamOrder) == 0 {
+		return nil // nothing to rank
+	}
+
 	teamOrderMap := map[int64]int{}
 	for idx, team := range teamOrder {
 		teamOrderMap[team] = idx
-	}
-
-	var gameList []database.Game
-	if err := r.DB.
-		Where(
-			"sport = ? and season = ? and start_time <= ? and home_id in (?) and away_id in (?)",
-			r.sportFilter(), r.Year, r.startTime, teamOrder, teamOrder,
-		).
-		Order("start_time desc").Find(&gameList).Error; err != nil {
-		return err
 	}
 
 	teamGameInfo := map[int64][]*gameResults{}
@@ -115,7 +131,10 @@ func (r *Ranker) sos(teamList TeamList) error {
 
 	maxSOS := teamList[teamOrder[0]].SOS
 	minSOS := teamList[teamOrder[len(teamOrder)-1]].SOS
-	var prev float64
+	// Initialize prev to NaN so the first team always takes the rank-assignment
+	// branch, even when its score is exactly zero (0 == 0 would otherwise
+	// assign rank 0 via the uninitialized prevRank).
+	prev := math.NaN()
 	var prevRank int64
 	for rank, id := range teamOrder {
 		team := teamList[id]
@@ -143,34 +162,22 @@ type gameSpreadSRS struct {
 }
 
 func (r *Ranker) srs(teamList TeamList) error {
-	cfg := r.sportConfig()
-	sport := r.sportFilter()
+	cfg := sportConfig(r.in.Sport)
 
 	// get previous season games just to be ready
 	var allowedTeams []int64
 	for id := range teamList {
 		allowedTeams = append(allowedTeams, id)
 	}
-	var allGames []database.Game
-	if err := r.DB.
-		Where(
-			"sport = ? and season >= ? and start_time <= ? and home_id in (?) and away_id in (?)",
-			sport,
-			r.Year-cfg.YearsBack,
-			r.startTime,
-			allowedTeams,
-			allowedTeams,
-		).
-		Order("start_time desc").Find(&allGames).Error; err != nil {
-		return err
-	}
 
-	var games []database.Game
+	allGames := r.windowGames(teamList, 0)
+
+	var games []Game
 	found := make(map[int64]bool)
 	for id := range teamList {
 		divGames := 0
 		for _, game := range allGames {
-			if game.Season == r.Year {
+			if game.Season == r.in.Year {
 				if (game.HomeID == id && teamList.teamExists(game.AwayID)) ||
 					(game.AwayID == id && teamList.teamExists(game.HomeID)) {
 					divGames++
@@ -203,20 +210,10 @@ func (r *Ranker) srs(teamList TeamList) error {
 			of games but all wins throwing off the rating scale. For teams in this situation
 			we can individually search for their remaining games against division-mates.
 		*/
-		if divGames < cfg.RequiredGames {
-			var remainingGames []database.Game
-			if err := r.DB.
-				Where(
-					"sport = ? and season < ? and ((home_id = ? and away_id in (?)) or "+
-						"(away_id = ? and home_id in (?)))",
-					sport,
-					r.Year-cfg.YearsBack,
-					id,
-					allowedTeams,
-					id,
-					allowedTeams,
-				).Limit(cfg.RequiredGames - divGames).Order("start_time desc").
-				Find(&remainingGames).Error; err != nil {
+		if divGames < cfg.RequiredGames && r.in.Backfill != nil {
+			remainingGames, err := r.in.Backfill(
+				id, allowedTeams, r.in.Year-cfg.YearsBack, cfg.RequiredGames-divGames)
+			if err != nil {
 				return err
 			}
 			for _, game := range remainingGames {
@@ -242,7 +239,12 @@ func (r *Ranker) srs(teamList TeamList) error {
 		}
 		for id, rating := range ratings {
 			team := teamList[id]
-			norm := (rating - minMOV) / (maxMOV - minMOV)
+			norm := 0.0
+			// Guard against a degenerate range: when all MOVs are equal
+			// (maxMOV == minMOV) the normalization would be 0/0 = NaN.
+			if maxMOV > minMOV {
+				norm = (rating - minMOV) / (maxMOV - minMOV)
+			}
 			team.SRS = ((team.SRS * float64(i)) + norm) / float64(i+1)
 		}
 	}
@@ -254,9 +256,15 @@ func (r *Ranker) srs(teamList TeamList) error {
 	sort.Slice(teamIDs, func(i, j int) bool {
 		return teamList[teamIDs[i]].SRS > teamList[teamIDs[j]].SRS
 	})
+
+	if len(teamIDs) == 0 {
+		return nil // nothing to rank
+	}
+
 	maxSRS := teamList[teamIDs[0]].SRS
 	minSRS := teamList[teamIDs[len(teamIDs)-1]].SRS
-	var prev float64
+	// NaN seed: see the note in sos about first-team rank assignment.
+	prev := math.NaN()
 	var prevRank int64
 	for rank, id := range teamIDs {
 		team := teamList[id]
@@ -276,7 +284,7 @@ func (r *Ranker) srs(teamList TeamList) error {
 	return nil
 }
 
-func generateAdjRatings(games []database.Game, mov int64) map[int64]float64 {
+func generateAdjRatings(games []Game, mov int64) map[int64]float64 {
 	teamGameInfo := map[int64][]*gameSpreadSRS{}
 	for _, game := range games {
 		spread := game.HomeScore - game.AwayScore

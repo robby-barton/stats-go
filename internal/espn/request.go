@@ -8,47 +8,49 @@ import (
 	"time"
 )
 
-const maxBackoff = 30 * time.Second
+const (
+	maxBackoff = 30 * time.Second
+
+	// defaultMaxAttempts is the total number of times a request is tried when
+	// a constructor does not override it. Backoff is skipped after the final
+	// attempt, so MaxAttempts=5 means at most 4 backoff sleeps.
+	defaultMaxAttempts = 5
+)
 
 // Client holds configuration for ESPN HTTP requests.
 type Client struct {
-	MaxRetries     int
+	// MaxAttempts is the total number of times a request is tried before
+	// giving up (MaxAttempts-1 retries). Backoff is skipped after the final
+	// attempt.
+	MaxAttempts    int
 	InitialBackoff time.Duration
 	RequestTimeout time.Duration
 	RateLimit      time.Duration // delay between batch API calls
 	Sport          Sport         // sport this client fetches data for
 
-	// Per-client URL overrides. When non-empty, these take precedence over
-	// the package-level vars. This allows multiple clients (one per sport) to
-	// coexist in the same process.
+	// Shared HTTP transport. Set by the constructors; callers that build a
+	// Client directly (tests) fall back to a per-request client with the
+	// configured timeout.
+	httpClient *http.Client
+
+	// Per-client endpoint URLs. Set by NewClientForSport; tests point a
+	// single client at a mock server via SetURLs.
 	scheduleURL   string
 	gameStatsURL  string
 	teamInfoURL   string
 	scoreboardURL string
 }
 
-// NewClient returns a SportClient configured for college football with sensible defaults.
-// Per-client URL overrides are NOT set, so this client falls back to the
-// package-level vars (which can be overridden via SetTestURLs in tests).
-func NewClient() SportClient {
-	return &FootballClient{Client: &Client{
-		MaxRetries:     5,
-		InitialBackoff: 1 * time.Second,
-		RequestTimeout: 1 * time.Second,
-		RateLimit:      500 * time.Millisecond,
-		Sport:          CollegeFootball,
-	}}
-}
-
 // NewClientForSport returns a SportClient configured for the given sport.
 func NewClientForSport(sport Sport) SportClient {
 	urls := SportURLs(sport)
 	c := &Client{
-		MaxRetries:     5,
+		MaxAttempts:    defaultMaxAttempts,
 		InitialBackoff: 1 * time.Second,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      500 * time.Millisecond,
 		Sport:          sport,
+		httpClient:     &http.Client{Timeout: 1 * time.Second},
 		scheduleURL:    urls.Schedule,
 		gameStatsURL:   urls.GameStats,
 		teamInfoURL:    urls.TeamInfo,
@@ -71,50 +73,51 @@ func wrapClient(c *Client) SportClient {
 
 // WeekURL returns the schedule URL for this client.
 func (c *Client) WeekURL() string {
-	if c.scheduleURL != "" {
-		return c.scheduleURL
-	}
-	return weekURL
+	return c.scheduleURL
 }
 
 // GameStatsURL returns the game stats URL template for this client.
 func (c *Client) GameStatsURL() string {
-	if c.gameStatsURL != "" {
-		return c.gameStatsURL
-	}
-	return gameStatsURL
+	return c.gameStatsURL
 }
 
 // TeamInfoURL returns the team info URL for this client.
 func (c *Client) TeamInfoURL() string {
-	if c.teamInfoURL != "" {
-		return c.teamInfoURL
-	}
-	return teamInfoURL
+	return c.teamInfoURL
 }
 
 // ScoreboardURL returns the scoreboard URL for this client.
 func (c *Client) ScoreboardURL() string {
-	if c.scoreboardURL != "" {
-		return c.scoreboardURL
-	}
-	return scoreboardURL
+	return c.scoreboardURL
 }
 
 type validatable interface {
 	validate() error
 }
 
+// Responses constrains the response types makeRequest can decode. Every
+// ESPN response implements validate, so decoded payloads are checked at the
+// transport boundary.
 type Responses interface {
 	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN
 	validatable
 }
 
-func (c *Client) makeRequest(endpoint string, data any) error {
-	httpClient := &http.Client{
-		Timeout: c.RequestTimeout,
+// makeRequest fetches endpoint and decodes the JSON body into out. It retries
+// 5xx responses with exponential backoff and aborts as soon as ctx is
+// cancelled. out is validated after decoding. c.MaxAttempts is the total
+// number of tries (including the first); no backoff sleep happens after the
+// final failed attempt because the loop ends there either way.
+func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, out *T) error {
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: c.RequestTimeout}
 	}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("building request for %q: %w", endpoint, err)
+	}
 
 	headers := map[string]string{
 		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -125,20 +128,36 @@ func (c *Client) makeRequest(endpoint string, data any) error {
 		req.Header.Set(k, v)
 	}
 
+	maxAttempts := c.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
+	}
+
 	var res *http.Response
-	var err error
-	for attempt := range c.MaxRetries {
+	for attempt := range maxAttempts {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, err)
+		}
+
 		res, err = httpClient.Do(req)
 		if err == nil {
-			if res.StatusCode >= 500 {
-				res.Body.Close()
-				err = fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
-				time.Sleep(c.backoff(attempt))
-				continue
+			if res.StatusCode < 500 {
+				break
 			}
-			break
+			res.Body.Close()
+			err = fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
+		} else if ctx.Err() != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, ctx.Err())
 		}
-		time.Sleep(c.backoff(attempt))
+
+		// Back off before retrying — except after the final attempt, where
+		// sleeping would only delay the (already certain) error return.
+		if attempt == maxAttempts-1 {
+			continue
+		}
+		if sleepErr := c.sleep(ctx, c.backoff(attempt)); sleepErr != nil {
+			return fmt.Errorf("request cancelled for %q: %w", endpoint, sleepErr)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("error from %q: %w", endpoint, err)
@@ -150,11 +169,26 @@ func (c *Client) makeRequest(endpoint string, data any) error {
 		return fmt.Errorf("unexpected status %d from %q", res.StatusCode, endpoint)
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(data); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
 		return fmt.Errorf("decoding response from %q: %w", endpoint, err)
 	}
 
-	return data.(validatable).validate()
+	return (*out).validate()
+}
+
+// sleep waits for d, returning early if ctx is cancelled.
+func (c *Client) sleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (c *Client) backoff(attempt int) time.Duration {

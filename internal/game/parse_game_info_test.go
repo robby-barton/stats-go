@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -33,9 +34,11 @@ func TestParseGameInfo_Standard(t *testing.T) {
 	}
 
 	var s ParsedGameInfo
-	s.parseGameInfo(gameInfo)
+	if err := s.parseGameInfo(gameInfo); err != nil {
+		t.Fatalf("parseGameInfo: %v", err)
+	}
 
-	game := s.GameInfo
+	game := s.Info
 	if game.GameID != 401234567 {
 		t.Errorf("GameID = %d, want 401234567", game.GameID)
 	}
@@ -99,9 +102,11 @@ func TestParseGameInfo_Postseason_NeutralSite(t *testing.T) {
 	}
 
 	var s ParsedGameInfo
-	s.parseGameInfo(gameInfo)
+	if err := s.parseGameInfo(gameInfo); err != nil {
+		t.Fatalf("parseGameInfo: %v", err)
+	}
 
-	game := s.GameInfo
+	game := s.Info
 	if game.GameID != 401999999 {
 		t.Errorf("GameID = %d, want 401999999", game.GameID)
 	}
@@ -125,5 +130,86 @@ func TestParseGameInfo_Postseason_NeutralSite(t *testing.T) {
 	}
 	if game.AwayScore != 28 {
 		t.Errorf("AwayScore = %d, want 28", game.AwayScore)
+	}
+}
+
+// malformedGameInfo builds a GameInfoESPN with a valid header ID so tests can
+// vary individual malformed fields.
+func malformedGameInfo(competitions []espn.Competitions) *espn.GameInfoESPN {
+	return &espn.GameInfoESPN{
+		GamePackage: espn.GamePackage{
+			Header: espn.Header{
+				ID:           401234567,
+				Week:         1,
+				Season:       espn.Season{Year: 2023, Type: int64(espn.Regular)},
+				Competitions: competitions,
+			},
+		},
+	}
+}
+
+func TestParseGameInfo_MissingCompetitions(t *testing.T) {
+	var s ParsedGameInfo
+	err := s.parseGameInfo(malformedGameInfo(nil))
+	if err == nil {
+		t.Fatal("expected error for missing competitions, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing competitions") {
+		t.Errorf("error = %q, want it to mention missing competitions", err)
+	}
+}
+
+func TestParseGameInfo_TooFewCompetitors(t *testing.T) {
+	comp := espn.Competitions{
+		Date: "2023-10-07T16:00Z",
+		Competitors: []espn.Competitors{
+			{HomeAway: "home", ID: 100, Score: 35},
+		},
+	}
+	var s ParsedGameInfo
+	err := s.parseGameInfo(malformedGameInfo([]espn.Competitions{comp}))
+	if err == nil {
+		t.Fatal("expected error for fewer than 2 competitors, got nil")
+	}
+	if !strings.Contains(err.Error(), "competitors") {
+		t.Errorf("error = %q, want it to mention competitors", err)
+	}
+}
+
+func TestParseGameInfo_MissingHomeAway(t *testing.T) {
+	// Two competitors but with unexpected homeAway labels: neither maps to
+	// home/away, which must be rejected instead of persisting zero team IDs.
+	comp := espn.Competitions{
+		Date: "2023-10-07T16:00Z",
+		Competitors: []espn.Competitors{
+			{HomeAway: "weird", ID: 100, Score: 35},
+			{HomeAway: "also-weird", ID: 200, Score: 21},
+		},
+	}
+	var s ParsedGameInfo
+	err := s.parseGameInfo(malformedGameInfo([]espn.Competitions{comp}))
+	if err == nil {
+		t.Fatal("expected error for missing home/away competitor, got nil")
+	}
+	if !strings.Contains(err.Error(), "home or away") {
+		t.Errorf("error = %q, want it to mention home or away", err)
+	}
+}
+
+func TestParseGameInfo_BadDate(t *testing.T) {
+	comp := espn.Competitions{
+		Date: "not-a-date",
+		Competitors: []espn.Competitors{
+			{HomeAway: "home", ID: 100, Score: 35},
+			{HomeAway: "away", ID: 200, Score: 21},
+		},
+	}
+	var s ParsedGameInfo
+	err := s.parseGameInfo(malformedGameInfo([]espn.Competitions{comp}))
+	if err == nil {
+		t.Fatal("expected error for unparsable date, got nil")
+	}
+	if !strings.Contains(err.Error(), "start time") {
+		t.Errorf("error = %q, want it to mention start time", err)
 	}
 }

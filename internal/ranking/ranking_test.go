@@ -3,8 +3,9 @@ package ranking
 import (
 	"math"
 	"testing"
+	"time"
 
-	"github.com/robby-barton/stats-go/internal/database"
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
 func TestRecordString_NoTies(t *testing.T) {
@@ -76,7 +77,7 @@ func TestFinalRanking_Basic(t *testing.T) {
 		},
 	}
 
-	r := &Ranker{Sport: sportFootball}
+	r := newTestRanker(t, Input{Sport: sport.Football})
 	r.finalRanking(teamList)
 
 	// Alpha: 1.0*0.45 + 1.0*0.40 + 0.8*0.15 = 0.97
@@ -122,7 +123,7 @@ func TestFinalRanking_TiedScores(t *testing.T) {
 		},
 	}
 
-	r := &Ranker{Sport: sportFootball}
+	r := newTestRanker(t, Input{Sport: sport.Football})
 	r.finalRanking(teamList)
 
 	// Teams A and B have identical FinalRaw, so they should share the same rank
@@ -139,7 +140,7 @@ func TestFinalRanking_TiedScores(t *testing.T) {
 
 func TestGenerateAdjRatings_SmallSet(t *testing.T) {
 	// Three teams: A(1) beats B(2), B(2) beats C(3), A(1) beats C(3)
-	games := []database.Game{
+	games := []Game{
 		{HomeID: 1, AwayID: 2, HomeScore: 28, AwayScore: 14},
 		{HomeID: 2, AwayID: 3, HomeScore: 21, AwayScore: 7},
 		{HomeID: 1, AwayID: 3, HomeScore: 35, AwayScore: 10},
@@ -159,7 +160,7 @@ func TestGenerateAdjRatings_SmallSet(t *testing.T) {
 
 func TestGenerateAdjRatings_MOVCapping(t *testing.T) {
 	// One blowout game: 50-0
-	games := []database.Game{
+	games := []Game{
 		{HomeID: 1, AwayID: 2, HomeScore: 50, AwayScore: 0},
 	}
 
@@ -201,7 +202,7 @@ func TestGenerateAdjRatings_EmptyGames(t *testing.T) {
 
 func TestGenerateAdjRatings_TeamZeroRemoved(t *testing.T) {
 	// If team ID 0 somehow appears, it should be removed from results
-	games := []database.Game{
+	games := []Game{
 		{HomeID: 0, AwayID: 1, HomeScore: 10, AwayScore: 20},
 	}
 
@@ -212,5 +213,99 @@ func TestGenerateAdjRatings_TeamZeroRemoved(t *testing.T) {
 	}
 	if _, ok := ratings[1]; !ok {
 		t.Error("team ID 1 should exist in ratings")
+	}
+}
+
+// TestNewRanker_UnknownSport verifies that an invalid sport is rejected at
+// construction time instead of panicking mid-computation.
+func TestNewRanker_UnknownSport(t *testing.T) {
+	if _, err := NewRanker(Input{Sport: sport.Sport("ncaaw")}); err == nil {
+		t.Error("NewRanker with unknown sport: expected error, got nil")
+	}
+}
+
+// TestFinalRanking_ZeroScoreTie covers the all-zero score case: the first
+// team in sorted order must get rank 1, not 0.
+func TestFinalRanking_ZeroScoreTie(t *testing.T) {
+	r := newTestRanker(t, Input{Sport: sport.Football})
+
+	// All teams have FinalRaw exactly zero — the first team in sorted order
+	// must get rank 1, not 0.
+	teamList := TeamList{
+		1: &Team{Name: "Alpha", FinalRaw: 0},
+		2: &Team{Name: "Beta", FinalRaw: 0},
+		3: &Team{Name: "Gamma", FinalRaw: 0},
+	}
+
+	r.finalRanking(teamList)
+
+	for id, team := range teamList {
+		if team.FinalRank != 1 {
+			t.Errorf("team %d FinalRank = %d, want 1 (all tied at zero)", id, team.FinalRank)
+		}
+	}
+}
+
+// TestDivisionTeams checks the division split: football FBS ranking excludes
+// the FCS team, the FCS ranking includes only it, and basketball includes
+// every team regardless of the flag.
+func TestDivisionTeams(t *testing.T) {
+	fbsRanker := newTestRanker(t, Input{Sport: sport.Football, Teams: footballTeams()})
+	teams := fbsRanker.divisionTeams()
+	if len(teams) != 4 {
+		t.Fatalf("FBS divisionTeams len = %d, want 4", len(teams))
+	}
+
+	fcsRanker := newTestRanker(t, Input{Sport: sport.Football, Fcs: true, Teams: footballTeams()})
+	teams = fcsRanker.divisionTeams()
+	if len(teams) != 1 || teams[0].ID != 5 {
+		t.Fatalf("FCS divisionTeams = %v, want only team 5", teams)
+	}
+
+	bbRanker := newTestRanker(t, Input{Sport: sport.Basketball, Teams: basketballTeams()})
+	teams = bbRanker.divisionTeams()
+	if len(teams) != 5 {
+		t.Fatalf("basketball divisionTeams len = %d, want 5", len(teams))
+	}
+}
+
+// TestCalculateRanking_FullPipeline runs the complete pipeline over the
+// football fixture set with the window already resolved (as internal/ranking/
+// load would).
+func TestCalculateRanking_FullPipeline(t *testing.T) {
+	games := footballGames()
+	// The loader hands games over in descending start-time order.
+	for i, j := 0, len(games)-1; i < j; i, j = i+1, j-1 {
+		games[i], games[j] = games[j], games[i]
+	}
+
+	r := newTestRanker(t, Input{
+		Year:      2023,
+		Week:      6,
+		Sport:     sport.Football,
+		StartTime: time.Date(2023, 10, 20, 0, 0, 0, 0, time.UTC),
+		Teams:     footballTeams(),
+		Games:     games,
+	})
+
+	teamList, err := r.CalculateRanking()
+	if err != nil {
+		t.Fatalf("CalculateRanking: %v", err)
+	}
+
+	if len(teamList) != 4 {
+		t.Fatalf("len(teamList) = %d, want 4", len(teamList))
+	}
+
+	// Alpha (4-0) should be rank 1
+	if teamList[1].FinalRank != 1 {
+		t.Errorf("Alpha FinalRank = %d, want 1", teamList[1].FinalRank)
+	}
+
+	// FinalRank should span 1-4 (some might tie)
+	for _, team := range teamList {
+		if team.FinalRank < 1 || team.FinalRank > 4 {
+			t.Errorf("FinalRank = %d, want [1,4]", team.FinalRank)
+		}
 	}
 }

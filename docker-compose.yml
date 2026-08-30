@@ -1,16 +1,35 @@
+x-pg-environment: &pg-environment
+  PG_HOST: ${PG_HOST}
+  PG_PORT: ${PG_PORT}
+  PG_USER: ${PG_USER}
+  PG_PASSWORD: ${PG_PASSWORD}
+  PG_DBNAME: ${PG_DBNAME}
+  PG_SSLMODE: ${PG_SSLMODE}
+
 services:
+  migrate-schema:
+    container_name: migrate-schema
+    build: .
+    restart: "no"
+    network_mode: host
+    environment:
+      <<: *pg-environment
+      TZ: ${TZ:-America/New_York}
+    # Override the image entrypoint (updater schedule) to run the one-shot
+    # schema migration instead. Additive and idempotent, so it is safe on
+    # every `docker compose up`.
+    entrypoint: ["/migrate-schema"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   updater:
     container_name: updater
     build: .
     restart: unless-stopped
     network_mode: host
     environment:
-      PG_HOST: ${PG_HOST}
-      PG_PORT: ${PG_PORT}
-      PG_USER: ${PG_USER}
-      PG_PASSWORD: ${PG_PASSWORD}
-      PG_DBNAME: ${PG_DBNAME}
-      PG_SSLMODE: ${PG_SSLMODE}
+      <<: *pg-environment
       TZ: ${TZ:-America/New_York}
       DEPLOY_SCRIPT: ${DEPLOY_SCRIPT:-/scripts/deploy-web.sh}
       CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
@@ -19,6 +38,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate-schema:
+        condition: service_completed_successfully
 
   db:
     container_name: statsdb

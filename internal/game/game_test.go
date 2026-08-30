@@ -1,11 +1,14 @@
 package game
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/robby-barton/stats-go/internal/espn"
 )
@@ -77,14 +80,25 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
-func overrideGameURLs(t *testing.T, serverURL string) {
+func overrideGameURLs(t *testing.T, client *espn.Client, serverURL string) {
 	t.Helper()
-	restore := espn.SetTestURLs(
+	t.Cleanup(client.SetURLs(
 		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-	)
-	t.Cleanup(restore)
+		"",
+	))
+}
+
+// newTestClient returns a football client with fast retry settings for tests.
+func newTestClient() *espn.FootballClient {
+	return &espn.FootballClient{Client: &espn.Client{
+		MaxAttempts:    2,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          espn.CollegeFootball,
+	}}
 }
 
 func setupBasketballTestServer(t *testing.T) *httptest.Server {
@@ -156,40 +170,36 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 
 func TestGetSingleGame_Basketball(t *testing.T) {
 	ts := setupBasketballTestServer(t)
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
 	client := &espn.BasketballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
 	}}
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		"",
+	))
 
-	parsed, err := GetSingleGame(client, 2001)
+	parsed, err := GetSingleGame(context.Background(), client, zap.NewNop().Sugar(), 2001)
 	if err != nil {
 		t.Fatalf("GetSingleGame: %v", err)
 	}
 
-	if parsed.GameInfo.Sport != "ncaam" {
-		t.Errorf("Sport = %q, want %q", parsed.GameInfo.Sport, "ncaam")
+	if parsed.Info.GameID != 2001 {
+		t.Errorf("GameID = %d, want 2001", parsed.Info.GameID)
 	}
-	if parsed.GameInfo.GameID != 2001 {
-		t.Errorf("GameID = %d, want 2001", parsed.GameInfo.GameID)
+	if parsed.Info.HomeID != 30 {
+		t.Errorf("HomeID = %d, want 30", parsed.Info.HomeID)
 	}
-	if parsed.GameInfo.HomeID != 30 {
-		t.Errorf("HomeID = %d, want 30", parsed.GameInfo.HomeID)
+	if parsed.Info.HomeScore != 78 {
+		t.Errorf("HomeScore = %d, want 78", parsed.Info.HomeScore)
 	}
-	if parsed.GameInfo.HomeScore != 78 {
-		t.Errorf("HomeScore = %d, want 78", parsed.GameInfo.HomeScore)
-	}
-	if parsed.GameInfo.AwayScore != 65 {
-		t.Errorf("AwayScore = %d, want 65", parsed.GameInfo.AwayScore)
+	if parsed.Info.AwayScore != 65 {
+		t.Errorf("AwayScore = %d, want 65", parsed.Info.AwayScore)
 	}
 
 	// Basketball should not have player stats
@@ -206,22 +216,21 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 
 func TestGetCurrentWeekGames_Basketball(t *testing.T) {
 	ts := setupBasketballTestServer(t)
-	restore := espn.SetTestURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
-		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-	)
-	t.Cleanup(restore)
-
 	client := &espn.BasketballClient{Client: &espn.Client{
-		MaxRetries:     2,
+		MaxAttempts:    2,
 		InitialBackoff: 10 * time.Millisecond,
 		RequestTimeout: 1 * time.Second,
 		RateLimit:      0,
 		Sport:          espn.CollegeBasketball,
 	}}
+	t.Cleanup(client.SetURLs(
+		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
+		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
+		"",
+	))
 
-	games, err := GetCurrentWeekGames(client)
+	games, err := GetCurrentWeekGames(context.Background(), client)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}
@@ -271,46 +280,44 @@ func TestCombineGames(t *testing.T) {
 
 func TestGetSingleGame(t *testing.T) {
 	ts := setupGameTestServer(t)
-	overrideGameURLs(t, ts.URL)
-
-	client := espn.NewClient()
-	parsed, err := GetSingleGame(client, 1001)
+	client := newTestClient()
+	overrideGameURLs(t, client.Client, ts.URL)
+	parsed, err := GetSingleGame(context.Background(), client, zap.NewNop().Sugar(), 1001)
 	if err != nil {
 		t.Fatalf("GetSingleGame: %v", err)
 	}
 
-	if parsed.GameInfo.GameID != 1001 {
-		t.Errorf("GameID = %d, want 1001", parsed.GameInfo.GameID)
+	if parsed.Info.GameID != 1001 {
+		t.Errorf("GameID = %d, want 1001", parsed.Info.GameID)
 	}
-	if parsed.GameInfo.HomeID != 10 {
-		t.Errorf("HomeID = %d, want 10", parsed.GameInfo.HomeID)
+	if parsed.Info.HomeID != 10 {
+		t.Errorf("HomeID = %d, want 10", parsed.Info.HomeID)
 	}
-	if parsed.GameInfo.AwayID != 20 {
-		t.Errorf("AwayID = %d, want 20", parsed.GameInfo.AwayID)
+	if parsed.Info.AwayID != 20 {
+		t.Errorf("AwayID = %d, want 20", parsed.Info.AwayID)
 	}
-	if parsed.GameInfo.HomeScore != 28 {
-		t.Errorf("HomeScore = %d, want 28", parsed.GameInfo.HomeScore)
+	if parsed.Info.HomeScore != 28 {
+		t.Errorf("HomeScore = %d, want 28", parsed.Info.HomeScore)
 	}
-	if parsed.GameInfo.AwayScore != 14 {
-		t.Errorf("AwayScore = %d, want 14", parsed.GameInfo.AwayScore)
+	if parsed.Info.AwayScore != 14 {
+		t.Errorf("AwayScore = %d, want 14", parsed.Info.AwayScore)
 	}
-	if !parsed.GameInfo.ConfGame {
+	if !parsed.Info.ConfGame {
 		t.Error("ConfGame = false, want true")
 	}
-	if parsed.GameInfo.Season != 2023 {
-		t.Errorf("Season = %d, want 2023", parsed.GameInfo.Season)
+	if parsed.Info.Season != 2023 {
+		t.Errorf("Season = %d, want 2023", parsed.Info.Season)
 	}
-	if parsed.GameInfo.Week != 1 {
-		t.Errorf("Week = %d, want 1", parsed.GameInfo.Week)
+	if parsed.Info.Week != 1 {
+		t.Errorf("Week = %d, want 1", parsed.Info.Week)
 	}
 }
 
 func TestGetCurrentWeekGames(t *testing.T) {
 	ts := setupGameTestServer(t)
-	overrideGameURLs(t, ts.URL)
-
-	client := espn.NewClient()
-	games, err := GetCurrentWeekGames(client)
+	client := newTestClient()
+	overrideGameURLs(t, client.Client, ts.URL)
+	games, err := GetCurrentWeekGames(context.Background(), client)
 	if err != nil {
 		t.Fatalf("GetCurrentWeekGames: %v", err)
 	}

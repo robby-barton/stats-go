@@ -2,7 +2,8 @@
 
 College sports computer ranking system written in Go. Collects game data from
 ESPN for football and basketball, computes rankings using a composite algorithm,
-and serves results via an API.
+and stores the results in PostgreSQL. The sibling `stats-web` site queries the
+database directly at build time — there is no HTTP API in this repo.
 
 ## Repo Responsibilities
 
@@ -10,12 +11,14 @@ This repo is the **orchestration authority** for all cross-repo work. It owns:
 
 - Docker Compose configuration (backend + Postgres)
 - Database schema and all migrations
-- API contracts — field names, response shapes, HTTP semantics
+- The shared database contract with `stats-web` — table shapes, column names,
+  and semantics (there is no HTTP API; `stats-web` reads the database directly)
 - Runtime behavior and business logic
 
 The sibling repo `stats-web` is a static site consumer. It has no authority
-over schema, contracts, or deployment orchestration. All API decisions are made
-here. See [docs/multi-repo-workflow.md](docs/multi-repo-workflow.md).
+over the schema, contracts, or deployment orchestration. All schema and data
+contract decisions are made here. See
+[docs/multi-repo-workflow.md](docs/multi-repo-workflow.md).
 
 ## Quick Reference
 
@@ -30,9 +33,10 @@ here. See [docs/multi-repo-workflow.md](docs/multi-repo-workflow.md).
 
 ```
 cmd/
-  ranker/     CLI tool to calculate and print rankings
-  updater/    Service that fetches games and updates DB on a schedule
-  migrate/    One-time migration from PostgreSQL to SQLite
+  ranker/         CLI tool to calculate and print rankings
+  updater/        Service that fetches games and updates DB on a schedule
+  migrate/        One-time migration from PostgreSQL to SQLite
+  migrate-schema/ One-shot schema initializer (runs before updater in Compose)
 internal/
   config/     Environment-based configuration (godotenv)
   database/   GORM models and DB initialization (Postgres + SQLite)
@@ -52,8 +56,11 @@ rationale.
 Key patterns:
 - **Multi-sport support** — Football (`ncaaf`) and basketball (`ncaam`) via `espn.Sport` type
 - **Three independent CLI entry points** in `cmd/` — each wires its own deps
-- **Sport subcommands** — CLIs use `football`/`basketball` subcommands; `schedule` runs both
-- **Updater struct** receives DB, Logger, ESPN client, and Sport via dependency injection
+- **Sport subcommands** — CLIs use `ncaaf`/`ncaam` subcommands; `schedule` runs both
+- **Updater struct** receives DB, Logger, and ESPN client via dependency
+  injection; construct it with `updater.NewUpdater`, which validates inputs
+  (nil DB/logger/client and unknown sports return errors, mirroring
+  `ranking.NewRanker`).
 - **ESPN package** — per-client URLs via `NewClientForSport(sport)`, no DB dependency
 - **Ranking package** takes a `*gorm.DB` and sport, computes everything in-memory
 - **Sport column** on shared DB tables (`games`, `team_names`, `team_seasons`, `team_week_results`)
@@ -66,12 +73,18 @@ Key patterns:
   of the ranker CLI output (enforced via `forbidigo` lint).
 - Errors are propagated up — panics are only recovered at the scheduler level
   in `cmd/updater`.
-- ESPN API calls use `espn.Client.RateLimit` (default 500ms) between batch
-  requests (in `game/`).
-- The HTTP client in `espn/request.go` retries with exponential backoff
-  (`InitialBackoff * 2^attempt`, capped at 30s). Defaults: 5 retries, 1s initial backoff.
+- ESPN API calls are rate-limited via `espn.SportClient.Throttle()` (default
+  500ms pause, `espn.Client.RateLimit`), which every multi-request path (week
+  loops, date loops, per-game fetches) calls between sequential requests.
+- The HTTP client in `espn/request.go` retries 5xx responses with exponential
+  backoff (`InitialBackoff * 2^attempt`, capped at 30s). `MaxAttempts` is the
+  total number of tries (default 5, i.e. 4 retries), and no backoff sleep
+  happens after the final failed attempt.
 - Test files use `_test.go` suffix. ESPN tests use a mock HTTP server pattern
-  with fixture data.
+  with fixture data. Updater tests are hermetic (mock ESPN HTTP server +
+  in-memory SQLite) and run in the default `go test ./...` suite — use the
+  `integration` build tag only for tests that genuinely need external
+  resources.
 - `nolint` directives require both a specific linter and an explanation
   (`require-explanation: true`, `require-specific: true`).
 
@@ -92,21 +105,21 @@ See [docs/migration-rules.md](docs/migration-rules.md) for full guidance.
 ## Branching & PR Rules
 
 - **Never commit directly to `master`.** Always branch.
-- Branch naming: `<type>/<short-description>` — e.g., `feat/add-basketball-api`,
+- Branch naming: `<type>/<short-description>` — e.g., `feat/add-basketball-rankings`,
   `fix/migration-null-column`.
 - One PR per feature slice. Scope PRs tightly.
-- PRs introducing a new or changed API contract must include the contract shape
-  in the PR description: field names, types, HTTP method, and path.
+- PRs introducing a new or changed schema/data contract must include the
+  contract shape in the PR description: table names, column names, and types.
 - Do not merge if `docker compose up` fails or if tests/lint are red.
 - Backend PR merges before the corresponding `stats-web` PR is opened.
 
 ## Anti-Patterns
 
-- **Do not negotiate API contracts in `stats-web`.** All API decisions are made
-  here. If the frontend surfaces a problem, fix it here.
+- **Do not negotiate the database contract in `stats-web`.** All schema and
+  data decisions are made here. If the frontend surfaces a problem, fix it here.
 - **Do not add a frontend workaround for a backend bug.** Fix the backend.
 - **Do not add NOT NULL columns without defaults in a single migration.**
-- **Do not open a `stats-web` PR before the backend contract is finalized.**
+- **Do not open a `stats-web` PR before the backend schema contract is finalized.**
 - **Do not duplicate these rules in `stats-web`.** That repo defers to this one.
   Link to this file, do not copy it.
 - **Do not skip `docker compose up` validation.** A green stack is the minimum

@@ -1,9 +1,9 @@
 package espn
 
-import "errors"
-
-//nolint:gochecknoglobals // overridden in tests
-var scoreboardURL string
+import (
+	"context"
+	"errors"
+)
 
 // ScoreboardESPN represents the top-level response from the ESPN scoreboard API.
 // Used primarily for basketball where the schedule endpoint lacks season metadata.
@@ -39,9 +39,9 @@ func (r ScoreboardESPN) validate() error {
 }
 
 // GetScoreboard fetches the scoreboard endpoint for season metadata.
-func (c *Client) GetScoreboard() (*ScoreboardESPN, error) {
+func (c *Client) GetScoreboard(ctx context.Context) (*ScoreboardESPN, error) {
 	var res ScoreboardESPN
-	if err := c.makeRequest(c.ScoreboardURL(), &res); err != nil {
+	if err := makeRequest(ctx, c, c.ScoreboardURL(), &res); err != nil {
 		return nil, err
 	}
 	return &res, nil

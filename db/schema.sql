@@ -30,20 +30,6 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: composite; Type: TABLE; Schema: public; Owner: stats
---
-
-CREATE TABLE public.composite (
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    average integer DEFAULT 0,
-    rating real DEFAULT 0
-);
-
-
-ALTER TABLE public.composite OWNER TO stats;
-
---
 -- Name: defensive_stats; Type: TABLE; Schema: public; Owner: stats
 --
 
@@ -156,25 +142,6 @@ CREATE TABLE public.passing_stats (
 ALTER TABLE public.passing_stats OWNER TO stats;
 
 --
--- Name: players; Type: TABLE; Schema: public; Owner: stats
---
-
-CREATE TABLE public.players (
-    player_id integer NOT NULL,
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    name text NOT NULL,
-    "position" text NOT NULL,
-    rating integer DEFAULT 50,
-    grade text NOT NULL,
-    hometown text NOT NULL,
-    status text NOT NULL
-);
-
-
-ALTER TABLE public.players OWNER TO stats;
-
---
 -- Name: punt_stats; Type: TABLE; Schema: public; Owner: stats
 --
 
@@ -210,20 +177,6 @@ CREATE TABLE public.receiving_stats (
 ALTER TABLE public.receiving_stats OWNER TO stats;
 
 --
--- Name: recruiting; Type: TABLE; Schema: public; Owner: stats
---
-
-CREATE TABLE public.recruiting (
-    team_id integer NOT NULL,
-    year integer NOT NULL,
-    commits integer DEFAULT 0,
-    rating real DEFAULT 0
-);
-
-
-ALTER TABLE public.recruiting OWNER TO stats;
-
---
 -- Name: return_stats; Type: TABLE; Schema: public; Owner: stats
 --
 
@@ -240,26 +193,6 @@ CREATE TABLE public.return_stats (
 
 
 ALTER TABLE public.return_stats OWNER TO stats;
-
---
--- Name: roster; Type: TABLE; Schema: public; Owner: stats
---
-
-CREATE TABLE public.roster (
-    player_id integer NOT NULL,
-    team_id integer DEFAULT 0 NOT NULL,
-    year integer NOT NULL,
-    name text,
-    num integer DEFAULT 0,
-    "position" text,
-    height integer DEFAULT 0,
-    weight integer DEFAULT 0,
-    grade text,
-    hometown text
-);
-
-
-ALTER TABLE public.roster OWNER TO stats;
 
 --
 -- Name: rushing_stats; Type: TABLE; Schema: public; Owner: stats
@@ -365,24 +298,14 @@ CREATE TABLE public.team_week_results (
     losses integer DEFAULT 0,
     srs_rank integer DEFAULT 0,
     sos_rank integer DEFAULT 0,
-    sov_rank integer DEFAULT 0,
     fbs boolean,
     name text,
     conf text,
-    sol_rank integer DEFAULT 0,
     ties integer DEFAULT 0
 );
 
 
 ALTER TABLE public.team_week_results OWNER TO stats;
-
---
--- Name: composite composite_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
---
-
-ALTER TABLE ONLY public.composite
-    ADD CONSTRAINT composite_pkey PRIMARY KEY (team_id, year);
-
 
 --
 -- Name: defensive_stats defensive_stats_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
@@ -433,14 +356,6 @@ ALTER TABLE ONLY public.passing_stats
 
 
 --
--- Name: players players_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
---
-
-ALTER TABLE ONLY public.players
-    ADD CONSTRAINT players_pkey PRIMARY KEY (player_id, team_id, year);
-
-
---
 -- Name: punt_stats punt_stats_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
 --
 
@@ -457,27 +372,11 @@ ALTER TABLE ONLY public.receiving_stats
 
 
 --
--- Name: recruiting recruiting_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
---
-
-ALTER TABLE ONLY public.recruiting
-    ADD CONSTRAINT recruiting_pkey PRIMARY KEY (team_id, year);
-
-
---
 -- Name: return_stats return_stats_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
 --
 
 ALTER TABLE ONLY public.return_stats
     ADD CONSTRAINT return_stats_pkey PRIMARY KEY (player_id, team_id, game_id, punt_kick);
-
-
---
--- Name: roster roster_pkey; Type: CONSTRAINT; Schema: public; Owner: stats
---
-
-ALTER TABLE ONLY public.roster
-    ADD CONSTRAINT roster_pkey PRIMARY KEY (player_id, team_id, year);
 
 
 --

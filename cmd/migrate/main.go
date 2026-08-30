@@ -18,7 +18,10 @@ func main() {
 
 	logger.Info("Start")
 
-	cfg := config.SetupConfig()
+	cfg, err := config.SetupConfig()
+	if err != nil {
+		logger.Fatal(err)
+	}
 	postgres, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
 		panic(err)

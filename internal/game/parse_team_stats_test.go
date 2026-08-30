@@ -3,7 +3,8 @@ package game
 import (
 	"testing"
 
-	"github.com/robby-barton/stats-go/internal/database"
+	"go.uber.org/zap"
+
 	"github.com/robby-barton/stats-go/internal/espn"
 )
 
@@ -22,8 +23,8 @@ func TestParseTeamStats_AllFields(t *testing.T) {
 		{Name: "possessionTime", DisplayValue: "32:15"},
 	}
 
-	var tgs database.TeamGameStats
-	parseTeamStats(stats, &tgs)
+	var tgs TeamGameStats
+	parseTeamStats(stats, &tgs, zap.NewNop().Sugar())
 
 	if tgs.FirstDowns != 22 {
 		t.Errorf("FirstDowns = %d, want 22", tgs.FirstDowns)
@@ -82,8 +83,8 @@ func TestParseTeamStats_ExtraDashes(t *testing.T) {
 		{Name: "completionAttempts", DisplayValue: "15--30"},
 	}
 
-	var tgs database.TeamGameStats
-	parseTeamStats(stats, &tgs)
+	var tgs TeamGameStats
+	parseTeamStats(stats, &tgs, zap.NewNop().Sugar())
 
 	if tgs.ThirdDownsConv != 3 {
 		t.Errorf("ThirdDownsConv = %d, want 3", tgs.ThirdDownsConv)
@@ -120,11 +121,39 @@ func TestParseTeamStats_IgnoredStats(t *testing.T) {
 		{Name: "firstDowns", DisplayValue: "20"},
 	}
 
-	var tgs database.TeamGameStats
-	parseTeamStats(stats, &tgs)
+	var tgs TeamGameStats
+	parseTeamStats(stats, &tgs, zap.NewNop().Sugar())
 
 	// Only firstDowns should be parsed; the rest are ignored
 	if tgs.FirstDowns != 20 {
 		t.Errorf("FirstDowns = %d, want 20", tgs.FirstDowns)
+	}
+}
+
+// TestParseTeamStats_MalformedValues verifies that malformed stat values
+// (ESPN occasionally sends "--", "N/A", or empty strings) leave fields at
+// zero instead of panicking on short splits.
+func TestParseTeamStats_MalformedValues(t *testing.T) {
+	stats := []espn.TeamStatistics{
+		{Name: "thirdDownEff", DisplayValue: "--"},
+		{Name: "completionAttempts", DisplayValue: "N/A"},
+		{Name: "possessionTime", DisplayValue: "N/A"},
+		{Name: "firstDowns", DisplayValue: "not-a-number"},
+	}
+
+	var tgs TeamGameStats
+	parseTeamStats(stats, &tgs, zap.NewNop().Sugar()) // must not panic
+
+	if tgs.ThirdDownsConv != 0 || tgs.ThirdDowns != 0 {
+		t.Errorf("ThirdDowns = %d/%d, want 0/0", tgs.ThirdDownsConv, tgs.ThirdDowns)
+	}
+	if tgs.Completions != 0 || tgs.CompletionAttempts != 0 {
+		t.Errorf("Completions = %d/%d, want 0/0", tgs.Completions, tgs.CompletionAttempts)
+	}
+	if tgs.Possession != 0 {
+		t.Errorf("Possession = %d, want 0", tgs.Possession)
+	}
+	if tgs.FirstDowns != 0 {
+		t.Errorf("FirstDowns = %d, want 0", tgs.FirstDowns)
 	}
 }

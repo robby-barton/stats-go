@@ -1,6 +1,7 @@
 package espn
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -14,9 +15,9 @@ type FootballClient struct{ *Client }
 // Compile-time interface check.
 var _ SportClient = (*FootballClient)(nil)
 
-func (fc *FootballClient) DefaultSeason() (int64, error) {
+func (fc *FootballClient) DefaultSeason(ctx context.Context) (int64, error) {
 	var res GameScheduleESPN
-	err := fc.makeRequest(fc.WeekURL(), &res)
+	err := makeRequest(ctx, fc.Client, fc.WeekURL(), &res)
 	if err != nil {
 		return 0, err
 	}
@@ -24,11 +25,11 @@ func (fc *FootballClient) DefaultSeason() (int64, error) {
 	return res.Content.Defaults.Year, nil
 }
 
-func (fc *FootballClient) GetWeeksInSeason(year int64) (int64, error) {
+func (fc *FootballClient) GetWeeksInSeason(ctx context.Context, year int64) (int64, error) {
 	url := fc.WeekURL() + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
-	err := fc.makeRequest(url, &res)
+	err := makeRequest(ctx, fc.Client, url, &res)
 	if err != nil {
 		return 0, err
 	}
@@ -40,11 +41,11 @@ func (fc *FootballClient) GetWeeksInSeason(year int64) (int64, error) {
 	return int64(len(res.Content.Calendar[0].Weeks)), nil
 }
 
-func (fc *FootballClient) HasPostseasonStarted(year int64, startTime time.Time) (bool, error) {
+func (fc *FootballClient) HasPostseasonStarted(ctx context.Context, year int64, startTime time.Time) (bool, error) {
 	url := fc.WeekURL() + fmt.Sprintf("&year=%d", year)
 
 	var res GameScheduleESPN
-	err := fc.makeRequest(url, &res)
+	err := makeRequest(ctx, fc.Client, url, &res)
 	if err != nil {
 		return false, err
 	}
@@ -59,24 +60,28 @@ func (fc *FootballClient) HasPostseasonStarted(year int64, startTime time.Time) 
 	return postSeasonStart.Before(startTime), nil
 }
 
-func (fc *FootballClient) GetGamesBySeason(year int64, group Group) ([]Game, error) {
+func (fc *FootballClient) GetGamesBySeason(ctx context.Context, year int64, group Group) ([]Game, error) {
 	var allGames []Game
 
-	numWeeks, err := fc.GetWeeksInSeason(year)
+	numWeeks, err := fc.GetWeeksInSeason(ctx, year)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := int64(1); i < numWeeks; i++ {
-		games, err := fc.GetCompletedGamesByWeek(year, i, group, Regular)
+	// GetWeeksInSeason returns the number of regular-season weeks (calendar
+	// entry 0 excludes the postseason), numbered 1..N. Fetch every one of them;
+	// postseason week 1 is fetched separately below.
+	for i := int64(1); i <= numWeeks; i++ {
+		games, err := fc.GetCompletedGamesByWeek(ctx, year, i, group, Regular)
 		if err != nil {
 			return nil, err
 		}
 
 		allGames = append(allGames, games...)
+		fc.Throttle(ctx)
 	}
 
-	games, err := fc.GetCompletedGamesByWeek(year, int64(1), group, Postseason)
+	games, err := fc.GetCompletedGamesByWeek(ctx, year, int64(1), group, Postseason)
 	if err != nil {
 		return nil, err
 	}
@@ -86,24 +91,25 @@ func (fc *FootballClient) GetGamesBySeason(year int64, group Group) ([]Game, err
 	return allGames, nil
 }
 
-func (fc *FootballClient) TeamConferencesByYear(year int64) (map[int64]int64, error) {
+func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
 	teamConfs := map[int64]int64{}
 
-	numWeeks, err := fc.GetWeeksInSeason(year)
+	numWeeks, err := fc.GetWeeksInSeason(ctx, year)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, group := range fc.Sport.Groups() {
-		for i := int64(1); i < numWeeks; i++ {
-			games, err := fc.GetGamesByWeek(year, i, group, Regular)
+		for i := int64(1); i <= numWeeks; i++ {
+			games, err := fc.GetGamesByWeek(ctx, year, i, group, Regular)
 			if err != nil {
 				return nil, err
 			}
 			maps.Copy(teamConfs, extractTeamConfs(games))
+			fc.Throttle(ctx)
 		}
 
-		games, err := fc.GetGamesByWeek(year, int64(1), group, Postseason)
+		games, err := fc.GetGamesByWeek(ctx, year, int64(1), group, Postseason)
 		if err != nil {
 			return nil, err
 		}
@@ -113,9 +119,9 @@ func (fc *FootballClient) TeamConferencesByYear(year int64) (map[int64]int64, er
 	return teamConfs, nil
 }
 
-func (fc *FootballClient) ConferenceMap() (ConferenceMapResult, error) {
+func (fc *FootballClient) ConferenceMap(ctx context.Context) (ConferenceMapResult, error) {
 	var res GameScheduleESPN
-	err := fc.makeRequest(fc.WeekURL(), &res)
+	err := makeRequest(ctx, fc.Client, fc.WeekURL(), &res)
 	if err != nil {
 		return ConferenceMapResult{}, err
 	}

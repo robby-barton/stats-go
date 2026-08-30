@@ -7,6 +7,7 @@ RUN go mod download
 ADD cmd ./cmd
 ADD internal ./internal
 RUN go build -o updater ./cmd/updater
+RUN go build -o migrate-schema ./cmd/migrate-schema
 
 FROM node:24-alpine AS updater
 WORKDIR /
@@ -19,4 +20,5 @@ COPY scripts/deploy-web.sh /scripts/deploy-web.sh
 RUN chmod +x /scripts/deploy-web.sh
 
 COPY --from=builder /app/updater .
+COPY --from=builder /app/migrate-schema .
 ENTRYPOINT ["/updater", "schedule"]

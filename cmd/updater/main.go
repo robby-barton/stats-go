@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,10 +24,17 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	log := logger.NewLogger().Sugar()
 	defer log.Sync()
 
-	cfg := config.SetupConfig()
+	cfg, err := config.SetupConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	db, err := database.NewDatabase(cfg.DBParams)
 	if err != nil {
@@ -35,39 +44,57 @@ func main() {
 	defer sqlDB.Close()
 
 	rootCmd := &cobra.Command{
-		Use:   "updater",
-		Short: "College sports data updater",
+		Use:           "updater",
+		Short:         "College sports data updater",
+		SilenceErrors: true, // errors are logged once at the command boundary
 	}
 	rootCmd.SilenceUsage = true
 
-	scheduleCmd := scheduleCommand(log, db, cfg.DeployScript)
-	ncaafCmd := sportCommand(log, db, espn.CollegeFootball)
-	ncaamCmd := sportCommand(log, db, espn.CollegeBasketball)
+	scheduleCmd, err := scheduleCommand(log, db, cfg.DeployScript)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
+	ncaafCmd, err := sportCommand(log, db, espn.CollegeFootball)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
+	ncaamCmd, err := sportCommand(log, db, espn.CollegeBasketball)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
 
 	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
 
-	rootCmd.Execute() //nolint:errcheck // cobra prints errors; exit code unused
+	if err := rootCmd.Execute(); err != nil {
+		log.Error(err)
+		return 1
+	}
+	return 0
 }
 
+// newUpdater builds a validated Updater for the given sport's ESPN client.
 func newUpdater(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	sport espn.Sport,
-) updater.Updater {
-	return updater.Updater{
-		DB:     db,
-		Logger: log,
-		ESPN:   espn.NewClientForSport(sport),
-	}
+) (*updater.Updater, error) {
+	return updater.NewUpdater(db, log, espn.NewClientForSport(sport))
 }
 
 // deployer runs a deploy script in the background after rankings are updated.
 // Calls to Trigger are coalesced: if a deploy is already queued, extra triggers
 // are dropped so at most one deploy is pending at a time.
+// stop() closes the trigger channel; it must only be called after all producers
+// (ranking workers) have been joined, otherwise Trigger could send on a closed
+// channel. stop is idempotent.
 type deployer struct {
-	script  string
-	log     *zap.SugaredLogger
-	trigger chan struct{}
+	script   string
+	log      *zap.SugaredLogger
+	trigger  chan struct{}
+	stopOnce sync.Once
 }
 
 func newDeployer(log *zap.SugaredLogger, script string) *deployer {
@@ -92,7 +119,7 @@ func (d *deployer) Trigger() {
 }
 
 func (d *deployer) stop() {
-	close(d.trigger)
+	d.stopOnce.Do(func() { close(d.trigger) })
 }
 
 func (d *deployer) run() {
@@ -116,18 +143,23 @@ type sportSchedule struct {
 	NewSeasonCron string // season initialization
 }
 
-// registerJobs adds the three cron jobs for a sport to the scheduler and
-// returns a stop function that shuts down the ranking-update goroutine.
+// registerJobs adds the three cron jobs for a sport to the scheduler and starts
+// the ranking-update worker goroutine. The worker runs until ctx is cancelled;
+// wg is released once the worker has exited so callers can join it before
+// shutting down the deployer (whose only Trigger producer is this worker).
 func (ss sportSchedule) registerJobs(
+	ctx context.Context,
 	s gocron.Scheduler,
 	log *zap.SugaredLogger,
-	u updater.Updater,
+	u *updater.Updater,
 	d *deployer,
-) func() {
+	wg *sync.WaitGroup,
+) {
 	update := make(chan bool, 1)
-	stop := make(chan bool, 1)
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-update:
@@ -145,7 +177,7 @@ func (ss sportSchedule) registerJobs(
 					log.Infof("%s rankings updated", ss.Name)
 					d.Trigger()
 				}()
-			case <-stop:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -159,12 +191,18 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedGames, err := u.UpdateCurrentWeek()
-		log.Infof("%s: added %d games: %v", ss.Name, len(addedGames), addedGames)
+		result, err := u.UpdateCurrentWeek(ctx)
 		if err != nil {
 			log.Error(err)
-		} else if len(addedGames) > 0 {
-			update <- true
+		} else {
+			log.Infof("%s: added %d games: %v", ss.Name, len(result.Processed), result.Processed)
+			if len(result.Failed) > 0 {
+				log.Errorf("%s: failed to fetch %d games (marked for retry): %v",
+					ss.Name, len(result.Failed), result.FailedIDs())
+			}
+			if len(result.Processed) > 0 {
+				update <- true
+			}
 		}
 	})); err != nil {
 		panic(err)
@@ -178,7 +216,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedTeams, err := u.UpdateTeamInfo()
+		addedTeams, err := u.UpdateTeamInfo(ctx)
 		if err != nil {
 			log.Error(err)
 			return
@@ -197,7 +235,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedSeasons, err := u.UpdateTeamSeasons(false)
+		addedSeasons, err := u.UpdateTeamSeasons(ctx, false)
 		log.Infof("%s: added %d seasons", ss.Name, addedSeasons)
 		if err != nil {
 			log.Error(err)
@@ -207,19 +245,27 @@ func (ss sportSchedule) registerJobs(
 	})); err != nil {
 		panic(err)
 	}
-
-	return func() { stop <- true }
 }
 
 func scheduleCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	deployScript string,
-) *cobra.Command {
-	return &cobra.Command{
+) (*cobra.Command, error) {
+	// newUpdater validates its inputs; a nil DB or logger is a wiring bug, so
+	// surface it as an error instead of a runtime panic inside a cron job.
+	if db == nil || log == nil {
+		return nil, errors.New("schedule: nil DB or logger")
+	}
+	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// Process-level context: cancelled on shutdown so ranking workers
+			// stop before the deployer's trigger channel is closed.
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
 			s, err := gocron.NewScheduler(gocron.WithLocation(time.Local))
 			if err != nil {
 				panic(err)
@@ -251,11 +297,13 @@ func scheduleCommand(
 				},
 			}
 
-			var stopFuncs []func()
+			var wg sync.WaitGroup
 			for _, sp := range sports {
-				u := newUpdater(log, db, sp.sport)
-				stopFn := sp.schedule.registerJobs(s, log, u, d)
-				stopFuncs = append(stopFuncs, stopFn)
+				u, err := newUpdater(log, db, sp.sport)
+				if err != nil {
+					return err
+				}
+				sp.schedule.registerJobs(ctx, s, log, u, d, &wg)
 			}
 
 			s.Start()
@@ -264,25 +312,33 @@ func scheduleCommand(
 			signal.Notify(end, syscall.SIGINT, syscall.SIGTERM)
 
 			<-end
+			// Cancel the process context before shutting down the scheduler so
+			// in-flight ESPN requests, retries, and rate-limit sleeps are
+			// interrupted promptly instead of blocking s.Shutdown().
+			cancel()
 			if err := s.Shutdown(); err != nil {
 				log.Error(err)
 			}
-			for _, fn := range stopFuncs {
-				fn()
-			}
+			// Join the ranking workers so no goroutine can call d.Trigger()
+			// after the trigger channel is closed below.
+			wg.Wait()
 			d.stop()
 
 			return nil
 		},
 	}
+	return cmd, nil
 }
 
 func sportCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
 	sport espn.Sport,
-) *cobra.Command {
-	u := newUpdater(log, db, sport)
+) (*cobra.Command, error) {
+	u, err := newUpdater(log, db, sport)
+	if err != nil {
+		return nil, err
+	}
 
 	use := "ncaaf"
 	short := "NCAA football one-shot commands"
@@ -304,29 +360,31 @@ func sportCommand(
 		Short: "One-time game update",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if gamesSingle > 0 {
-				if err := u.UpdateSingleGame(gamesSingle); err != nil {
-					log.Error(err)
-				} else {
-					log.Infof("Game %d updated", gamesSingle)
+				if err := u.UpdateSingleGame(context.Background(), gamesSingle); err != nil {
+					return fmt.Errorf("game %d: %w", gamesSingle, err)
 				}
+				log.Infof("Game %d updated", gamesSingle)
 				return nil
 			}
 
-			var addedGames []int64
+			var result *updater.GameUpdateResult
 			var err error
 			switch {
 			case gamesYear > 0:
-				addedGames, err = u.UpdateGamesForYear(gamesYear)
+				result, err = u.UpdateGamesForYear(context.Background(), gamesYear)
 			case gamesAll:
 				year, _, _ := time.Now().Date()
-				addedGames, err = u.UpdateGamesForYear(int64(year))
+				result, err = u.UpdateGamesForYear(context.Background(), int64(year))
 			default:
-				addedGames, err = u.UpdateCurrentWeek()
+				result, err = u.UpdateCurrentWeek(context.Background())
 			}
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Added %d games: %v", len(addedGames), addedGames)
+				return err
+			}
+			log.Infof("Added %d games: %v", len(result.Processed), result.Processed)
+			if len(result.Failed) > 0 {
+				log.Errorf("Failed to fetch %d games (marked for retry): %v",
+					len(result.Failed), result.FailedIDs())
 			}
 			return nil
 		},
@@ -347,10 +405,7 @@ func sportCommand(
 			} else {
 				err = u.UpdateRecentRankings()
 			}
-			if err != nil {
-				log.Error(err)
-			}
-			return nil
+			return err
 		},
 	}
 	rankingCmd.Flags().BoolVar(&rankingAll, "all", false, "update all rankings")
@@ -359,12 +414,11 @@ func sportCommand(
 		Use:   "teams",
 		Short: "Update team info",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			addedTeams, err := u.UpdateTeamInfo()
+			addedTeams, err := u.UpdateTeamInfo(context.Background())
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Updated %d teams", addedTeams)
+				return err
 			}
+			log.Infof("Updated %d teams", addedTeams)
 			return nil
 		},
 	}
@@ -379,15 +433,14 @@ func sportCommand(
 				err          error
 			)
 			if seasonYear > 0 {
-				addedSeasons, err = u.UpdateTeamSeasonsForYear(seasonYear, true)
+				addedSeasons, err = u.UpdateTeamSeasonsForYear(context.Background(), seasonYear, true)
 			} else {
-				addedSeasons, err = u.UpdateTeamSeasons(true)
+				addedSeasons, err = u.UpdateTeamSeasons(context.Background(), true)
 			}
 			if err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("Added %d seasons", addedSeasons)
+				return err
 			}
+			log.Infof("Added %d seasons", addedSeasons)
 			return nil
 		},
 	}
@@ -409,17 +462,21 @@ Example:
 			for year := backfillFrom; year <= backfillTo; year++ {
 				log.Infof("Backfilling %s year %d...", use, year)
 
-				n, err := u.UpdateTeamSeasonsForYear(year, false)
+				n, err := u.UpdateTeamSeasonsForYear(context.Background(), year, false)
 				if err != nil {
 					return fmt.Errorf("team seasons %d: %w", year, err)
 				}
 				log.Infof("  seasons: %d teams", n)
 
-				addedGames, err := u.UpdateGamesForYear(year)
+				result, err := u.UpdateGamesForYear(context.Background(), year)
 				if err != nil {
 					return fmt.Errorf("games %d: %w", year, err)
 				}
-				log.Infof("  games: %d added", len(addedGames))
+				log.Infof("  games: %d added", len(result.Processed))
+				if len(result.Failed) > 0 {
+					log.Errorf("  games: %d failed (marked for retry): %v",
+						len(result.Failed), result.FailedIDs())
+				}
 			}
 
 			log.Infof("Recomputing all %s rankings...", use)
@@ -441,5 +498,5 @@ Example:
 
 	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, backfillCmd)
 
-	return cmd
+	return cmd, nil
 }

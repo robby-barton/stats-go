@@ -62,14 +62,13 @@ football-only data. ESPN uses the same team IDs for a school across sports
 `team_names` requires `(team_id, sport)` as its primary key to store per-sport
 metadata without overwriting.
 
-## Per-Client ESPN URLs (Not Package-Level Vars)
+## Per-Client ESPN URLs (No Package-Level Vars)
 
 When supporting multiple sports in a single process (the `schedule` command),
-each sport needs its own ESPN API URLs. Rather than using package-level vars
-that would conflict when both sports run simultaneously, each `espn.Client`
-carries its own URL set. The `NewClientForSport(sport)` constructor configures
-sport-specific URLs. The legacy `NewClient()` leaves per-client URLs empty,
-falling back to package-level vars for test compatibility.
+each sport needs its own ESPN API URLs. Each `espn.Client` therefore carries
+its own URL set, configured by `NewClientForSport(sport)`. There are no
+package-level URL vars; tests point a single client at a mock HTTP server via
+`Client.SetURLs`, so parallel clients (one per sport) never interfere.
 
 ## Basketball: D1 Only, No Division Split
 
@@ -82,8 +81,13 @@ basketball only ranks D1 teams as a single group. The `FBS` column in
 
 - **PostgreSQL** is used in production (DigitalOcean managed database).
 - **SQLite** is used for local development and the ranker CLI, avoiding the need
-  for a running Postgres instance.
-- The choice is implicit: if `DBParams` is nil (no PG env vars), SQLite is used.
+  for a running Postgres instance. SQLite connections enable foreign-key
+  enforcement via the `_foreign_keys=on` DSN parameter (the PRAGMA is
+  per-connection, so a DSN is the only reliable way to set it).
+- The choice is implicit: if no `PG_*` environment variable is set at all,
+  `DBParams` is nil and SQLite is used. A *partial* Postgres configuration
+  (some `PG_*` vars set but required ones missing, or a malformed `PG_PORT`)
+  is a configuration error — it never falls back to SQLite silently.
 - Both use `SkipDefaultTransaction: true` because all transactions are managed
   explicitly where needed.
 
@@ -96,11 +100,40 @@ frontend. See [espn-api.md](espn-api.md) for endpoint details.
 Key design choices:
 - **Filter on `STATUS_FINAL` only** — Only completed games are ingested to
   avoid partial data.
-- **500ms rate limiting** between sequential API calls (in `game/` package) to
-  avoid being blocked.
-- **5 retries with 1s backoff** on HTTP failures (in `espn/request.go`).
-- **URL vars as fallback** — ESPN endpoint URLs are `var` not `const`
-  so tests can override them with a mock HTTP server.
+- **Centralized rate limiting** — 500ms pause (`espn.Client.RateLimit`) between
+  sequential API calls, applied via `espn.SportClient.Throttle()`. Every
+  multi-request path (football week loops, basketball date loops, per-game
+  fetches) calls it, so no request loop can bypass the shared policy.
+- **Up to 5 total attempts (4 retries) with 1s initial exponential backoff**
+  on HTTP failures (in `espn/request.go`); no backoff sleep after the final
+  attempt.
+- **Per-client URLs** — each `espn.Client` carries its own endpoint URL set
+  (`NewClientForSport`); tests override them per client via `SetURLs`.
+
+## Failed Game Fetches: Durable Retry via `games.retry`
+
+When a single-game ESPN fetch fails during `processGames`, the failure is not
+silently dropped: the game is recorded in `games` with `retry = 1` (upserting
+only the flag if the row already exists, otherwise seeding a minimal row from
+the schedule entry). `checkGames` always re-queues `retry = 1` games on the
+next cycle, and a successful fetch clears the flag via the normal full-row
+upsert.
+
+`processGames` returns a structured `GameUpdateResult` (processed game IDs +
+per-game failures) so callers — the scheduler, one-shot CLI commands, and
+backfills — can report partial results explicitly. Whether partial failure is
+tolerable is decided at the caller boundary, not inside the core operation.
+
+## Schema Initialization: One-Shot Compose Service
+
+`docker-compose.yml` runs a `migrate-schema` service (built from the same
+image, entrypoint overridden to `cmd/migrate-schema`) that applies the GORM
+schema via `database.MigrateSchema` before the updater starts. It is additive
+and idempotent — it creates missing tables/columns/indexes and never drops —
+so it is safe on every `docker compose up`. A fresh deployment therefore
+cannot reach a state where the updater starts against an empty or partial
+schema. The updater only starts after this service exits successfully
+(`depends_on: service_completed_successfully`).
 
 ## Post-Rankings Deploy Hook
 
@@ -110,6 +143,10 @@ background goroutine with a buffered channel of size 1. Multiple ranking updates
 in quick succession coalesce into a single deploy — if one is already queued,
 extra triggers are dropped. This prevents deploy storms during rapid back-to-back
 ranking runs. If `DEPLOY_SCRIPT` is empty, the hook is a no-op.
+
+On shutdown, the ranking workers are cancelled and joined (via a process-level
+context and WaitGroup) *before* the deployer's trigger channel is closed, so a
+worker can never send on a closed channel.
 
 ## Scheduled Updates During Season
 

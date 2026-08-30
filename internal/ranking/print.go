@@ -19,9 +19,9 @@ func (r *Ranker) PrintRankings(teamList TeamList, top int) {
 	})
 
 	if r.postseason {
-		fmt.Printf("%d Final\n", r.Year)
+		fmt.Printf("%d Final\n", r.in.Year)
 	} else {
-		fmt.Printf("%d Week %d\n", r.Year, r.Week)
+		fmt.Printf("%d Week %d\n", r.in.Year, r.in.Week)
 	}
 	fmt.Printf("Games up to %v\n", r.startTime)
 
@@ -51,9 +51,9 @@ func (r *Ranker) PrintSRS(teamList TeamList, top int) {
 	})
 
 	if r.postseason {
-		fmt.Printf("%d Final\n", r.Year)
+		fmt.Printf("%d Final\n", r.in.Year)
 	} else {
-		fmt.Printf("%d Week %d\n", r.Year, r.Week)
+		fmt.Printf("%d Week %d\n", r.in.Year, r.in.Week)
 	}
 	fmt.Printf("Games up to %v\n", r.startTime)
 

@@ -1,12 +1,17 @@
 package espn
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/robby-barton/stats-go/internal/sport"
 )
 
-// Sport identifies a college sport for ESPN API parameterization.
+// Sport identifies a college sport for ESPN API parameterization (the ESPN
+// slug, e.g. "college-football"). The persistence identifier lives in the
+// sport package; use DBSport to convert.
 type Sport string
 
 const (
@@ -14,21 +19,17 @@ const (
 	CollegeBasketball Sport = "college-basketball"
 )
 
-// Short database identifiers for each sport.
-const (
-	SportDBFootball   = "ncaaf"
-	SportDBBasketball = "ncaam"
-)
-
-// SportDB returns the short database identifier for the sport.
-func (s Sport) SportDB() string {
+// DBSport returns the persistence identifier ("ncaaf"/"ncaam") for the sport.
+// Returns "" for unknown sports; clients built via NewClientForSport are
+// always one of the known values.
+func (s Sport) DBSport() sport.Sport {
 	switch s {
 	case CollegeBasketball:
-		return SportDBBasketball
+		return sport.Basketball
 	case CollegeFootball:
-		return SportDBFootball
+		return sport.Football
 	default:
-		panic(fmt.Sprintf("unknown sport: %q", s))
+		return ""
 	}
 }
 
@@ -65,13 +66,13 @@ func (s Sport) HasDivisionSplit() bool {
 	return s == CollegeFootball
 }
 
-func (c *Client) GetCurrentWeekGames(group Group) ([]Game, error) {
+func (c *Client) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
 	var games []Game
 
 	url := c.WeekURL() + fmt.Sprintf("&group=%d", group)
 
 	var res GameScheduleESPN
-	err := c.makeRequest(url, &res)
+	err := makeRequest(ctx, c, url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -87,12 +88,14 @@ func (c *Client) GetCurrentWeekGames(group Group) ([]Game, error) {
 	return games, nil
 }
 
-func (c *Client) GetGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) (*GameScheduleESPN, error) {
+func (c *Client) GetGamesByWeek(
+	ctx context.Context, year int64, week int64, group Group, seasonType SeasonType,
+) (*GameScheduleESPN, error) {
 	url := c.WeekURL() +
 		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
 
 	var res GameScheduleESPN
-	err := c.makeRequest(url, &res)
+	err := makeRequest(ctx, c, url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +103,10 @@ func (c *Client) GetGamesByWeek(year int64, week int64, group Group, seasonType 
 	return &res, nil
 }
 
-func (c *Client) GetCompletedGamesByWeek(year int64, week int64, group Group, seasonType SeasonType) ([]Game, error) {
-	res, err := c.GetGamesByWeek(year, week, group, seasonType)
+func (c *Client) GetCompletedGamesByWeek(
+	ctx context.Context, year int64, week int64, group Group, seasonType SeasonType,
+) ([]Game, error) {
+	res, err := c.GetGamesByWeek(ctx, year, week, group, seasonType)
 	if err != nil {
 		return nil, err
 	}
@@ -111,19 +116,19 @@ func (c *Client) GetCompletedGamesByWeek(year int64, week int64, group Group, se
 
 // GetGamesByDate fetches all games for a specific date (format YYYYMMDD).
 // Used by basketball where the schedule endpoint is date-based, not week-based.
-func (c *Client) GetGamesByDate(date string, group Group) (*GameScheduleESPN, error) {
+func (c *Client) GetGamesByDate(ctx context.Context, date string, group Group) (*GameScheduleESPN, error) {
 	url := c.WeekURL() + fmt.Sprintf("&date=%s&group=%d", date, group)
 
 	var res GameScheduleESPN
-	if err := c.makeRequest(url, &res); err != nil {
+	if err := makeRequest(ctx, c, url, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
 }
 
 // GetCompletedGamesByDate returns only completed (final) games for a date.
-func (c *Client) GetCompletedGamesByDate(date string, group Group) ([]Game, error) {
-	res, err := c.GetGamesByDate(date, group)
+func (c *Client) GetCompletedGamesByDate(ctx context.Context, date string, group Group) ([]Game, error) {
+	res, err := c.GetGamesByDate(ctx, date, group)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +137,8 @@ func (c *Client) GetCompletedGamesByDate(date string, group Group) ([]Game, erro
 
 // GetSeasonDates returns the list of game dates from the scoreboard calendar.
 // Each date is an ISO 8601 timestamp (e.g. "2025-11-03T08:00Z").
-func (c *Client) GetSeasonDates() ([]string, error) {
-	sb, err := c.GetScoreboard()
+func (c *Client) GetSeasonDates(ctx context.Context) ([]string, error) {
+	sb, err := c.GetScoreboard(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -152,11 +157,11 @@ func completedGames(res *GameScheduleESPN) []Game {
 	return games
 }
 
-func (c *Client) GetGameStats(gameID int64) (*GameInfoESPN, error) {
+func (c *Client) GetGameStats(ctx context.Context, gameID int64) (*GameInfoESPN, error) {
 	url := fmt.Sprintf(c.GameStatsURL(), gameID)
 
 	var res GameInfoESPN
-	err := c.makeRequest(url, &res)
+	err := makeRequest(ctx, c, url, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -164,9 +169,9 @@ func (c *Client) GetGameStats(gameID int64) (*GameInfoESPN, error) {
 	return &res, nil
 }
 
-func (c *Client) GetTeamInfo() (*TeamInfoESPN, error) {
+func (c *Client) GetTeamInfo(ctx context.Context) (*TeamInfoESPN, error) {
 	var res TeamInfoESPN
-	err := c.makeRequest(c.TeamInfoURL(), &res)
+	err := makeRequest(ctx, c, c.TeamInfoURL(), &res)
 	if err != nil {
 		return nil, err
 	}
