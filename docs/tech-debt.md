@@ -11,7 +11,7 @@ Format rules:
 
 ## Active
 
-### Historical week/date schedule fetches and basketball TeamConferencesByYear still on cdn.espn.com
+### Basketball schedule, box-score, and team→conference fetches still on cdn.espn.com
 
 The site.api migration (2026-09) moved the current-week games fetch
 (`GetCurrentWeekGames` → scoreboard with the `groups` param), the football
@@ -19,29 +19,39 @@ box-score fetch (`GetGameStats` → summary), the football season metadata
 (`DefaultSeason` / `GetWeeksInSeason` / `HasPostseasonStarted` → scoreboard
 with the `dates` param) and `ConferenceMap` (both sports →
 `scoreboard/conferences?groups=N`; the plain endpoint returns FBS only, FCS
-needs `groups=81`) to site.api.espn.com. Still on cdn.espn.com, which remains
-prone to empty-body 202 bot challenges:
+needs `groups=81`) to site.api.espn.com, followed by the football historical
+backfill and the football team→conference walk (both now dates-walks over
+the scoreboard — see below). Still on cdn.espn.com, which remains prone to
+empty-body 202 bot challenges:
 
-- `GetGamesByWeek` / `GetCompletedGamesByWeek` / `GetGamesBySeason`
-  (historical week fetching). The site.api scoreboard could serve a week in
-  one range request (the football conference walk does exactly that), but
-  the range endpoint's two hazards below make silent data loss a real risk
-  for bulk historical backfill, and cdn returns one whole week per request
-  plus the calendar/conferenceAPI blocks `GameScheduleESPN` exposes.
-- Football `TeamConferencesByYear` now also runs on site.api: the season's
+- Football historical backfill (`GetGamesBySeason`) now runs on site.api:
+  the season calendar (`?dates=<year>`) is fetched once, then the Regular
+  and Postseason calendar spans are walked ONE DAY AT A TIME with
+  `scoreboard?dates=YYYYMMDD&groups=N` (FBS 80 / FCS 81 verified),
+  collecting STATUS_FINAL games via `finalGames`. The per-day walk (not
+  weekly date-range chunks) is deliberate: live parity-check 2026-08-30
+  showed the range endpoint is lossy against single-day fetches (see the
+  characterization below — a range-walk of the 2025 season lost 95 of 1697
+  games), while the per-day walk found 1698 — a superset of the cdn data
+  minus one out-of-group D-II matchup the scoreboard never surfaces under
+  groups 80/81 (and plus 13 games the cdn backfill had missed).
+- Football `TeamConferencesByYear` runs on site.api: the season's
   calendar span (from the `?dates=<year>` scoreboard calendar) is walked in
   weekly chunks per division group with
   `scoreboard?dates=start-end&groups=N`, and each competitor's
   `team.conferenceId` is collected (postseason included for bowl-only
   teams). Live-verified 2026-08-30: the ncaaf season one-shot produced 266
-  team_seasons rows (138 FBS / 128 FCS).
+  team_seasons rows (138 FBS / 128 FCS). Follow-up candidate: the range
+  endpoint's lossiness (hazard 3 below) means this walk under-collects a
+  few percent of games; harmless for conference extraction (teams appear in
+  many games) but it should migrate to the per-day walk for consistency.
 - Basketball `TeamConferencesByYear` (team→conference extraction over all
   game dates of a season) remains on the cdn schedule: the `/teams?limit=1000`
   rows carry no `conferenceId`, and basketball calendar dates are flat date
   strings rather than the week-entry objects football's walk relies on.
   `sports.core.api` was probed (2026-08-29) and its season/teams list
   endpoints return application errors, so the cdn schedule remains the only
-  known source. `GetGamesByWeek` returns `*GameScheduleESPN` whose
+  known source. `GetGamesByDate` returns `*GameScheduleESPN` whose
   calendar/conferenceAPI blocks the scoreboard doesn't provide.
 - All basketball schedule and box-score fetches (date-based schedule,
   playbyplay box scores).
@@ -63,21 +73,36 @@ expansion" watch item — the two observations below fully explain it):
    events with silent chronological truncation — no error, no indicator.
    Weekly chunks (55-90 games) stay well under the cap; do not widen them
    into multi-week ranges.
+3. **Range responses are lossy against single-day fetches (discovered
+   2026-08-30 during the football backfill parity check, 2025 season).
+   Even far below the 200-event cap, multi-day ranges drop games that the
+   single-day fetch for the same date returns: a 7-day range lost the
+   tail-day evening games (Friday-night games dated 22:00Z–02:30Z), and
+   some ranges silently dropped whole tail days (an Aug30–Sep05 range
+   returned nothing dated after Sep02; Aug29–30 returned the 11 Aug29 games
+   but none of Aug30's 62). A full range-walk of the 2025 season found only
+   1602 of the 1697 cdn-ingested games (~5.6% silently lost). **Single-day
+   fetches (`dates=YYYYMMDD`) are the only verified-complete form** — each
+   covers exactly one ET calendar day — and are what `GetGamesBySeason` now
+   uses. Consequence for any range consumer: compare against single-day
+   fetches before trusting completeness.
 
 Also verified during characterization: ranges crossing the
 regular/postseason boundary return both season types cleanly, and
-single-day fetches are not supersets of ranges (don't mix the two forms when
-comparing behavior). Degenerate-chunk detection (logging a 0-event response
+single-day fetches are not supersets of ranges (the two forms genuinely
+differ — see hazard 3). Degenerate-chunk detection (logging a 0-event response
 for a chunk that should contain games) is not implemented because
 `espn.Client` carries no logger; the limitation is documented on
 `TeamConferencesByYear`.
 
-Dead-code census (2026-08-30): with the migration largely complete, the cdn
-code paths were audited for deletable code. Conclusion: **zero deletable** —
-basketball (schedule + box scores + team→conference extraction) and football
-historical backfill (`GetGamesByWeek`/`GetGamesBySeason`) still need the cdn
-schedule and playbyplay endpoints, so `GameScheduleESPN`, the cdn URL
-plumbing, and the dual-shape `GameInfoESPN` unmarshalling all remain live.
+Dead-code census (updated 2026-09-01, after the football backfill moved to
+the site.api dates-walk): `GetGamesByWeek` and `GetCompletedGamesByWeek`
+(the football per-week cdn fetches) were deleted — the football backfill no
+longer needs them. Remaining cdn consumers are basketball-only (date-based
+schedule via `GetGamesByDate`, box scores, team→conference extraction), so
+`GameScheduleESPN`, the cdn URL plumbing, the `completedGames`/`extractTeamConfs`
+helpers, and the dual-shape `GameInfoESPN` unmarshalling all remain live
+until the basketball migration lands.
 
 Also verified live 2026-08-29: the site.api scoreboard omits
 `leagues[0].calendar` entirely unless a `dates` query parameter is passed

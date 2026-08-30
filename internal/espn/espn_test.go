@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -105,42 +104,6 @@ func newTestClient() *FootballClient {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-}
-
-func TestGetGamesByWeek(t *testing.T) {
-	ts := setupTestServer(t)
-	client := newTestClient()
-	overrideURLs(t, client.Client, ts.URL)
-
-	res, err := client.GetGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
-	if err != nil {
-		t.Fatalf("GetGamesByWeek: %v", err)
-	}
-
-	if res == nil {
-		t.Fatal("result is nil")
-	}
-	if res.Content.Parameters.Year != 2023 {
-		t.Errorf("Year = %d, want 2023", res.Content.Parameters.Year)
-	}
-	if res.Content.Parameters.Week != 1 {
-		t.Errorf("Week = %d, want 1", res.Content.Parameters.Week)
-	}
-}
-
-func TestGetCompletedGamesByWeek(t *testing.T) {
-	ts := setupTestServer(t)
-	client := newTestClient()
-	overrideURLs(t, client.Client, ts.URL)
-
-	games, err := client.GetCompletedGamesByWeek(context.Background(), 2023, 1, FBS, Regular)
-	if err != nil {
-		t.Fatalf("GetCompletedGamesByWeek: %v", err)
-	}
-
-	if len(games) != 2 {
-		t.Fatalf("len(games) = %d, want 2", len(games))
-	}
 }
 
 func TestGetWeeksInSeason(t *testing.T) {
@@ -632,43 +595,34 @@ func TestBasketball_GetCurrentWeekGames(t *testing.T) {
 	}
 }
 
-// TestGetGamesBySeason_CoversAllRegularSeasonWeeks verifies that the season
-// fetch requests every regular-season week (1..N, including the final week)
-// plus postseason week 1.
-func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
+// TestGetGamesBySeason_CoversCalendarSpan verifies that the season fetch
+// walks the site.api scoreboard one day at a time across the calendar's
+// Regular and Postseason spans, carrying the division group on every day
+// request and collecting the final games from each response.
+func TestGetGamesBySeason_CoversCalendarSpan(t *testing.T) {
 	var mu sync.Mutex
-	var regularWeeks, postseasonWeeks []int64
+	var days []string
+	var groups []string
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		week := r.URL.Query().Get("week")
-		seasonType := r.URL.Query().Get("seasonType")
-		// GetWeeksInSeason probes the scoreboard endpoint (below), not this
-		// one; only count actual week fetches.
-		if week == "" {
-			return
-		}
-		n, _ := strconv.ParseInt(week, 10, 64)
-		if seasonType == strconv.FormatInt(int64(Postseason), 10) {
-			postseasonWeeks = append(postseasonWeeks, n)
-		} else {
-			regularWeeks = append(regularWeeks, n)
-		}
-	})
-
-	// GetWeeksInSeason fetches the season calendar off the site.api scoreboard
-	// (?dates=…); the calendar fixture lists 15 regular-season weeks, matching
-	// the cdn schedule fixture.
 	mux.HandleFunc("/apis/site/v2/sports/football/college-football/scoreboard",
-		func(w http.ResponseWriter, _ *http.Request) {
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
-			if _, err := w.Write([]byte(siteScoreboardCalendarFixture)); err != nil {
+			dates := r.URL.Query().Get("dates")
+			if len(dates) != 8 {
+				// Calendar fetch (?dates=year) for getCalendarForYear.
+				if _, err := w.Write([]byte(siteScoreboardCalendarFixture)); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+				return
+			}
+			// Single-day request: record the day and serve the week-1
+			// fixture, whose finalGames() yields exactly one game (401864494).
+			days = append(days, dates)
+			groups = append(groups, r.URL.Query().Get("groups"))
+			if _, err := w.Write([]byte(siteScoreboardFixture)); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		})
@@ -678,28 +632,50 @@ func TestGetGamesBySeason_CoversAllRegularSeasonWeeks(t *testing.T) {
 	client := newTestClient()
 	overrideURLs(t, client.Client, ts.URL)
 
-	if _, err := client.GetGamesBySeason(context.Background(), 2023, FBS); err != nil {
+	games, err := client.GetGamesBySeason(context.Background(), 2026, FBS)
+	if err != nil {
 		t.Fatalf("GetGamesBySeason: %v", err)
 	}
 
-	// Regular season: calendar has 15 weeks (1..15) — every week must be
-	// requested, including the final one.
-	if len(regularWeeks) != 15 {
-		t.Errorf("regular season requests = %d, want 15", len(regularWeeks))
-	}
-	requested := map[int64]bool{}
-	for _, week := range regularWeeks {
-		requested[week] = true
-	}
-	for week := int64(1); week <= 15; week++ {
-		if !requested[week] {
-			t.Errorf("regular season week %d was never requested", week)
+	// Every day request must carry the division group.
+	for i, group := range groups {
+		if group != "80" {
+			t.Errorf("day request %d groups = %q, want 80", i, group)
 		}
 	}
 
-	// Postseason week 1 is fetched separately.
-	if len(postseasonWeeks) != 1 || postseasonWeeks[0] != 1 {
-		t.Errorf("postseason requests = %v, want [1]", postseasonWeeks)
+	// The calendar fixture's Regular Season span is 2026-08-22 (Saturday) /
+	// 2026-12-13, the Postseason span 2026-12-13T08:00Z / 2027-01-28. The
+	// requested days must cover both spans contiguously.
+	want := map[string]bool{}
+	addDays := func(from, to time.Time) {
+		for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+			want[d.Format("20060102")] = true
+		}
+	}
+	addDays(time.Date(2026, 8, 22, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 13, 0, 0, 0, 0, time.UTC))
+	addDays(time.Date(2026, 12, 13, 0, 0, 0, 0, time.UTC), time.Date(2027, 1, 28, 0, 0, 0, 0, time.UTC))
+	seen := map[string]bool{}
+	for _, day := range days {
+		if !want[day] {
+			t.Errorf("unexpected day requested: %s", day)
+			continue
+		}
+		seen[day] = true
+	}
+	// The spans share the 2026-12-13 boundary day, so it is legitimately
+	// requested twice; every expected day must have been requested at least
+	// once.
+	for day := range want {
+		if !seen[day] {
+			t.Errorf("calendar-span day %s was never requested", day)
+		}
+	}
+
+	// Each day response contributes exactly one final game.
+	if len(games) != len(days) {
+		t.Errorf("len(games) = %d, want %d (one final game per day response)",
+			len(games), len(days))
 	}
 }
 

@@ -88,33 +88,68 @@ func (fc *FootballClient) HasPostseasonStarted(ctx context.Context, year int64, 
 	return postSeasonStart.Before(startTime), nil
 }
 
+// GetGamesBySeason fetches every completed game of a season for one division
+// group off the site.api scoreboard: the season calendar (?dates=<year>) is
+// fetched once, then the Regular and Postseason calendar spans are walked
+// ONE DAY AT A TIME with scoreboard?dates=YYYYMMDD&groups=N (the endpoint
+// honors `groups`; verified for FBS 80 / FCS 81), collecting STATUS_FINAL
+// games via finalGames. Callers dedupe across division groups.
+//
+// Why per-day and not the weekly date-RANGE chunks TeamConferencesByYear
+// uses: live parity-check 2026-08-30 (2025 season, both groups) showed the
+// range endpoint ?dates=start-end is lossy against single-day fetches in
+// ways the 200-event cap does not explain — a 7-day range dropped the
+// tail-day evening games (e.g. Friday-night games) and sometimes lost whole
+// days mid-range (Aug30-Sep05 range returned nothing after Sep02, and
+// Aug29-30 returned only the Aug29 games while dropping all of Aug30). A
+// full range-walk found 1602 of the 1697 cdn-ingested games (95 lost,
+// ~5.6%); a per-day walk found 1698 — superset of the cdn data minus one
+// out-of-group D-II matchup the scoreboard never surfaces under groups
+// 80/81. See docs/espn-api.md (Scoreboard section) for the characterization.
 func (fc *FootballClient) GetGamesBySeason(ctx context.Context, year int64, group Group) ([]Game, error) {
-	var allGames []Game
-
-	numWeeks, err := fc.GetWeeksInSeason(ctx, year)
+	cal, err := fc.getCalendarForYear(ctx, year)
 	if err != nil {
 		return nil, err
 	}
 
-	// GetWeeksInSeason returns the number of regular-season weeks (calendar
-	// entry 0 excludes the postseason), numbered 1..N. Fetch every one of them;
-	// postseason week 1 is fetched separately below.
-	for i := int64(1); i <= numWeeks; i++ {
-		games, err := fc.GetCompletedGamesByWeek(ctx, year, i, group, Regular)
+	var allGames []Game
+	for _, seasonType := range []SeasonType{Regular, Postseason} {
+		ct := cal.calendarType(seasonType)
+		if ct == nil {
+			continue
+		}
+		start, err := parseESPNTime(ct.StartDate)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calendar start date %q: %w", ct.StartDate, err)
+		}
+		end, err := parseESPNTime(ct.EndDate)
+		if err != nil {
+			return nil, fmt.Errorf("calendar end date %q: %w", ct.EndDate, err)
 		}
 
-		allGames = append(allGames, games...)
-		fc.Throttle(ctx)
+		// Walk the span one calendar day at a time (inclusive); single-day
+		// fetches cover the full ET day, so the union is complete. Both bounds
+		// are truncated to UTC midnight: the calendar timestamps carry a
+		// time-of-day (spans start ~07:00Z/08:00Z and end ~07:59Z), and
+		// stepping from the raw start would drift every probe past the end
+		// bound and silently drop the final day.
+		startDay := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+		endDay := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+		for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
+			url := fc.ScoreboardURL() + fmt.Sprintf("?dates=%s&groups=%d",
+				day.Format("20060102"), group)
+			var res SiteScoreboardESPN
+			if err := makeRequest(ctx, fc.Client, url, &res); err != nil {
+				return nil, err
+			}
+			games, err := res.finalGames()
+			if err != nil {
+				return nil, err
+			}
+			allGames = append(allGames, games...)
+			fc.Throttle(ctx)
+		}
 	}
-
-	games, err := fc.GetCompletedGamesByWeek(ctx, year, int64(1), group, Postseason)
-	if err != nil {
-		return nil, err
-	}
-
-	allGames = append(allGames, games...)
 
 	return allGames, nil
 }

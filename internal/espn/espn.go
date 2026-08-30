@@ -66,32 +66,6 @@ func (s Sport) HasDivisionSplit() bool {
 	return s == CollegeFootball
 }
 
-func (c *Client) GetGamesByWeek(
-	ctx context.Context, year int64, week int64, group Group, seasonType SeasonType,
-) (*GameScheduleESPN, error) {
-	url := c.WeekURL() +
-		fmt.Sprintf("&year=%d&week=%d&group=%d&seasonType=%d", year, week, group, seasonType)
-
-	var res GameScheduleESPN
-	err := makeRequest(ctx, c, url, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	return &res, nil
-}
-
-func (c *Client) GetCompletedGamesByWeek(
-	ctx context.Context, year int64, week int64, group Group, seasonType SeasonType,
-) ([]Game, error) {
-	res, err := c.GetGamesByWeek(ctx, year, week, group, seasonType)
-	if err != nil {
-		return nil, err
-	}
-
-	return completedGames(res), nil
-}
-
 // GetGamesByDate fetches all games for a specific date (format YYYYMMDD).
 // Used by basketball where the schedule endpoint is date-based, not week-based.
 func (c *Client) GetGamesByDate(ctx context.Context, date string, group Group) (*GameScheduleESPN, error) {
