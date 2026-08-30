@@ -749,3 +749,48 @@ func TestMakeRequestMaxAttempts(t *testing.T) {
 		t.Errorf("elapsed = %v, want < 150ms (no backoff sleep after the final attempt)", elapsed)
 	}
 }
+
+func TestMakeRequestRetries202Challenge(t *testing.T) {
+	var mu sync.Mutex
+	var requests int
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requests++
+		n := requests
+		mu.Unlock()
+		if n < 3 {
+			// ESPN's edge occasionally answers with an empty-body 202 bot
+			// challenge; makeRequest must back off and retry, not decode.
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client := &FootballClient{Client: &Client{
+		MaxAttempts:    4,
+		InitialBackoff: 10 * time.Millisecond,
+		RequestTimeout: 1 * time.Second,
+		RateLimit:      0,
+		Sport:          CollegeFootball,
+	}}
+	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+
+	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
+	if err != nil {
+		t.Fatalf("GetCurrentWeekGames: %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3 (two 202 challenges then success)", requests)
+	}
+	if len(games) != 2 {
+		t.Fatalf("len(games) = %d, want 2", len(games))
+	}
+}

@@ -145,7 +145,11 @@ func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, o
 
 		res, err = httpClient.Do(req)
 		if err == nil {
-			if res.StatusCode < 500 {
+			// 202 is retried like a 5xx: ESPN's edge intermittently answers
+			// automated clients with an empty-body 202 bot challenge. A short
+			// backoff outlasts the window, whereas passing the empty body to
+			// the decoder fails the whole poll (observed 2026-08-29).
+			if res.StatusCode < 500 && res.StatusCode != http.StatusAccepted {
 				break
 			}
 			res.Body.Close()
