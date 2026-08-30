@@ -11,6 +11,31 @@ Format rules:
 
 ## Active
 
+### Football historical-week and conference fetches still on cdn.espn.com
+
+The urgent slice of the site.api migration (2026-09) moved the current-week
+games fetch (`FootballClient.GetCurrentWeekGames` → site.api scoreboard with
+the `groups` param) and the football box-score fetch (`GetGameStats` →
+site.api summary; the dual-shape `GameInfoESPN.UnmarshalJSON` also keeps the
+cdn `gamepackageJSON` path alive). Still on cdn.espn.com, which remains
+prone to empty-body 202 bot challenges:
+
+- `GetGamesByWeek` / `GetCompletedGamesByWeek` / `GetGamesBySeason` /
+  `TeamConferencesByYear` (football historical weeks and team→conference
+  extraction). The site.api scoreboard does honor `week`/`year`/`seasontype`,
+  so these are portable — but `GetGamesByWeek` returns `*GameScheduleESPN`
+  whose calendar/conferenceAPI blocks the scoreboard doesn't provide, so the
+  move is not trivially shared.
+- `GetWeeksInSeason` / `HasPostseasonStarted` / `DefaultSeason` (season
+  calendar metadata — a planned later batch).
+- `ConferenceMap` (conference metadata from the schedule response).
+- All basketball schedule and box-score fetches (date-based schedule,
+  playbyplay box scores).
+
+Verified live 2026-08-29: site.api scoreboard `groups=80` returns all FBS
+games including FBS-vs-FCS matchups; `groups=81` returns FCS games; some
+competitors (transition D-II→D-I schools) carry no `team.conferenceId`.
+
 ### Basketball season navigation is current-season only
 
 Basketball historical support is now largely implemented:

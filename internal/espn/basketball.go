@@ -117,11 +117,11 @@ func (bc *BasketballClient) getSeasonDates(ctx context.Context, year int64) ([]s
 	return bc.historicalSeasonDates(year), nil
 }
 
-// GetCurrentWeekGames fetches completed games from today and yesterday.
-// The base Client method only returns ESPN's "current" schedule page, which
-// for basketball is a single day. If a late-night game finishes after ESPN
-// rolls to the next day, the base method would miss it permanently. Fetching
-// two days ensures the 5-minute cron has a full day of retries to catch it.
+// GetCurrentWeekGames fetches completed games from today and yesterday off
+// the cdn schedule endpoint, which only exposes a single day per request. If
+// a late-night game finishes after ESPN rolls to the next day, a single-day
+// fetch would miss it permanently. Fetching two days ensures the 5-minute
+// cron has a full day of retries to catch it.
 func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
 	now := time.Now()
 	var allGames []Game

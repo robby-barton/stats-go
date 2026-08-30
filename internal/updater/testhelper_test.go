@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -163,6 +164,51 @@ func newInProgressGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, 
 			},
 		}},
 	}
+}
+
+func newSiteEvent(id, homeID, homeConf, homeScore, awayID, awayConf, awayScore int64) espn.SiteEvent {
+	ev := espn.SiteEvent{
+		ID:     strconv.FormatInt(id, 10),
+		Season: espn.SiteSeason{Year: 2023, Type: 2},
+		Week:   espn.SiteWeek{Number: 1},
+		Status: espn.Status{StatusType: espn.StatusType{
+			Name: "STATUS_FINAL", Completed: true,
+		}},
+		Competitions: []espn.SiteCompetition{{
+			Competitors: []espn.Competitor{
+				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
+				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+			},
+		}},
+	}
+	ev.Competitions[0].Status = ev.Status
+	return ev
+}
+
+func newSiteEventInProgress(id, homeID, homeConf, homeScore, awayID, awayConf, awayScore int64) espn.SiteEvent {
+	ev := espn.SiteEvent{
+		ID:     strconv.FormatInt(id, 10),
+		Season: espn.SiteSeason{Year: 2023, Type: 2},
+		Week:   espn.SiteWeek{Number: 1},
+		Status: espn.Status{StatusType: espn.StatusType{
+			Name: "STATUS_IN_PROGRESS", Completed: false,
+		}},
+		Competitions: []espn.SiteCompetition{{
+			Competitors: []espn.Competitor{
+				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
+				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+			},
+		}},
+	}
+	ev.Competitions[0].Status = ev.Status
+	return ev
+}
+
+// gameIDFromSiteEvent converts the site scoreboard's string event ID back to
+// the int64 game IDs used by the score-override map.
+func gameIDFromSiteEvent(ev espn.SiteEvent) int64 {
+	id, _ := strconv.ParseInt(ev.ID, 10, 64)
+	return id
 }
 
 func fixtureGameInfoResponse(gameID int64) espn.GameInfoESPN {
@@ -406,6 +452,46 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 		}
 	})
 
+	// site.api scoreboard endpoint — the current-week games fetch. Built from
+	// the same fixture games as the cdn schedule response, with the same
+	// score override applied.
+	const scoreboardPath = "/apis/site/v2/sports/football/college-football/scoreboard"
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := espn.SiteScoreboardESPN{
+			Leagues: []espn.SiteScoreboardLeague{{}},
+			Season:  espn.SiteSeason{Year: 2023, Type: 2},
+			Week:    espn.SiteWeek{Number: 1},
+			Events: []espn.SiteEvent{
+				newSiteEvent(fixtureGameID1, 1, 100, 28, 2, 200, 14),
+				newSiteEvent(fixtureGameID2, 3, 200, 21, 4, 100, 10),
+				newSiteEventInProgress(fixtureGameID3, 5, 100, 7, 6, 200, 3),
+				newSiteEvent(fixtureGameID4, 1, 100, 35, 3, 200, 17),
+				newSiteEvent(fixtureGameID5, 2, 100, 24, 4, 200, 21),
+				newSiteEventInProgress(fixtureGameID6, 5, 100, 14, 6, 200, 10),
+			},
+		}
+		if scoreOverride != nil {
+			for i := range resp.Events {
+				scores, ok := scoreOverride[gameIDFromSiteEvent(resp.Events[i])]
+				if !ok {
+					continue
+				}
+				competitors := resp.Events[i].Competitions[0].Competitors
+				for j := range competitors {
+					if competitors[j].HomeAway == "home" {
+						competitors[j].Score = scores[0]
+					} else {
+						competitors[j].Score = scores[1]
+					}
+				}
+			}
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -432,7 +518,7 @@ func newTestUpdater(t *testing.T) *Updater {
 		ts.URL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		ts.URL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		ts.URL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-		"",
+		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard",
 	))
 
 	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)

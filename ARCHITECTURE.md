@@ -154,6 +154,16 @@ per-client URLs for that sport's ESPN endpoints. Every client carries its own
 URL set (no package-level vars); tests point a single client at a mock HTTP
 server via `Client.SetURLs`.
 
+Endpoint ownership by host (since 2026-09): cdn.espn.com has been
+intermittently serving empty-body 202 bot challenges to automated clients, so
+the current-week games fetch and the football box-score fetch moved to
+site.api.espn.com (scoreboard with `groups` param, and the summary endpoint
+respectively — see `SiteScoreboardESPN` and the dual-shape
+`GameInfoESPN.UnmarshalJSON`). cdn.espn.com still serves the football season
+calendar/historical weeks (`GetGamesByWeek`, `GetGamesBySeason`,
+`TeamConferencesByYear`, `ConferenceMap`) and all basketball schedule and
+box-score fetches. See docs/tech-debt.md for the remaining cdn dependencies.
+
 ## Database
 
 14 GORM models covering teams, games, and player statistics. Supports both

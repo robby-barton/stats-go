@@ -75,6 +75,43 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 		}
 	})
 
+	// site.api scoreboard endpoint for the current-week games fetch
+	const scoreboardPath = "/apis/site/v2/sports/football/college-football/scoreboard"
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(espn.SiteScoreboardESPN{
+			Leagues: []espn.SiteScoreboardLeague{{}},
+			Season:  espn.SiteSeason{Year: 2023, Type: 2},
+			Week:    espn.SiteWeek{Number: 1},
+			Events: []espn.SiteEvent{
+				{
+					ID:     "1001",
+					Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
+					Competitions: []espn.SiteCompetition{{
+						Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
+						Competitors: []espn.Competitor{
+							{ID: 10, Team: espn.ScheduleTeam{ID: 10, ConferenceID: 100}, Score: 28, HomeAway: "home"},
+							{ID: 20, Team: espn.ScheduleTeam{ID: 20, ConferenceID: 100}, Score: 14, HomeAway: "away"},
+						},
+					}},
+				},
+				{
+					ID:     "1002",
+					Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
+					Competitions: []espn.SiteCompetition{{
+						Status: espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}},
+						Competitors: []espn.Competitor{
+							{ID: 30, Team: espn.ScheduleTeam{ID: 30, ConferenceID: 200}, Score: 21, HomeAway: "home"},
+							{ID: 40, Team: espn.ScheduleTeam{ID: 40, ConferenceID: 200}, Score: 10, HomeAway: "away"},
+						},
+					}},
+				},
+			},
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -86,7 +123,7 @@ func overrideGameURLs(t *testing.T, client *espn.Client, serverURL string) {
 		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
-		"",
+		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
 	))
 }
 

@@ -100,8 +100,12 @@ func SportURLs(sport Sport) SportURLConfig {
 		}
 	case CollegeFootball:
 		return SportURLConfig{
-			Schedule:   "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
-			GameStats:  "https://cdn.espn.com/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			Schedule: "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
+			// Box scores come from the site.api summary (cdn.espn.com has been
+			// serving empty-body 202 bot challenges since 2026-08-29; the site.api
+			// summary carries the same header/boxscore data — see
+			// GameInfoESPN.UnmarshalJSON for the dual-shape handling).
+			GameStats:  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=%d",
 			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
 			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",
 		}

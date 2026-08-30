@@ -68,33 +68,6 @@ func newTestClient() *FootballClient {
 	}}
 }
 
-func TestGetCurrentWeekGames(t *testing.T) {
-	ts := setupTestServer(t)
-	client := newTestClient()
-	overrideURLs(t, client.Client, ts.URL)
-
-	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
-	if err != nil {
-		t.Fatalf("GetCurrentWeekGames: %v", err)
-	}
-
-	// Only STATUS_FINAL games should be returned (2 of 3 in fixture)
-	if len(games) != 2 {
-		t.Fatalf("len(games) = %d, want 2", len(games))
-	}
-
-	ids := map[int64]bool{}
-	for _, g := range games {
-		ids[g.ID] = true
-	}
-	if !ids[1001] || !ids[1002] {
-		t.Errorf("expected game IDs 1001 and 1002, got %v", ids)
-	}
-	if ids[1003] {
-		t.Error("in-progress game 1003 should not be included")
-	}
-}
-
 func TestGetGamesByWeek(t *testing.T) {
 	ts := setupTestServer(t)
 	client := newTestClient()
@@ -767,7 +740,7 @@ func TestMakeRequestRetries202Challenge(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
+		if err := json.NewEncoder(w).Encode(json.RawMessage(siteScoreboardFixture)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -781,7 +754,7 @@ func TestMakeRequestRetries202Challenge(t *testing.T) {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-	t.Cleanup(client.SetURLs(ts.URL+"/schedule", "", "", ""))
+	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/scoreboard"))
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {
@@ -790,7 +763,7 @@ func TestMakeRequestRetries202Challenge(t *testing.T) {
 	if requests != 3 {
 		t.Fatalf("requests = %d, want 3 (two 202 challenges then success)", requests)
 	}
-	if len(games) != 2 {
-		t.Fatalf("len(games) = %d, want 2", len(games))
+	if len(games) != 1 {
+		t.Fatalf("len(games) = %d, want 1", len(games))
 	}
 }

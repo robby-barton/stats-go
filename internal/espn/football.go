@@ -15,6 +15,23 @@ type FootballClient struct{ *Client }
 // Compile-time interface check.
 var _ SportClient = (*FootballClient)(nil)
 
+// GetCurrentWeekGames fetches completed games for the current week from the
+// site.api scoreboard, filtered server-side to the given division group via
+// the `groups` query parameter (verified for FBS 80 / FCS 81; the cdn-style
+// `group` parameter is indeed ignored by site.api). Unlike the cdn schedule
+// response, the scoreboard carries no calendar or conference API data, so
+// season navigation and historical-week fetching stay on cdn for now.
+func (fc *FootballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
+	url := fc.ScoreboardURL() + fmt.Sprintf("?groups=%d", group)
+
+	var res SiteScoreboardESPN
+	if err := makeRequest(ctx, fc.Client, url, &res); err != nil {
+		return nil, err
+	}
+
+	return res.finalGames()
+}
+
 func (fc *FootballClient) DefaultSeason(ctx context.Context) (int64, error) {
 	var res GameScheduleESPN
 	err := makeRequest(ctx, fc.Client, fc.WeekURL(), &res)

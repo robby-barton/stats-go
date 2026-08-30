@@ -66,28 +66,6 @@ func (s Sport) HasDivisionSplit() bool {
 	return s == CollegeFootball
 }
 
-func (c *Client) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
-	var games []Game
-
-	url := c.WeekURL() + fmt.Sprintf("&group=%d", group)
-
-	var res GameScheduleESPN
-	err := makeRequest(ctx, c, url, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, day := range res.Content.Schedule {
-		for _, event := range day.Games {
-			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event)
-			}
-		}
-	}
-
-	return games, nil
-}
-
 func (c *Client) GetGamesByWeek(
 	ctx context.Context, year int64, week int64, group Group, seasonType SeasonType,
 ) (*GameScheduleESPN, error) {
