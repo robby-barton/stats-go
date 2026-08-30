@@ -137,6 +137,29 @@ func parseESPNTime(v string) (time.Time, error) {
 // competitor carries team.conferenceId, so the season's calendar span is
 // walked in weekly chunks per division group. Postseason is included: a few
 // teams only appear there (e.g. bowl-only scheduling edge cases).
+//
+// Known hazards of the scoreboard ?dates=start-end range endpoint (verified
+// live 2026-08-30 across seasons 2021-2025):
+//
+//  1. Sunday-start ranges are degenerate: any range that STARTS on a Sunday
+//     returns 0-10 events instead of the 53-89 expected, deterministically.
+//     weekChunks therefore shifts Sunday chunk starts to Monday. Regular-
+//     season calendar starts are Saturday-anchored, but the postseason
+//     calendar starts on a Sunday in 2022, 2024, and 2026, which is why the
+//     shift matters for bowl-only team collection.
+//  2. Responses are hard-capped at 200 events with silent chronological
+//     truncation. Weekly chunks keep each request well under the cap; do
+//     not widen them into multi-week ranges.
+//
+// Degenerate-chunk detection is NOT implemented: Client carries no logger,
+// so a chunk that unexpectedly returns 0 events (e.g. if ESPN shifts the
+// Sunday hazard to other start days) cannot be surfaced from here. If this
+// walk ever yields an implausibly low team count for a season, re-verify the
+// range endpoint behavior with curl before trusting the results.
+//
+// Other verified quirks: ranges crossing the regular/postseason boundary
+// return both season types cleanly (harmless here — conference IDs are
+// identical), and single-day fetches are not supersets of ranges.
 func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
 	cal, err := fc.getCalendarForYear(ctx, year)
 	if err != nil {
@@ -159,11 +182,8 @@ func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64)
 		}
 
 		for _, group := range fc.Sport.Groups() {
-			for cur := start; !cur.After(end); cur = cur.AddDate(0, 0, 7) {
-				chunkEnd := cur.AddDate(0, 0, 6)
-				if chunkEnd.After(end) {
-					chunkEnd = end
-				}
+			for _, chunk := range weekChunks(start, end) {
+				cur, chunkEnd := chunk[0], chunk[1]
 				url := fc.ScoreboardURL() + fmt.Sprintf("?dates=%s-%s&groups=%d",
 					cur.Format("20060102"), chunkEnd.Format("20060102"), group)
 				var res SiteScoreboardESPN
@@ -188,6 +208,36 @@ func (fc *FootballClient) TeamConferencesByYear(ctx context.Context, year int64)
 		return nil, fmt.Errorf("no teams found for the %d season", year)
 	}
 	return teamConfs, nil
+}
+
+// weekChunks splits the inclusive [start, end] span into scoreboard date-
+// range chunks of at most 7 days, covering end inclusive. A chunk start that
+// lands on a Sunday is shifted forward one day (to Monday) because the
+// scoreboard ?dates= range endpoint returns degenerate subsets (0-10 events
+// instead of 53-89) for any range starting on a Sunday — verified live
+// 2026-08-30 across all seasons 2021-2025. Because 7-day stepping preserves
+// the weekday, a Sunday can only surface as the span start itself (shifted
+// here) or as a chunk end; a span consisting solely of one Sunday therefore
+// yields no chunks — there is no non-degenerate way to fetch it. Every other
+// span covers end inclusive. See TeamConferencesByYear for the full hazard
+// list.
+func weekChunks(start, end time.Time) [][2]time.Time {
+	var chunks [][2]time.Time
+	for cur := start; !cur.After(end); {
+		if cur.Weekday() == time.Sunday {
+			cur = cur.AddDate(0, 0, 1)
+			if cur.After(end) {
+				break
+			}
+		}
+		chunkEnd := cur.AddDate(0, 0, 6)
+		if chunkEnd.After(end) {
+			chunkEnd = end
+		}
+		chunks = append(chunks, [2]time.Time{cur, chunkEnd})
+		cur = chunkEnd.AddDate(0, 0, 1)
+	}
+	return chunks
 }
 
 // ConferenceMap fetches conference metadata off the site.api
