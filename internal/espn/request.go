@@ -120,8 +120,12 @@ func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, o
 	}
 
 	headers := map[string]string{
+		// ESPN's CDN started returning HTTP 202 with an empty body for old
+		// browser User-Agents (2026-08-29), which decoders surface as a bare
+		// EOF. Keep this reasonably current; see the decode error below which
+		// now includes the status code to make this failure mode diagnosable.
 		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-			"Chrome/54.0.2840.90 Safari/537.36",
+			"Chrome/131.0.0.0 Safari/537.36",
 		"Accept": "application/json",
 	}
 	for k, v := range headers {
@@ -170,7 +174,7 @@ func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, o
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
-		return fmt.Errorf("decoding response from %q: %w", endpoint, err)
+		return fmt.Errorf("decoding response from %q (HTTP %d): %w", endpoint, res.StatusCode, err)
 	}
 
 	return (*out).validate()
