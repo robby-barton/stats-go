@@ -88,6 +88,32 @@ Key patterns:
 - `nolint` directives require both a specific linter and an explanation
   (`require-explanation: true`, `require-specific: true`).
 
+## Data Access Gotchas
+
+Hard-won notes from debugging this schema (2026-08-30). Apply to every query,
+including ad-hoc/psql sessions:
+
+- **Every core table is keyed by `sport`** (`ncaaf`/`ncaam`): `games`,
+  `team_names`, `team_seasons`, `team_week_results`. Always filter it. A query
+  without the sport filter silently doubles rows for any school with both
+  programs (272 schools have both a football and a basketball row in
+  `team_names`).
+- **`team_week_results` rows for a given school may exist under both sports**
+  (the FBS and FCS rankings write separately). When correlating with
+  `team_seasons`, join on `(team_id, sport, year)` — joining on `team_id`
+  alone mixes divisions and fan-outs counts.
+- **The `team_week_results` primary key includes `postseason`** — a regular
+  week row and a Final row coexist for the same `(team_id, year, week, sport)`.
+  Filter `postseason` to get the one you mean.
+- **FCS-vs-lower-division games legitimately have competitors with no
+  `team_seasons` row** (D-II/NAIA opponents are not ranked). LEFT JOIN from
+  games; don't INNER JOIN `team_seasons` when auditing game coverage.
+- **`team_week_results.final_raw` is `double precision`** — but if the column
+  type drifts to `numeric`, `postgres.js` (stats-web) returns it as a string,
+  which crashes frontend code doing numeric formatting. See
+  [docs/multi-repo-workflow.md](docs/multi-repo-workflow.md) for the data
+  type contract.
+
 ## Migration Rules
 
 - **Additive first.** New columns must be nullable or carry a DEFAULT. Never
