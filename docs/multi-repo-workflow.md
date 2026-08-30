@@ -32,6 +32,17 @@ All cross-repo features start here. This sequence is non-negotiable:
 One PR per repo per feature slice. Do not batch unrelated changes into a
 cross-repo feature branch.
 
+## Data Type Contract
+
+The frontend's Postgres driver (`postgres.js`) returns `numeric`/`decimal`
+columns as **strings**, not numbers. Any column the frontend does numeric
+work on (e.g. `team_week_results.final_raw`, which the ranking table
+formats with `.toFixed(5)`) must be a true float type — `real` or
+`double precision`. When adding or altering columns, prefer
+`double precision` over `numeric` for float values, and treat "driver
+returns it as a string" as a breaking frontend change requiring a
+stats-web PR in the same slice.
+
 ## Mixed-Version Deployment
 
 During rollout, the backend (data in Postgres) and frontend (build-time

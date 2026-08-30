@@ -293,7 +293,7 @@ CREATE TABLE public.team_week_results (
     postseason integer DEFAULT 0 NOT NULL,
     sport text DEFAULT 'ncaaf' NOT NULL,
     final_rank integer DEFAULT 0,
-    final_raw real DEFAULT 0,
+    final_raw double precision DEFAULT 0,
     wins integer DEFAULT 0,
     losses integer DEFAULT 0,
     srs_rank integer DEFAULT 0,
