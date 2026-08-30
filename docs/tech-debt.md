@@ -23,9 +23,11 @@ needs `groups=81`) to site.api.espn.com. Still on cdn.espn.com, which remains
 prone to empty-body 202 bot challenges:
 
 - `GetGamesByWeek` / `GetCompletedGamesByWeek` / `GetGamesBySeason`
-  (historical week fetching). The site.api scoreboard cannot serve this: its
-  responses cap events (~25) and only expand a single date per `dates`
-  request, so a week would need 4+ requests instead of one.
+  (historical week fetching). The site.api scoreboard could serve a week in
+  one range request (the football conference walk does exactly that), but
+  the range endpoint's two hazards below make silent data loss a real risk
+  for bulk historical backfill, and cdn returns one whole week per request
+  plus the calendar/conferenceAPI blocks `GameScheduleESPN` exposes.
 - Football `TeamConferencesByYear` now also runs on site.api: the season's
   calendar span (from the `?dates=<year>` scoreboard calendar) is walked in
   weekly chunks per division group with
@@ -41,13 +43,41 @@ prone to empty-body 202 bot challenges:
   endpoints return application errors, so the cdn schedule remains the only
   known source. `GetGamesByWeek` returns `*GameScheduleESPN` whose
   calendar/conferenceAPI blocks the scoreboard doesn't provide.
-- Watch item on the football walk: live observation showed the site.api
-  scoreboard date-range expansion behaves inconsistently (a one-week
-  historical range returned 0 events while a 37-day range returned ~200), so
-  the per-team coverage of the date-span walk is worth re-verifying against
-  past seasons before trusting it for historical re-runs.
 - All basketball schedule and box-score fetches (date-based schedule,
   playbyplay box scores).
+
+Site.api scoreboard `?dates=start-end` range characterization (curl,
+2026-08-30, seasons 2021-2025; supersedes the earlier "inconsistent
+expansion" watch item — the two observations below fully explain it):
+
+1. **Sunday-start hazard.** Any range that starts on a Sunday returns a
+   degenerate subset (0-10 events instead of the 53-89 expected),
+   deterministically across all five seasons. Regular-season calendar starts
+   are Saturday-anchored, so the weekly walk was never bitten — but the
+   postseason calendar starts on a Sunday in 2022, 2024, and 2026, which
+   under-collected bowl-only teams for the 2026 postseason. **Mitigated in
+   code:** `weekChunks` (`internal/espn/football.go`) shifts any Sunday
+   chunk start forward to Monday; unit tests cover the Saturday-anchored,
+   Sunday-start, sub-week, and tail cases.
+2. **200-event response cap.** Range responses are hard-capped at 200
+   events with silent chronological truncation — no error, no indicator.
+   Weekly chunks (55-90 games) stay well under the cap; do not widen them
+   into multi-week ranges.
+
+Also verified during characterization: ranges crossing the
+regular/postseason boundary return both season types cleanly, and
+single-day fetches are not supersets of ranges (don't mix the two forms when
+comparing behavior). Degenerate-chunk detection (logging a 0-event response
+for a chunk that should contain games) is not implemented because
+`espn.Client` carries no logger; the limitation is documented on
+`TeamConferencesByYear`.
+
+Dead-code census (2026-08-30): with the migration largely complete, the cdn
+code paths were audited for deletable code. Conclusion: **zero deletable** —
+basketball (schedule + box scores + team→conference extraction) and football
+historical backfill (`GetGamesByWeek`/`GetGamesBySeason`) still need the cdn
+schedule and playbyplay endpoints, so `GameScheduleESPN`, the cdn URL
+plumbing, and the dual-shape `GameInfoESPN` unmarshalling all remain live.
 
 Also verified live 2026-08-29: the site.api scoreboard omits
 `leagues[0].calendar` entirely unless a `dates` query parameter is passed
