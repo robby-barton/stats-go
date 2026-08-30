@@ -153,6 +153,7 @@ func (ss sportSchedule) registerJobs(
 	log *zap.SugaredLogger,
 	u *updater.Updater,
 	d *deployer,
+	al *alerter,
 	wg *sync.WaitGroup,
 ) {
 	update := make(chan bool, 1)
@@ -172,8 +173,10 @@ func (ss sportSchedule) registerJobs(
 
 					if err := u.UpdateRecentRankings(); err != nil {
 						log.Error(err)
+						al.failure(ss.Name+" ranking", err)
 						return
 					}
+					al.success()
 					log.Infof("%s rankings updated", ss.Name)
 					d.Trigger()
 				}()
@@ -194,7 +197,9 @@ func (ss sportSchedule) registerJobs(
 		result, err := u.UpdateCurrentWeek(ctx)
 		if err != nil {
 			log.Error(err)
+			al.failure(ss.Name+" games", err)
 		} else {
+			al.success()
 			log.Infof("%s: added %d games: %v", ss.Name, len(result.Processed), result.Processed)
 			if len(result.Failed) > 0 {
 				log.Errorf("%s: failed to fetch %d games (marked for retry): %v",
@@ -219,9 +224,10 @@ func (ss sportSchedule) registerJobs(
 		addedTeams, err := u.UpdateTeamInfo(ctx)
 		if err != nil {
 			log.Error(err)
+			al.failure(ss.Name+" team info", err)
 			return
 		}
-
+		al.success()
 		log.Infof("%s: updated %d teams", ss.Name, addedTeams)
 	})); err != nil {
 		panic(err)
@@ -239,7 +245,11 @@ func (ss sportSchedule) registerJobs(
 		log.Infof("%s: added %d seasons", ss.Name, addedSeasons)
 		if err != nil {
 			log.Error(err)
-		} else if addedSeasons > 0 {
+			al.failure(ss.Name+" new season", err)
+		} else {
+			al.success()
+		}
+		if addedSeasons > 0 {
 			update <- true
 		}
 	})); err != nil {
@@ -272,6 +282,7 @@ func scheduleCommand(
 			}
 
 			d := newDeployer(log, deployScript)
+			al := newAlerter(log)
 
 			sports := []struct {
 				schedule sportSchedule
@@ -303,7 +314,7 @@ func scheduleCommand(
 				if err != nil {
 					return err
 				}
-				sp.schedule.registerJobs(ctx, s, log, u, d, &wg)
+				sp.schedule.registerJobs(ctx, s, log, u, d, al, &wg)
 			}
 
 			s.Start()

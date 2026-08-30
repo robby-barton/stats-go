@@ -32,6 +32,12 @@ services:
       <<: *pg-environment
       TZ: ${TZ:-America/New_York}
       DEPLOY_SCRIPT: ${DEPLOY_SCRIPT:-/scripts/deploy-web.sh}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
       CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
