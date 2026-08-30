@@ -79,10 +79,10 @@ func (r TeamInfoESPN) validate() error {
 	return nil
 }
 
-// SportURLs returns the ESPN URL templates for a given sport.
-// SportURLConfig holds ESPN URL templates for a sport.
+// SportURLConfig holds ESPN URL templates for a sport. Every endpoint is on
+// site.api.espn.com — the cdn.espn.com schedule/playbyplay endpoints were
+// retired with the basketball migration (2026-08-30).
 type SportURLConfig struct {
-	Schedule    string
 	GameStats   string
 	TeamInfo    string
 	Scoreboard  string
@@ -93,21 +93,22 @@ type SportURLConfig struct {
 func SportURLs(sport Sport) SportURLConfig {
 	switch sport {
 	case CollegeBasketball:
+		// Box scores come from the site.api summary, same as football (the
+		// cdn playbyplay served empty-body 202 bot challenges from 2026-08-29;
+		// the summary carries the same header/boxscore data — see GameInfoESPN).
 		return SportURLConfig{
-			Schedule:   "https://cdn.espn.com/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-			GameStats:  "https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+			GameStats: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
+				"mens-college-basketball/summary?event=%d",
 			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 			Conferences: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
 				"mens-college-basketball/scoreboard/conferences",
 		}
 	case CollegeFootball:
+		// Box scores come from the site.api summary (cdn.espn.com has been
+		// serving empty-body 202 bot challenges since 2026-08-29; the site.api
+		// summary carries the same header/boxscore data — see GameInfoESPN).
 		return SportURLConfig{
-			Schedule: "https://cdn.espn.com/core/college-football/schedule?xhr=1&render=false&userab=18",
-			// Box scores come from the site.api summary (cdn.espn.com has been
-			// serving empty-body 202 bot challenges since 2026-08-29; the site.api
-			// summary carries the same header/boxscore data — see
-			// GameInfoESPN.UnmarshalJSON for the dual-shape handling).
 			GameStats:   "https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event=%d",
 			TeamInfo:    "https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams?limit=1000",
 			Scoreboard:  "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard",

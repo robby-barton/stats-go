@@ -1116,3 +1116,877 @@ const siteConferencesD1Fixture = `{
    "parentGroupId": "50", "shortName": "WCC"}
  ]
 }`
+
+// siteBasketballScoreboardFixture is a trimmed real basketball scoreboard response for
+// ?dates=20260214&groups=50 (captured 2026-08-30, 2025-26 season): three STATUS_FINAL
+// games including an overtime final, with team.conferenceId on every competitor.
+// The leagues[0].calendar is the live flat date-string list (trimmed to two entries)
+// that SiteCalendar must decode to nil.
+const siteBasketballScoreboardFixture = `{
+ "leagues": [
+  {
+   "id": "41",
+   "name": "NCAA Men's Basketball",
+   "abbreviation": "NCAAM",
+   "slug": "mens-college-basketball",
+   "season": {
+    "year": 2026,
+    "startDate": "2025-07-01T07:00Z",
+    "endDate": "2026-04-08T06:59Z",
+    "displayName": "2025-26",
+    "type": {
+     "id": "3",
+     "type": 3,
+     "name": "Postseason",
+     "abbreviation": "post"
+    }
+   },
+   "calendar": [
+    "2025-11-03T08:00Z",
+    "2025-11-04T08:00Z"
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "401827679",
+   "date": "2026-02-14T23:30Z",
+   "name": "Texas Tech Red Raiders at Arizona Wildcats",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": null,
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 3,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final/OT",
+     "shortDetail": "Final/OT",
+     "altDetail": "OT"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401827679",
+     "date": "2026-02-14T23:30Z",
+     "neutralSite": false,
+     "conferenceCompetition": true,
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 3,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final/OT",
+       "shortDetail": "Final/OT",
+       "altDetail": "OT"
+      }
+     },
+     "competitors": [
+      {
+       "id": "12",
+       "homeAway": "home",
+       "score": "75",
+       "team": {
+        "id": "12",
+        "conferenceId": "8"
+       }
+      },
+      {
+       "id": "2641",
+       "homeAway": "away",
+       "score": "78",
+       "team": {
+        "id": "2641",
+        "conferenceId": "8"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401825514",
+   "date": "2026-02-14T17:45Z",
+   "name": "UCLA Bruins at Michigan Wolverines",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": null,
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 2,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401825514",
+     "date": "2026-02-14T17:45Z",
+     "neutralSite": false,
+     "conferenceCompetition": true,
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 2,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "id": "130",
+       "homeAway": "home",
+       "score": "86",
+       "team": {
+        "id": "130",
+        "conferenceId": "7"
+       }
+      },
+      {
+       "id": "26",
+       "homeAway": "away",
+       "score": "56",
+       "team": {
+        "id": "26",
+        "conferenceId": "7"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401827681",
+   "date": "2026-02-14T21:00Z",
+   "name": "Kansas State Wildcats at Houston Cougars",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": null,
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 2,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401827681",
+     "date": "2026-02-14T21:00Z",
+     "neutralSite": false,
+     "conferenceCompetition": true,
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 2,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "id": "248",
+       "homeAway": "home",
+       "score": "78",
+       "team": {
+        "id": "248",
+        "conferenceId": "8"
+       }
+      },
+      {
+       "id": "2306",
+       "homeAway": "away",
+       "score": "64",
+       "team": {
+        "id": "2306",
+        "conferenceId": "8"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}`
+
+// siteBasketballScheduledEventJSON is a trimmed real STATUS_SCHEDULED basketball event
+// (captured 2026-08-30 from the plain scoreboard, 2026-27 season preview). It is
+// appended to the scoreboard fixture so the STATUS_FINAL filter is exercised
+// against real non-final data.
+const siteBasketballScheduledEventJSON = `{
+ "id": "401913525",
+ "date": "2026-11-02T05:00Z",
+ "name": "Fairleigh Dickinson Knights at Illinois Fighting Illini",
+ "season": {
+  "year": 2027,
+  "type": 2,
+  "slug": "regular-season"
+ },
+ "week": null,
+ "status": {
+  "clock": 0.0,
+  "displayClock": "0:00",
+  "period": 0,
+  "type": {
+   "id": "1",
+   "name": "STATUS_SCHEDULED",
+   "state": "pre",
+   "completed": false,
+   "description": "Scheduled",
+   "detail": "11/2 - TBD",
+   "shortDetail": "TBD"
+  }
+ },
+ "competitions": [
+  {
+   "id": "401913525",
+   "date": "2026-11-02T05:00Z",
+   "neutralSite": false,
+   "conferenceCompetition": false,
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "11/2 - TBD",
+     "shortDetail": "TBD"
+    }
+   },
+   "competitors": [
+    {
+     "id": "356",
+     "homeAway": "home",
+     "score": "0",
+     "team": {
+      "id": "356",
+      "conferenceId": "7"
+     }
+    },
+    {
+     "id": "161",
+     "homeAway": "away",
+     "score": "0",
+     "team": {
+      "id": "161",
+      "conferenceId": "19"
+     }
+    }
+   ]
+  }
+ ]
+}`
+
+// siteBasketballPlainFixture is a trimmed real basketball scoreboard response without a
+// dates parameter (captured 2026-08-30). Note ESPN had already flipped the current
+// season to 2027 (2026-27 preview); unlike football, the flat calendar is present
+// even without a dates parameter. Decoded through ScoreboardLeague ([]string
+// calendar) by GetScoreboard/GetSeasonDatesForYear.
+const siteBasketballPlainFixture = `{
+ "leagues": [
+  {
+   "id": "41",
+   "name": "NCAA Men's Basketball",
+   "abbreviation": "NCAAM",
+   "slug": "mens-college-basketball",
+   "season": {
+    "year": 2027,
+    "startDate": "2026-07-13T07:00Z",
+    "endDate": "2027-04-07T06:59Z",
+    "displayName": "2026-27",
+    "type": {
+     "id": "2",
+     "type": 2,
+     "name": "Regular Season",
+     "abbreviation": "reg"
+    }
+   },
+   "calendar": [
+    "2026-11-02T08:00Z",
+    "2026-11-03T08:00Z"
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "401913525",
+   "date": "2026-11-02T05:00Z",
+   "name": "Fairleigh Dickinson Knights at Illinois Fighting Illini",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": null,
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "11/2 - TBD",
+     "shortDetail": "TBD"
+    }
+   },
+   "competitions": [
+    {
+     "id": "401913525",
+     "date": "2026-11-02T05:00Z",
+     "neutralSite": false,
+     "conferenceCompetition": false,
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "11/2 - TBD",
+       "shortDetail": "TBD"
+      }
+     },
+     "competitors": [
+      {
+       "id": "356",
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "356",
+        "conferenceId": "7"
+       }
+      },
+      {
+       "id": "161",
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "161",
+        "conferenceId": "19"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}`
+
+// siteBasketballSummaryFixture is a trimmed real basketball summary response for event
+// 401827679 (captured 2026-08-30, 2025-26 season): header with season/week and
+// competitor scores, boxscore team statistics, and player statistics whose category
+// name is JSON null (basketball carries labels/keys instead — the game parser only
+// switches on category names for football, so this is never consumed for basketball).
+const siteBasketballSummaryFixture = `{
+ "header": {
+  "id": "401827679",
+  "season": {
+   "year": 2026,
+   "current": false,
+   "type": 2
+  },
+  "week": 15,
+  "competitions": [
+   {
+    "id": "401827679",
+    "date": "2026-02-14T23:30Z",
+    "neutralSite": false,
+    "conferenceCompetition": true,
+    "competitors": [
+     {
+      "homeAway": "home",
+      "id": "12",
+      "score": "75"
+     },
+     {
+      "homeAway": "away",
+      "id": "2641",
+      "score": "78"
+     }
+    ]
+   }
+  ]
+ },
+ "boxscore": {
+  "teams": [
+   {
+    "team": {
+     "id": "2641"
+    },
+    "statistics": [
+     {
+      "name": "fieldGoalsMade-fieldGoalsAttempted",
+      "label": "FG",
+      "displayValue": "27-66"
+     },
+     {
+      "name": "fieldGoalPct",
+      "label": "Field Goal %",
+      "displayValue": "41"
+     },
+     {
+      "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+      "label": "3PT",
+      "displayValue": "11-33"
+     },
+     {
+      "name": "threePointFieldGoalPct",
+      "label": "Three Point %",
+      "displayValue": "33"
+     },
+     {
+      "name": "freeThrowsMade-freeThrowsAttempted",
+      "label": "FT",
+      "displayValue": "13-19"
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "12"
+    },
+    "statistics": [
+     {
+      "name": "fieldGoalsMade-fieldGoalsAttempted",
+      "label": "FG",
+      "displayValue": "24-61"
+     },
+     {
+      "name": "fieldGoalPct",
+      "label": "Field Goal %",
+      "displayValue": "39"
+     },
+     {
+      "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+      "label": "3PT",
+      "displayValue": "4-16"
+     },
+     {
+      "name": "threePointFieldGoalPct",
+      "label": "Three Point %",
+      "displayValue": "25"
+     },
+     {
+      "name": "freeThrowsMade-freeThrowsAttempted",
+      "label": "FT",
+      "displayValue": "23-31"
+     }
+    ]
+   }
+  ],
+  "players": [
+   {
+    "team": {
+     "id": "2641"
+    },
+    "statistics": [
+     {
+      "name": null,
+      "labels": [
+       "MIN",
+       "PTS",
+       "FG",
+       "3PT",
+       "FT",
+       "REB",
+       "AST",
+       "TO",
+       "STL",
+       "BLK",
+       "OREB",
+       "DREB",
+       "PF"
+      ],
+      "totals": [
+       "",
+       "78",
+       "27-66",
+       "11-33",
+       "13-19",
+       "39",
+       "12",
+       "8",
+       "4",
+       "3",
+       "12",
+       "27",
+       "23"
+      ],
+      "athletes": [
+       {
+        "athlete": {
+         "id": "5143604",
+         "displayName": "JT Toppin"
+        },
+        "stats": [
+         "44",
+         "31",
+         "13-22",
+         "1-3",
+         "4-6",
+         "13",
+         "3",
+         "0",
+         "2",
+         "1",
+         "7",
+         "6",
+         "2"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "12"
+    },
+    "statistics": [
+     {
+      "name": null,
+      "labels": [
+       "MIN",
+       "PTS",
+       "FG",
+       "3PT",
+       "FT",
+       "REB",
+       "AST",
+       "TO",
+       "STL",
+       "BLK",
+       "OREB",
+       "DREB",
+       "PF"
+      ],
+      "totals": [
+       "",
+       "75",
+       "24-61",
+       "4-16",
+       "23-31",
+       "41",
+       "13",
+       "7",
+       "5",
+       "0",
+       "13",
+       "28",
+       "16"
+      ],
+      "athletes": [
+       {
+        "athlete": {
+         "id": "5311896",
+         "displayName": "Ivan Kharchenkov"
+        },
+        "stats": [
+         "38",
+         "13",
+         "4-14",
+         "1-5",
+         "4-5",
+         "4",
+         "3",
+         "1",
+         "2",
+         "0",
+         "2",
+         "2",
+         "2"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}`
+
+// siteBasketballSummaryHistoricalFixture is a trimmed real basketball summary response
+// for a historical 2024-25 season game (event 401708333, captured 2026-08-30):
+// header.season.year is the game's own season (2025), not the current one.
+const siteBasketballSummaryHistoricalFixture = `{
+ "header": {
+  "id": "401708333",
+  "season": {
+   "year": 2025,
+   "current": false,
+   "type": 2
+  },
+  "week": 11,
+  "competitions": [
+   {
+    "id": "401708333",
+    "date": "2025-01-18T18:00Z",
+    "neutralSite": false,
+    "conferenceCompetition": true,
+    "competitors": [
+     {
+      "homeAway": "home",
+      "id": "61",
+      "score": "68"
+     },
+     {
+      "homeAway": "away",
+      "id": "2",
+      "score": "70"
+     }
+    ]
+   }
+  ]
+ },
+ "boxscore": {
+  "teams": [
+   {
+    "team": {
+     "id": "2"
+    },
+    "statistics": [
+     {
+      "name": "fieldGoalsMade-fieldGoalsAttempted",
+      "label": "FG",
+      "displayValue": "24-61"
+     },
+     {
+      "name": "fieldGoalPct",
+      "label": "Field Goal %",
+      "displayValue": "39"
+     },
+     {
+      "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+      "label": "3PT",
+      "displayValue": "10-23"
+     },
+     {
+      "name": "threePointFieldGoalPct",
+      "label": "Three Point %",
+      "displayValue": "43"
+     },
+     {
+      "name": "freeThrowsMade-freeThrowsAttempted",
+      "label": "FT",
+      "displayValue": "12-20"
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "61"
+    },
+    "statistics": [
+     {
+      "name": "fieldGoalsMade-fieldGoalsAttempted",
+      "label": "FG",
+      "displayValue": "26-57"
+     },
+     {
+      "name": "fieldGoalPct",
+      "label": "Field Goal %",
+      "displayValue": "46"
+     },
+     {
+      "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+      "label": "3PT",
+      "displayValue": "7-20"
+     },
+     {
+      "name": "threePointFieldGoalPct",
+      "label": "Three Point %",
+      "displayValue": "35"
+     },
+     {
+      "name": "freeThrowsMade-freeThrowsAttempted",
+      "label": "FT",
+      "displayValue": "9-20"
+     }
+    ]
+   }
+  ],
+  "players": [
+   {
+    "team": {
+     "id": "2"
+    },
+    "statistics": [
+     {
+      "name": null,
+      "labels": [
+       "MIN",
+       "PTS",
+       "FG",
+       "3PT",
+       "FT",
+       "REB",
+       "AST",
+       "TO",
+       "STL",
+       "BLK",
+       "OREB",
+       "DREB",
+       "PF"
+      ],
+      "totals": [
+       "",
+       "70",
+       "24-61",
+       "10-23",
+       "12-20",
+       "39",
+       "7",
+       "11",
+       "9",
+       "5",
+       "15",
+       "24",
+       "16"
+      ],
+      "athletes": [
+       {
+        "athlete": {
+         "id": "5174655",
+         "displayName": "Chaney Johnson"
+        },
+        "stats": [
+         "35",
+         "2",
+         "1-9",
+         "0-0",
+         "0-0",
+         "6",
+         "1",
+         "2",
+         "0",
+         "1",
+         "2",
+         "4",
+         "3"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "61"
+    },
+    "statistics": [
+     {
+      "name": null,
+      "labels": [
+       "MIN",
+       "PTS",
+       "FG",
+       "3PT",
+       "FT",
+       "REB",
+       "AST",
+       "TO",
+       "STL",
+       "BLK",
+       "OREB",
+       "DREB",
+       "PF"
+      ],
+      "totals": [
+       "",
+       "68",
+       "26-57",
+       "7-20",
+       "9-20",
+       "38",
+       "8",
+       "12",
+       "4",
+       "5",
+       "12",
+       "26",
+       "17"
+      ],
+      "athletes": [
+       {
+        "athlete": {
+         "id": "5105449",
+         "displayName": "RJ Godfrey"
+        },
+        "stats": [
+         "23",
+         "5",
+         "2-3",
+         "0-0",
+         "1-4",
+         "4",
+         "0",
+         "0",
+         "1",
+         "0",
+         "1",
+         "3",
+         "2"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}`

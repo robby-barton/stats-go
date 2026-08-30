@@ -66,27 +66,6 @@ func (s Sport) HasDivisionSplit() bool {
 	return s == CollegeFootball
 }
 
-// GetGamesByDate fetches all games for a specific date (format YYYYMMDD).
-// Used by basketball where the schedule endpoint is date-based, not week-based.
-func (c *Client) GetGamesByDate(ctx context.Context, date string, group Group) (*GameScheduleESPN, error) {
-	url := c.WeekURL() + fmt.Sprintf("&date=%s&group=%d", date, group)
-
-	var res GameScheduleESPN
-	if err := makeRequest(ctx, c, url, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-// GetCompletedGamesByDate returns only completed (final) games for a date.
-func (c *Client) GetCompletedGamesByDate(ctx context.Context, date string, group Group) ([]Game, error) {
-	res, err := c.GetGamesByDate(ctx, date, group)
-	if err != nil {
-		return nil, err
-	}
-	return completedGames(res), nil
-}
-
 // GetSeasonDatesForYear returns the list of game dates from the scoreboard
 // calendar for the given season year. Each date is an ISO 8601 timestamp
 // (e.g. "2025-11-03T08:00Z"). The calendar is only included in the payload
@@ -102,18 +81,11 @@ func (c *Client) GetSeasonDatesForYear(ctx context.Context, year int64) ([]strin
 	return res.Leagues[0].Calendar, nil
 }
 
-func completedGames(res *GameScheduleESPN) []Game {
-	var games []Game
-	for _, day := range res.Content.Schedule {
-		for _, event := range day.Games {
-			if event.Status.StatusType.Completed && event.Status.StatusType.Name == "STATUS_FINAL" {
-				games = append(games, event)
-			}
-		}
-	}
-	return games
-}
-
+// GetGameStats fetches a single game's box score off the site.api summary
+// endpoint (both sports since the basketball migration of 2026-08-30; see
+// GameInfoESPN for the shape). The summary carries the game start time in
+// header.competitions[0].date, which the game parser consumes alongside the
+// scoreboard data.
 func (c *Client) GetGameStats(ctx context.Context, gameID int64) (*GameInfoESPN, error) {
 	url := fmt.Sprintf(c.GameStatsURL(), gameID)
 
@@ -149,16 +121,19 @@ func dateToParam(isoDate string) string {
 	return t.Format("20060102")
 }
 
-func extractTeamConfs(games *GameScheduleESPN) map[int64]int64 {
+// extractTeamConfs collects team ID → conference ID from site.api scoreboard
+// events. Competitors without a conferenceId (transition D-II schools,
+// non-D1 fill-ins — verified live 2026-08-30 on the basketball scoreboard:
+// 1 of 290 competitors on 2026-01-17) decode to 0 and are skipped.
+func extractTeamConfs(events []SiteEvent) map[int64]int64 {
 	teamConfs := map[int64]int64{}
 
-	for _, day := range games.Content.Schedule {
-		for _, event := range day.Games {
-			if len(event.Competitions) == 0 {
-				continue
-			}
-			for _, team := range event.Competitions[0].Competitors {
-				teamConfs[team.Team.ID] = int64(team.Team.ConferenceID)
+	for _, event := range events {
+		for _, comp := range event.Competitions {
+			for _, team := range comp.Competitors {
+				if team.Team.ConferenceID != 0 {
+					teamConfs[team.Team.ID] = int64(team.Team.ConferenceID)
+				}
 			}
 		}
 	}

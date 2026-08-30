@@ -27,37 +27,6 @@ const (
 	bbFixtureGameID4 int64 = 501004
 )
 
-func bbFixtureScheduleResponse() espn.GameScheduleESPN {
-	return espn.GameScheduleESPN{
-		Content: espn.Content{
-			Schedule: map[string]espn.Day{
-				"2024-01-06": {
-					Games: []espn.Game{
-						newFinalGame(bbFixtureGameID1, 11, 300, 78, 12, 300, 65),
-						newFinalGame(bbFixtureGameID2, 13, 400, 70, 14, 400, 68),
-						newInProgressGame(bbFixtureGameID3, 11, 300, 40, 13, 400, 38),
-					},
-				},
-				"2024-01-13": {
-					Games: []espn.Game{
-						newFinalGame(bbFixtureGameID4, 11, 300, 80, 13, 400, 75),
-					},
-				},
-			},
-			Parameters: espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: espn.FlexInt64(50)},
-			Defaults:   espn.Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: espn.FlexInt64(50)},
-			// Basketball schedule responses have no Calendar — season
-			// metadata comes from the scoreboard endpoint instead.
-			ConferenceAPI: espn.ConferenceAPI{
-				Conferences: []espn.Conference{
-					{GroupID: 300, Name: "Big East Conference", ShortName: "Big East", ParentGroupID: espn.FlexInt64(50)},
-					{GroupID: 400, Name: "Atlantic Coast Conference", ShortName: "ACC", ParentGroupID: espn.FlexInt64(50)},
-				},
-			},
-		},
-	}
-}
-
 func bbFixtureScoreboardResponse() espn.ScoreboardESPN {
 	return espn.ScoreboardESPN{
 		Leagues: []espn.ScoreboardLeague{{
@@ -67,6 +36,8 @@ func bbFixtureScoreboardResponse() espn.ScoreboardESPN {
 				EndDate:   "2024-04-08T06:59Z",
 				Type:      espn.ScoreboardSeasonType{ID: 2, Name: "Regular Season"},
 			},
+			// Live basketball calendar shape: a flat list of game-date strings
+			// (verified 2026-08-30 on the site.api scoreboard).
 			Calendar: []string{"2024-01-06T08:00Z", "2024-01-13T08:00Z"},
 		}},
 	}
@@ -186,36 +157,19 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		resp := bbFixtureScheduleResponse()
+	// site.api summary — per-game box scores (the cdn playbyplay replacement).
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/summary",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			gameIDStr := r.URL.Query().Get("event")
+			var gameID int64
+			fmt.Sscanf(gameIDStr, "%d", &gameID) //nolint:errcheck // test helper
 
-		// If a date param is provided, filter schedule to only that date.
-		// If no games match, keep the full schedule so the response still
-		// passes validation (ConferenceMap only needs the conference data).
-		if dateParam := r.URL.Query().Get("date"); dateParam != "" {
-			// Convert "20240106" → "2024-01-06"
-			key := dateParam[:4] + "-" + dateParam[4:6] + "-" + dateParam[6:8]
-			if day, ok := resp.Content.Schedule[key]; ok {
-				resp.Content.Schedule = map[string]espn.Day{key: day}
+			resp := bbFixtureGameInfoResponse(gameID)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-		}
-
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-
-	mux.HandleFunc("/core/mens-college-basketball/playbyplay", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		gameIDStr := r.URL.Query().Get("gameId")
-		var gameID int64
-		fmt.Sscanf(gameIDStr, "%d", &gameID) //nolint:errcheck // test helper
-
-		if err := json.NewEncoder(w).Encode(bbFixtureGameInfoResponse(gameID)); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+		})
 
 	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/teams",
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -225,11 +179,58 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 			}
 		})
 
+	// site.api scoreboard — the response depends on the query:
+	//   no dates             -> plain payload (season metadata + flat calendar)
+	//   dates=<year>         -> flat game-date calendar (GetSeasonDatesForYear)
+	//   dates=<today>        -> current-week events (2 final, 1 in-progress)
+	//   dates=<yesterday>    -> current-week events (501001 dedup + 501004)
+	//   any other 8-digit date -> season events carrying team.conferenceId
+	//                            for the TeamConferencesByYear walk
 	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
-		func(w http.ResponseWriter, _ *http.Request) {
+		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(bbFixtureScoreboardResponse()); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			dates := r.URL.Query().Get("dates")
+			switch {
+			case dates == "" || len(dates) == 4:
+				if err := json.NewEncoder(w).Encode(bbFixtureScoreboardResponse()); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			case dates == time.Now().Format("20060102"):
+				resp := espn.SiteScoreboardESPN{
+					Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2024}}},
+					Events: []espn.SiteEvent{
+						newSiteEvent(bbFixtureGameID1, 11, 300, 78, 12, 300, 65),
+						newSiteEvent(bbFixtureGameID2, 13, 400, 70, 14, 400, 68),
+						newSiteEventInProgress(bbFixtureGameID3, 11, 300, 40, 13, 400, 38),
+					},
+				}
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			case dates == time.Now().AddDate(0, 0, -1).Format("20060102"):
+				resp := espn.SiteScoreboardESPN{
+					Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2024}}},
+					Events: []espn.SiteEvent{
+						newSiteEvent(bbFixtureGameID1, 11, 300, 78, 12, 300, 65),
+						newSiteEvent(bbFixtureGameID4, 11, 300, 80, 13, 400, 75),
+					},
+				}
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			default:
+				resp := espn.SiteScoreboardESPN{
+					Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2024}}},
+					Events: []espn.SiteEvent{
+						newSiteEvent(bbFixtureGameID1, 11, 300, 78, 12, 300, 65),
+						newSiteEvent(bbFixtureGameID2, 13, 400, 70, 14, 400, 68),
+						newSiteEvent(bbFixtureGameID4, 11, 300, 80, 13, 400, 75),
+					},
+				}
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 			}
 		})
 
@@ -269,8 +270,7 @@ func newBasketballTestUpdater(t *testing.T) *Updater {
 		Sport:          espn.CollegeBasketball,
 	}}
 	t.Cleanup(client.SetURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=%d",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/conferences",

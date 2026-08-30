@@ -18,38 +18,7 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(espn.GameScheduleESPN{
-			Content: espn.Content{
-				Schedule: map[string]espn.Day{
-					"2023-09-02": {
-						Games: []espn.Game{
-							{
-								ID: 1001,
-								Status: espn.Status{
-									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
-								},
-							},
-							{
-								ID: 1002,
-								Status: espn.Status{
-									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
-								},
-							},
-						},
-					},
-				},
-				Calendar: []espn.Calendar{
-					{Weeks: []espn.Week{{Num: 1}}},
-				},
-			},
-		}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-
-	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/summary", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(espn.GameInfoESPN{
 			GamePackage: espn.GamePackage{
@@ -120,8 +89,7 @@ func setupGameTestServer(t *testing.T) *httptest.Server {
 func overrideGameURLs(t *testing.T, client *espn.Client, serverURL string) {
 	t.Helper()
 	t.Cleanup(client.SetURLs(
-		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
-		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/football/college-football/summary?event=%d",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
 		"",
@@ -144,62 +112,55 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(espn.GameScheduleESPN{
-			Content: espn.Content{
-				Schedule: map[string]espn.Day{
-					"2024-01-06": {
-						Games: []espn.Game{
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/summary",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(espn.GameInfoESPN{
+				GamePackage: espn.GamePackage{
+					Header: espn.Header{
+						ID: 2001,
+						Competitions: []espn.Competitions{
 							{
-								ID: 2001,
-								Status: espn.Status{
-									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
-								},
-							},
-							{
-								ID: 2002,
-								Status: espn.Status{
-									StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true},
+								ID:       2001,
+								Date:     "2024-01-06T19:00Z",
+								ConfGame: true,
+								Competitors: []espn.Competitors{
+									{HomeAway: "home", ID: 30, Score: 78},
+									{HomeAway: "away", ID: 40, Score: 65},
 								},
 							},
 						},
+						Season: espn.Season{Year: 2024, Type: 2},
+						Week:   10,
 					},
 				},
-				Calendar: []espn.Calendar{
-					{Weeks: []espn.Week{{Num: 1}}},
-				},
-			},
-		}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+			}); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
-	mux.HandleFunc("/core/mens-college-basketball/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(espn.GameInfoESPN{
-			GamePackage: espn.GamePackage{
-				Header: espn.Header{
-					ID: 2001,
-					Competitions: []espn.Competitions{
-						{
-							ID:       2001,
-							Date:     "2024-01-06T19:00Z",
-							ConfGame: true,
-							Competitors: []espn.Competitors{
-								{HomeAway: "home", ID: 30, Score: 78},
-								{HomeAway: "away", ID: 40, Score: 65},
-							},
-						},
-					},
-					Season: espn.Season{Year: 2024, Type: 2},
-					Week:   10,
+	// site.api scoreboard for the current-week games fetch (per-day walk);
+	// every single-day request returns the same two final games.
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			final := espn.Status{StatusType: espn.StatusType{Name: "STATUS_FINAL", Completed: true}}
+			if err := json.NewEncoder(w).Encode(espn.SiteScoreboardESPN{
+				Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2024}}},
+				Events: []espn.SiteEvent{
+					{ID: "2001", Status: final, Competitions: []espn.SiteCompetition{{Status: final, Competitors: []espn.Competitor{
+						{ID: 30, Team: espn.ScheduleTeam{ID: 30, ConferenceID: espn.FlexInt64(300)}, Score: 78, HomeAway: "home"},
+						{ID: 40, Team: espn.ScheduleTeam{ID: 40, ConferenceID: espn.FlexInt64(400)}, Score: 65, HomeAway: "away"},
+					}}}},
+					{ID: "2002", Status: final, Competitions: []espn.SiteCompetition{{Status: final, Competitors: []espn.Competitor{
+						{ID: 50, Team: espn.ScheduleTeam{ID: 50, ConferenceID: espn.FlexInt64(300)}, Score: 70, HomeAway: "home"},
+						{ID: 60, Team: espn.ScheduleTeam{ID: 60, ConferenceID: espn.FlexInt64(400)}, Score: 68, HomeAway: "away"},
+					}}}},
 				},
-			},
-		}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+			}); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -216,8 +177,7 @@ func TestGetSingleGame_Basketball(t *testing.T) {
 		Sport:          espn.CollegeBasketball,
 	}}
 	t.Cleanup(client.SetURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=%d",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		"",
 		"",
@@ -263,10 +223,9 @@ func TestGetCurrentWeekGames_Basketball(t *testing.T) {
 		Sport:          espn.CollegeBasketball,
 	}}
 	t.Cleanup(client.SetURLs(
-		ts.URL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=%d",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
-		"",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 		"",
 	))
 

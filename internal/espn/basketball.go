@@ -120,11 +120,13 @@ func (bc *BasketballClient) getSeasonDates(ctx context.Context, year int64) ([]s
 	return bc.historicalSeasonDates(year), nil
 }
 
-// GetCurrentWeekGames fetches completed games from today and yesterday off
-// the cdn schedule endpoint, which only exposes a single day per request. If
-// a late-night game finishes after ESPN rolls to the next day, a single-day
-// fetch would miss it permanently. Fetching two days ensures the 5-minute
-// cron has a full day of retries to catch it.
+// GetCurrentWeekGames fetches completed games for today and yesterday off the
+// site.api scoreboard (dates=YYYYMMDD&groups=N, one request per ET day —
+// verified live 2026-08-30: the basketball scoreboard honors the groups
+// filter, and without it the plain scoreboard returns only a subset of the
+// day's games). If a late-night game finishes after ESPN rolls to the next
+// day, a single-day fetch would miss it permanently. Fetching two days
+// ensures the 5-minute cron has a full day of retries to catch it.
 func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
 	now := time.Now()
 	var allGames []Game
@@ -132,7 +134,7 @@ func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group
 
 	for daysBack := 0; daysBack <= 1; daysBack++ {
 		date := now.AddDate(0, 0, -daysBack).Format("20060102")
-		games, err := bc.GetCompletedGamesByDate(ctx, date, group)
+		games, err := bc.getScoreboardDay(ctx, date, group)
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +150,18 @@ func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group
 	return allGames, nil
 }
 
+// GetGamesBySeason fetches every completed game of a season for the D1 group
+// off the site.api scoreboard, walking the season's game dates one ET day at
+// a time (dates=YYYYMMDD&groups=50, games collected via finalGames — the same
+// per-day walk the football backfill uses, whose single-day fetches are the
+// only verified-complete form; see docs/espn-api.md). The date list comes
+// from the scoreboard calendar for the current season and from the
+// synthesized Nov 1 – Apr 10 window for historical seasons.
+//
+// A basketball season spans ~150 game dates (plus off-days in the
+// synthesized historical window, which the scoreboard answers with empty
+// event lists), so with the default 500ms throttle a full-season backfill
+// takes ~80 seconds — acceptable for the `updater games --year` path.
 func (bc *BasketballClient) GetGamesBySeason(ctx context.Context, year int64, group Group) ([]Game, error) {
 	dates, err := bc.getSeasonDates(ctx, year)
 	if err != nil {
@@ -163,7 +177,7 @@ func (bc *BasketballClient) getGamesByDates(ctx context.Context, dates []string,
 		if date == "" {
 			continue
 		}
-		games, err := bc.GetCompletedGamesByDate(ctx, date, group)
+		games, err := bc.getScoreboardDay(ctx, date, group)
 		if err != nil {
 			return nil, err
 		}
@@ -173,11 +187,16 @@ func (bc *BasketballClient) getGamesByDates(ctx context.Context, dates []string,
 	return allGames, nil
 }
 
-// TeamConferencesByYear extracts team → conference ID mappings from the cdn
-// schedule for every game date of the given year. This remains on cdn.espn.com
-// because no site.api endpoint covers it in bulk: the /teams rows carry no
-// conferenceId, and scoreboard responses cap events (~25) and only expand a
-// single date per request. See docs/tech-debt.md.
+// TeamConferencesByYear extracts team → conference ID mappings from the site.api
+// scoreboard for every game date of the given year: the date list from
+// getSeasonDates is walked one ET day at a time with
+// scoreboard?dates=YYYYMMDD&groups=50, and each competitor's
+// team.conferenceId is collected (verified live 2026-08-30: basketball
+// scoreboard competitors carry conferenceId, except rare non-D1 fill-ins
+// like Bethesda Flames, which decode to 0 and are skipped). Competitors of
+// all statuses are collected — conference IDs are identical in every phase.
+// This replaces the cdn schedule walk, retired with the rest of the
+// basketball cdn migration (2026-08-30).
 func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
 	dates, err := bc.getSeasonDates(ctx, year)
 	if err != nil {
@@ -191,15 +210,19 @@ func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int6
 			if date == "" {
 				continue
 			}
-			games, err := bc.GetGamesByDate(ctx, date, group)
-			if err != nil {
+			url := bc.ScoreboardURL() + fmt.Sprintf("?dates=%s&groups=%d", date, group)
+			var res SiteScoreboardESPN
+			if err := makeRequest(ctx, bc.Client, url, &res); err != nil {
 				return nil, err
 			}
-			maps.Copy(teamConfs, extractTeamConfs(games))
+			maps.Copy(teamConfs, extractTeamConfs(res.Events))
 			bc.Throttle(ctx)
 		}
 	}
 
+	if len(teamConfs) == 0 {
+		return nil, fmt.Errorf("no teams found for the %d season", year)
+	}
 	return teamConfs, nil
 }
 

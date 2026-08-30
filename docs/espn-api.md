@@ -7,20 +7,26 @@ Last live-verified: 2026-08-29/30 (site.api range behavior re-verified
 
 ## The Two Hosts
 
-ESPN data comes from two hosts with different bot defenses and different
-quirks. Every request goes through `makeRequest` (`internal/espn/request.go`),
-which picks the User-Agent per host.
+ESPN data comes from one host. cdn.espn.com (the former schedule/playbyplay
+host) was retired on 2026-08-30 after it intermittently served empty-body
+202 bot challenges to automated clients (the 2026-08-29 incident); every
+endpoint now lives on site.api.espn.com, which answers plain curl-style
+User-Agents cleanly. Every request goes through `makeRequest`
+(`internal/espn/request.go`), which still sends a curl-style User-Agent
+(site.api 403s requests that CLAIM to be a browser) and retries 5xx/202
+responses with backoff.
 
-| | site.api.espn.com | cdn.espn.com |
-|---|---|---|
-| Endpoints | scoreboard (week games, calendar via `?dates=`, single-day + date-range fetches), `scoreboard/conferences`, `summary`, `teams` | `schedule` (per-week), `playbyplay` (basketball box scores) |
-| Used for | current-week games, season metadata, conference maps, football box scores, football team→conference walk, football season backfill (per-day walk) | basketball schedule/box scores, basketball team→conference extraction |
-| User-Agent | plain client UA (`curl/8.5.0`). **403s requests that claim to be a browser** | current Chrome UA. **Serves empty-body HTTP 202 bot challenges** to old browser UAs; the HTTP client retries those |
-| Known hazards | 200-event response cap with silent chronological truncation; date ranges that **start on a Sunday** return degenerate subsets (see Scoreboard) | intermittent 202 challenges; no bulk date-range support (one request = one week) |
+| | site.api.espn.com (only host) |
+|---|---|
+| Endpoints | scoreboard (week games, season calendar via `?dates=`, single-day + date-range fetches), `scoreboard/conferences`, `summary`, `teams` |
+| User-Agent | plain client UA (`curl/8.5.0`). **403s requests that claim to be a browser** |
+| Known hazards | 200-event response cap with silent chronological truncation; date ranges that **start on a Sunday** return degenerate subsets; **date ranges are lossy against single-day fetches** (see Scoreboard) |
 
-The 202-challenge behavior on cdn and the per-host User-Agent split were both
-determined empirically 2026-08-29; the site.api range findings below were
-characterized with curl on 2026-08-30 across seasons 2021-2025.
+The 202-challenge behavior on the old cdn host and the per-host User-Agent
+split were both determined empirically 2026-08-29; the site.api range
+findings below were characterized with curl on 2026-08-30 across seasons
+2021-2025, and the basketball-specific facts (groups filter, conferenceId,
+flat calendar, summary shape) were verified live 2026-08-30.
 
 ## Endpoints
 
@@ -46,16 +52,36 @@ single-day request per calendar day instead (`GetGamesBySeason`).
 
 **Verified payload facts (2026-08-29/30):**
 
-- Without a `dates` parameter the calendar field is JSON **null** — even
-  mid-season. Any code that needs the calendar must pass `dates`.
+- Without a `dates` parameter the **football** calendar field is JSON
+  **null** — even mid-season. Any code that needs the football calendar must
+  pass `dates`. The **basketball** calendar, by contrast, is a flat list of
+  ISO date strings and is present even without a `dates` parameter (verified
+  2026-08-30).
 - The football calendar is a list of season-type objects
   (`{label, value, startDate, endDate, entries: [{label, value, ...}]}`),
   while the basketball calendar is a flat list of ISO date strings. The two
   shapes decode into separate types (`SiteScoreboardLeague.Calendar` vs
-  `ScoreboardLeague.Calendar`).
+  `ScoreboardLeague.Calendar`); `SiteScoreboardLeague`'s calendar decode
+  (SiteCalendar) tolerates both shapes, treating the flat date-string list
+  as nil.
 - The Regular Season entry (`value: "2"`) lists one entry per week numbered
   1..N; the Postseason entry (`value: "3"`) carries its own start date and
   non-week-numbered entries (Bowls = 1, CFP = 999).
+- **The `groups` parameter is honored for basketball too** (verified live
+  2026-08-30: `?dates=20260117&groups=50` returns 145 D1 games where the
+  plain date fetch returns a 21-event subset). Without it the basketball
+  scoreboard under-reports, so every basketball scoreboard request carries
+  `groups=50`.
+- **Basketball competitors carry `team.conferenceId`** (verified live
+  2026-08-30 across 2025-26 and 2026-27 payloads; 289 of 290 competitors on
+  2026-01-17 had it — the one exception was a non-D1 fill-in, Bethesda
+  Flames, whose missing ID decodes to 0 and is skipped). This is what the
+  basketball `TeamConferencesByYear` walk consumes.
+- **The plain basketball scoreboard's `leagues[0].season` can already point
+  at the NEXT season** before the new one starts (verified 2026-08-30: the
+  plain payload advertised season 2027 with 2026-27 preview events while the
+  2025-26 season had just ended). Code that derives "current season" from
+  the plain payload sees ESPN's flip, not the last completed season.
 - **200-event cap:** range responses are hard-capped at 200 events with
   silent chronological truncation — a range containing more games simply
   loses its earliest games, with no error or indicator. Weekly chunks (55-90
@@ -94,47 +120,25 @@ single-day request per calendar day instead (`GetGamesBySeason`).
 
 **Response shape:** `SiteScoreboardESPN`
 - `Leagues[0].Season.Year` — current season year (`DefaultSeason`)
-- `Leagues[0].Calendar` — object-shaped season calendar (`dates` param only)
+- `Leagues[0].Calendar` — object-shaped season calendar (`dates` param only;
+  basketball's flat date-string list decodes to nil here)
 - `Events` — game list with embedded `status.type` completion flags
-- `Events[].Competitions[].Competitors` — same field names as the cdn
-  schedule (`id`, `homeAway`, `score`, `team.id`, `team.conferenceId`)
-- `Season` / `Week` — current season year/type and week number
+- `Events[].Competitions[].Competitors` — competitor fields (`id`,
+  `homeAway`, `score`, `team.id`, `team.conferenceId`)
+- `Season` / `Week` — current season year/type and week number (absent from
+  `?dates=` payloads, present — with basketball's flat calendar — on plain
+  basketball payloads)
 
-**Used by:** `FootballClient.GetCurrentWeekGames` (via `finalGames`, which
-applies the same STATUS_FINAL filter as the cdn path), `DefaultSeason` /
-`GetWeeksInSeason` / `HasPostseasonStarted` (football season metadata),
-`GetGamesBySeason` (football season backfill — per-day walk with the
-`groups` param), `TeamConferencesByYear` (football team→conference walk
-over weekly date ranges), `GetScoreboard` + `GetSeasonDatesForYear`
-(basketball season metadata and current-season date navigation)
-
-### Game Schedule (cdn.espn.com)
-
-```
-GET https://cdn.espn.com/core/college-football/schedule
-    ?xhr=1&render=false&userab=18
-    [&year={year}]
-    [&week={week}]
-    [&group={group}]
-    [&seasonType={seasonType}]
-```
-
-Returns the schedule for a given week/year. Without parameters, returns the
-current week. One request covers a whole week for a division group. The
-football historical backfill used this endpoint until 2026-08-30, when it
-moved to the site.api scoreboard's per-day walk (see the Scoreboard section
-for why date ranges could not be used instead).
-
-**Response shape:** `GameScheduleESPN`
-- `Content.Schedule` — map of dates to game lists
-- `Content.Calendar` — season calendar with week boundaries
-- `Content.ConferenceAPI.Conferences` — conference metadata
-
-**Used by:** basketball `GetGamesByDate` / `GetCompletedGamesByDate`
-(date-based schedule fetching) and basketball `TeamConferencesByYear`
-(team→conference extraction over all game dates of a season — no site.api
-endpoint provides a bulk team→conference mapping, see the Conferences
-section)
+**Used by:** `FootballClient.GetCurrentWeekGames` and
+`BasketballClient.GetCurrentWeekGames` (both via `finalGames`, which applies
+the STATUS_FINAL filter; basketball walks today+yesterday one ET day at a
+time), `DefaultSeason` / `GetWeeksInSeason` / `HasPostseasonStarted`
+(season metadata, both sports), `GetGamesBySeason` (both sports' season
+backfills — per-day walks with the `groups` param; football over the
+calendar spans, basketball over the game-date list), `TeamConferencesByYear`
+(both sports' team→conference extraction), `GetScoreboard` +
+`GetSeasonDatesForYear` (basketball season metadata and current-season date
+navigation)
 
 ### Conferences (site.api.espn.com)
 
@@ -154,43 +158,45 @@ string. IDs are JSON strings.
 - `Conferences[].groupId` / `parentGroupId` / `shortName` / `name`
 
 **Used by:** `ConferenceMap` (both sports). The endpoint reflects the
-current season only — same limitation the cdn path had. It does not cover
-the team→conference mapping (`TeamConferencesByYear`): the `/teams` rows
-carry no `conferenceId`. Football extracts it from weekly site.api scoreboard
-date ranges (see the Scoreboard section); basketball still extracts it from
-the cdn schedule, whose calendar dates are flat strings rather than the
-week-entry objects football's walk relies on (see docs/tech-debt.md).
+current season only — same limitation the retired cdn path had. It does not
+cover the team→conference mapping (`TeamConferencesByYear`): the `/teams`
+rows carry no `conferenceId`. Both sports extract that from the scoreboard:
+football from weekly site.api scoreboard date ranges, basketball from a
+per-day walk (each competitor carries `team.conferenceId`).
 
-### Game Stats / Box Score (site.api.espn.com)
+### Game Stats / Box Score (site.api.espn.com, both sports)
 
 ```
-GET https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary
+GET https://site.api.espn.com/apis/site/v2/sports/{sport-path}/summary
     ?event={eventID}
 ```
 
 Returns detailed game info including box score, team stats, and player stats
-for a single game. The summary carries the same `header`/`boxscore` objects
-as the cdn playbyplay response but at the top level instead of wrapped in
-`gamepackageJSON`; `GameInfoESPN.UnmarshalJSON` accepts both shapes, so the
-game parser is source-blind.
+for a single game. Football moved here 2026-09 and basketball 2026-08-30
+(after cdn.espn.com began serving empty-body 202 bot challenges); the
+summary carries the same `header`/`boxscore` objects the retired cdn
+playbyplay response wrapped in `gamepackageJSON`, so `GameInfoESPN` decodes
+one shape for both sports.
 
 **Response shape:** `GameInfoESPN`
-- `GamePackage.Header` — game metadata (date, teams, scores, week, season)
-- `GamePackage.BoxScore.Teams` — team-level statistics
-- `GamePackage.BoxScore.Players` — player-level stat categories
+- `Header` — game metadata (ID, date, teams, scores, week, season)
+- `Boxscore.Teams` — team-level statistics (name/label/displayValue)
+- `Boxscore.Players` — player-level stat categories (labels, totals,
+  athletes with per-player stats)
 
-**Used by:** `GetGameStats` (football). Basketball box scores still use the
-cdn playbyplay endpoint (see below).
+**Verified basketball facts (live 2026-08-30, 2025-26 and 2024-25 games):**
 
-### Game Stats / Play-by-Play (cdn.espn.com, basketball)
+- Every field the game parsers consume is present: header ID, season
+  (year/type — the game's OWN season, not the current one), week,
+  competition date/conferenceCompetition/neutralSite, competitor
+  homeAway/id/score, and boxscore team statistics.
+- Player-stat category `name` is JSON **null** on basketball payloads
+  (labels/keys carry the column names instead). Harmless: the game parser
+  only switches on category names for football (`parsePlayerStats` is
+  football-only).
+- Historical events (e.g. 401708333, January 2025) remain fetchable.
 
-```
-GET https://cdn.espn.com/core/mens-college-basketball/playbyplay
-    ?gameId={gameID}&xhr=1&render=false&userab=18
-```
-
-Same data as the site.api summary, wrapped in `gamepackageJSON`. Still used
-by basketball; football moved to the site.api summary (2026-09).
+**Used by:** `GetGameStats` (both sports).
 
 ### Team Info
 
@@ -235,5 +241,6 @@ Only games with `Status.StatusType.Completed == true` AND
 ESPN tests build a client via `newTestClient()`-style helpers and point it at
 a local `httptest.Server` with `Client.SetURLs`, serving fixture JSON from
 the same paths the production URLs use (including trimmed real site.api
-responses in `site_testdata_test.go`). This avoids hitting the real API in
-tests while validating the full parsing pipeline.
+responses in `site_testdata_test.go` for both sports — football week-1 and
+basketball 2025-26 captures). This avoids hitting the real API in tests
+while validating the full parsing pipeline.

@@ -36,7 +36,6 @@ type Client struct {
 
 	// Per-client endpoint URLs. Set by NewClientForSport; tests point a
 	// single client at a mock server via SetURLs.
-	scheduleURL   string
 	gameStatsURL  string
 	teamInfoURL   string
 	scoreboardURL string
@@ -53,7 +52,6 @@ func NewClientForSport(sport Sport) SportClient {
 		RateLimit:      500 * time.Millisecond,
 		Sport:          sport,
 		httpClient:     &http.Client{Timeout: 1 * time.Second},
-		scheduleURL:    urls.Schedule,
 		gameStatsURL:   urls.GameStats,
 		teamInfoURL:    urls.TeamInfo,
 		scoreboardURL:  urls.Scoreboard,
@@ -72,11 +70,6 @@ func wrapClient(c *Client) SportClient {
 	default:
 		panic(fmt.Sprintf("unsupported sport: %s", c.Sport))
 	}
-}
-
-// WeekURL returns the schedule URL for this client.
-func (c *Client) WeekURL() string {
-	return c.scheduleURL
 }
 
 // GameStatsURL returns the game stats URL template for this client.
@@ -117,7 +110,7 @@ func userAgentFor(endpoint string) string {
 // ESPN response implements validate, so decoded payloads are checked at the
 // transport boundary.
 type Responses interface {
-	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN | ConferencesESPN
+	GameInfoESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN | ConferencesESPN
 	validatable
 }
 

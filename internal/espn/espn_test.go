@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,18 +19,11 @@ func setupTestServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	// Schedule endpoint — handles all weekURL-based requests
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, _ *http.Request) {
+	// site.api summary endpoint — serves the captured real response for the
+	// GetGameStats tests.
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/summary", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(testScheduleResponse()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-
-	// Game stats endpoint
-	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(testGameInfoResponse()); err != nil {
+		if _, err := w.Write([]byte(siteSummaryFixture)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -88,8 +82,7 @@ func setupTestServer(t *testing.T) *httptest.Server {
 func overrideURLs(t *testing.T, client *Client, serverURL string) {
 	t.Helper()
 	t.Cleanup(client.SetURLs(
-		serverURL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
-		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/football/college-football/summary?event=%d",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
 		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
@@ -149,37 +142,6 @@ func TestHasPostseasonStarted(t *testing.T) {
 	}
 }
 
-func TestGetGameStats(t *testing.T) {
-	ts := setupTestServer(t)
-	client := newTestClient()
-	overrideURLs(t, client.Client, ts.URL)
-
-	res, err := client.GetGameStats(context.Background(), 1001)
-	if err != nil {
-		t.Fatalf("GetGameStats: %v", err)
-	}
-
-	if res == nil {
-		t.Fatal("result is nil")
-	}
-	if res.GamePackage.Header.ID != 1001 {
-		t.Errorf("Header.ID = %d, want 1001", res.GamePackage.Header.ID)
-	}
-	if res.GamePackage.Header.Season.Year != 2023 {
-		t.Errorf("Season.Year = %d, want 2023", res.GamePackage.Header.Season.Year)
-	}
-	if res.GamePackage.Header.Week != 1 {
-		t.Errorf("Week = %d, want 1", res.GamePackage.Header.Week)
-	}
-	if len(res.GamePackage.Header.Competitions) != 1 {
-		t.Fatalf("len(Competitions) = %d, want 1", len(res.GamePackage.Header.Competitions))
-	}
-	comp := res.GamePackage.Header.Competitions[0]
-	if !comp.ConfGame {
-		t.Error("ConfGame = false, want true")
-	}
-}
-
 func TestGetTeamInfo(t *testing.T) {
 	ts := setupTestServer(t)
 	client := newTestClient()
@@ -232,7 +194,7 @@ func TestMakeRequestNon2xx(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/schedule", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -253,7 +215,7 @@ func TestMakeRequestMalformedJSON(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/schedule", ""))
 
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
@@ -274,38 +236,12 @@ func TestMakeRequestEmptyResponse(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/schedule", ""))
 
 	// Empty response fails validation because the leagues list is missing.
 	_, err := client.DefaultSeason(context.Background())
 	if err == nil {
 		t.Fatal("expected error for empty response, got nil")
-	}
-}
-
-func TestGameScheduleValidate(t *testing.T) {
-	tests := []struct {
-		name    string
-		resp    GameScheduleESPN
-		wantErr bool
-	}{
-		{name: "empty response", resp: GameScheduleESPN{}, wantErr: true},
-		{name: "empty calendar", resp: GameScheduleESPN{Content: Content{Calendar: []Calendar{{}}}}, wantErr: true},
-		{
-			name: "valid schedule",
-			resp: GameScheduleESPN{Content: Content{Schedule: map[string]Day{"2026-01-01": {}}}},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.resp.validate()
-			if tt.wantErr && err == nil {
-				t.Error("validate() expected error, got nil")
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("validate() returned unexpected error: %v", err)
-			}
-		})
 	}
 }
 
@@ -413,7 +349,7 @@ func TestScoreboardValidate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Basketball tests using scoreboard endpoint
+// Basketball tests using the site.api scoreboard and summary endpoints
 // ---------------------------------------------------------------------------
 
 func testScoreboardResponse() ScoreboardESPN {
@@ -430,67 +366,64 @@ func testScoreboardResponse() ScoreboardESPN {
 	}
 }
 
-func basketballScheduleResponse(r *http.Request) GameScheduleESPN {
-	date := r.URL.Query().Get("date")
-	games := map[string]Day{
-		"2024-01-06": {Games: []Game{{
-			ID:     2001,
-			Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}},
-		}}},
-	}
-
-	// When a specific date is requested, return date-specific games.
-	// Game 3001 appears on both dates to verify deduplication.
-	if date != "" {
-		today := time.Now().Format("20060102")
-		yesterday := time.Now().AddDate(0, 0, -1).Format("20060102")
-		switch date {
-		case today:
-			games = map[string]Day{
-				today: {Games: []Game{
-					{ID: 3001, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
-					{ID: 3002, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
-				}},
-			}
-		case yesterday:
-			games = map[string]Day{
-				yesterday: {Games: []Game{
-					{ID: 3001, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
-					{ID: 3003, Status: Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}},
-				}},
-			}
-		}
-	}
-
-	return GameScheduleESPN{
-		Content: Content{
-			Schedule: games,
-			Defaults: Parameters{Week: 10, Year: 2024, SeasonType: 2, Group: FlexInt64(50)},
-			ConferenceAPI: ConferenceAPI{
-				Conferences: []Conference{
-					{GroupID: 300, Name: "Big East", ShortName: "Big East", ParentGroupID: FlexInt64(50)},
-				},
-			},
-		},
-	}
+// basketballToday/basketballYesterday reconstruct the dates the client
+// fetches so the mock server can serve per-day events. Game 3001 appears on
+// both days to exercise the dedup across the two-day window.
+func basketballToday() string {
+	return time.Now().Format("20060102")
 }
 
+func basketballYesterday() string {
+	return time.Now().AddDate(0, 0, -1).Format("20060102")
+}
+
+// setupBasketballTestServer serves the site.api basketball endpoints. The
+// scoreboard response depends on the query:
+//
+//	no dates                - plain payload (season metadata, flat calendar)
+//	dates=<year>            - flat game-date calendar (GetSeasonDatesForYear)
+//	dates=<today/yesterday> - per-day events with dedup overlap
+//	any other 8-digit date  - captured real single-day fixture
 func setupBasketballTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/mens-college-basketball/schedule", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(basketballScheduleResponse(r)); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+	// site.api summary - serves the captured real 2025-26 response.
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/summary",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if _, err := w.Write([]byte(siteBasketballSummaryFixture)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 
 	scoreboardPath := "/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard"
-	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(testScoreboardResponse()); err != nil {
+		var payload string
+		switch dates := r.URL.Query().Get("dates"); {
+		case dates == "":
+			payload = mustJSON(t, testScoreboardResponse())
+		case len(dates) == 4:
+			payload = mustJSON(t, ScoreboardESPN{
+				Leagues: []ScoreboardLeague{{
+					Season:   ScoreboardSeason{Year: 2024},
+					Calendar: []string{"2024-01-06T08:00Z", "2024-01-13T08:00Z"},
+				}},
+			})
+		case dates == basketballToday():
+			// 3001 and 3002 final; 3003 scheduled (dropped by finalGames).
+			payload = mustJSON(t, bbScoreboardPayload(
+				bbSiteEvent(3001, true), bbSiteEvent(3002, true), bbSiteEvent(3003, false)))
+		case dates == basketballYesterday():
+			// 3001 final again (dedup) plus 3003 final.
+			payload = mustJSON(t, bbScoreboardPayload(
+				bbSiteEvent(3001, true), bbSiteEvent(3003, true)))
+		default:
+			payload = siteBasketballScoreboardFixture
+		}
+		if _, err := w.Write([]byte(payload)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -507,6 +440,45 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
+// bbScoreboardPayload wraps events in a minimal valid SiteScoreboardESPN
+// payload (validate requires leagues[0].season.year).
+func bbScoreboardPayload(events ...SiteEvent) SiteScoreboardESPN {
+	return SiteScoreboardESPN{
+		Leagues: []SiteScoreboardLeague{{Season: SiteScoreboardLeagueSeason{Year: 2024}}},
+		Events:  events,
+	}
+}
+
+// bbSiteEvent builds a scoreboard event with two competitors carrying
+// conference IDs (home 300 = Big East, away 400 = ACC). When final is false
+// the event is STATUS_SCHEDULED and must be dropped by finalGames.
+func bbSiteEvent(id int64, final bool) SiteEvent {
+	status := Status{StatusType: StatusType{Name: "STATUS_FINAL", Completed: true}}
+	if !final {
+		status = Status{StatusType: StatusType{Name: "STATUS_SCHEDULED", Completed: false}}
+	}
+	return SiteEvent{
+		ID:     strconv.FormatInt(id, 10),
+		Status: status,
+		Competitions: []SiteCompetition{{
+			Status: status,
+			Competitors: []Competitor{
+				{ID: id, Score: 78, HomeAway: "home", Team: ScheduleTeam{ID: id, ConferenceID: FlexInt64(300)}},
+				{ID: id + 100, Score: 65, HomeAway: "away", Team: ScheduleTeam{ID: id + 100, ConferenceID: FlexInt64(400)}},
+			},
+		}},
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshaling fixture: %v", err)
+	}
+	return string(b)
+}
+
 func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
 	t.Helper()
 
@@ -518,8 +490,7 @@ func newBasketballTestClient(t *testing.T, serverURL string) *BasketballClient {
 		Sport:          CollegeBasketball,
 	}}
 	t.Cleanup(c.SetURLs(
-		serverURL+"/core/mens-college-basketball/schedule?xhr=1&render=false&userab=18",
-		serverURL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/summary?event=%d",
 		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
 		serverURL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/conferences",
@@ -592,6 +563,240 @@ func TestBasketball_GetCurrentWeekGames(t *testing.T) {
 		if !ids[want] {
 			t.Errorf("missing game ID %d", want)
 		}
+	}
+}
+
+// TestBasketball_GetCurrentWeekGames_QueriesGroups verifies the per-day
+// scoreboard requests carry the groups division filter (without it the
+// plain basketball scoreboard returns only a subset of the day's games).
+func TestBasketball_GetCurrentWeekGames_QueriesGroups(t *testing.T) {
+	var mu sync.Mutex
+	var groups []string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			groups = append(groups, r.URL.Query().Get("groups"))
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			payload := mustJSON(t, bbScoreboardPayload(bbSiteEvent(3001, true)))
+			if _, err := w.Write([]byte(payload)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	client := newBasketballTestClient(t, ts.URL)
+
+	if _, err := client.GetCurrentWeekGames(context.Background(), D1Basketball); err != nil {
+		t.Fatalf("GetCurrentWeekGames: %v", err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("requests = %d, want 2 (today + yesterday)", len(groups))
+	}
+	for i, group := range groups {
+		if group != "50" {
+			t.Errorf("request %d groups = %q, want 50", i, group)
+		}
+	}
+}
+
+// TestBasketball_GetGamesBySeason_SiteAPI verifies the season fetch walks the
+// site.api scoreboard one ET day at a time over the scoreboard calendar's
+// game dates, carrying groups=50, and collects the final games via finalGames
+// (the captured single-day fixture has three finals plus a scheduled game
+// that must be dropped).
+func TestBasketball_GetGamesBySeason_SiteAPI(t *testing.T) {
+	var mu sync.Mutex
+	var days []string
+	var groups []string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			dates := r.URL.Query().Get("dates")
+			if len(dates) != 8 {
+				// Calendar fetch (?dates=year) for GetSeasonDatesForYear.
+				payload := mustJSON(t, ScoreboardESPN{
+					Leagues: []ScoreboardLeague{{
+						Season:   ScoreboardSeason{Year: 2024},
+						Calendar: []string{"2024-01-06T08:00Z", "2024-01-13T08:00Z"},
+					}},
+				})
+				if _, err := w.Write([]byte(payload)); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+				return
+			}
+			days = append(days, dates)
+			groups = append(groups, r.URL.Query().Get("groups"))
+			// Real fixture for the first day; an empty (but valid) payload for
+			// the second, so the game count stays deterministic.
+			payload := siteBasketballScoreboardFixture
+			if dates != "20240106" {
+				payload = mustJSON(t, bbScoreboardPayload())
+			}
+			if _, err := w.Write([]byte(payload)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	client := newBasketballTestClient(t, ts.URL)
+
+	games, err := client.GetGamesBySeason(context.Background(), 2024, D1Basketball)
+	if err != nil {
+		t.Fatalf("GetGamesBySeason: %v", err)
+	}
+
+	if len(days) != 2 {
+		t.Fatalf("day requests = %v, want the two calendar dates", days)
+	}
+	if days[0] != "20240106" || days[1] != "20240113" {
+		t.Errorf("days = %v, want [20240106 20240113]", days)
+	}
+	for i, group := range groups {
+		if group != "50" {
+			t.Errorf("day request %d groups = %q, want 50", i, group)
+		}
+	}
+
+	// The captured fixture holds three STATUS_FINAL games (the second day
+	// contributes none) — only finals survive.
+	if len(games) != 3 {
+		t.Fatalf("len(games) = %d, want 3", len(games))
+	}
+	wantIDs := map[int64]bool{401827679: true, 401825514: true, 401827681: true}
+	for _, g := range games {
+		if !wantIDs[g.ID] {
+			t.Errorf("unexpected game ID %d", g.ID)
+		}
+	}
+}
+
+// TestBasketball_TeamConferencesByYear_SiteAPI verifies the team→conference
+// walk over the site.api scoreboard: every competitor's team.conferenceId is
+// collected per game date, including non-final events.
+func TestBasketball_TeamConferencesByYear_SiteAPI(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			dates := r.URL.Query().Get("dates")
+			if len(dates) != 8 {
+				payload := mustJSON(t, ScoreboardESPN{
+					Leagues: []ScoreboardLeague{{
+						Season:   ScoreboardSeason{Year: 2024},
+						Calendar: []string{"2024-01-06T08:00Z"},
+					}},
+				})
+				if _, err := w.Write([]byte(payload)); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+				return
+			}
+			// One final event (300/400) plus one scheduled event (500/600):
+			// conference IDs must be collected from both statuses.
+			payload := mustJSON(t, bbScoreboardPayload(
+				bbSiteEvent(3001, true), bbSiteEvent(3003, false)))
+			if _, err := w.Write([]byte(payload)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	client := newBasketballTestClient(t, ts.URL)
+
+	confs, err := client.TeamConferencesByYear(context.Background(), 2024)
+	if err != nil {
+		t.Fatalf("TeamConferencesByYear: %v", err)
+	}
+
+	want := map[int64]int64{
+		3001: 300, 3101: 400, // final event
+		3003: 300, 3103: 400, // scheduled event
+	}
+	if len(confs) != len(want) {
+		t.Fatalf("confs = %v, want %v", confs, want)
+	}
+	for id, conf := range want {
+		if confs[id] != conf {
+			t.Errorf("confs[%d] = %d, want %d", id, confs[id], conf)
+		}
+	}
+}
+
+// TestBasketball_GetGameStats_SiteAPISummary verifies the basketball summary
+// endpoint feeds the same GameInfoESPN accessors the cdn playbyplay path did,
+// against the captured 2025-26 fixture.
+func TestBasketball_GetGameStats_SiteAPISummary(t *testing.T) {
+	ts := setupBasketballTestServer(t)
+	client := newBasketballTestClient(t, ts.URL)
+
+	res, err := client.GetGameStats(context.Background(), 401827679)
+	if err != nil {
+		t.Fatalf("GetGameStats: %v", err)
+	}
+
+	header := res.GamePackage.Header
+	if header.ID != 401827679 {
+		t.Errorf("Header.ID = %d, want 401827679", header.ID)
+	}
+	if header.Season.Year != 2026 || header.Season.Type != 2 {
+		t.Errorf("Season = %+v, want year 2026 type 2", header.Season)
+	}
+	if header.Week != 15 {
+		t.Errorf("Week = %d, want 15", header.Week)
+	}
+	if len(header.Competitions) != 1 {
+		t.Fatalf("len(Competitions) = %d, want 1", len(header.Competitions))
+	}
+	comp := header.Competitions[0]
+	if comp.Date != "2026-02-14T23:30Z" {
+		t.Errorf("Date = %q", comp.Date)
+	}
+	if !comp.ConfGame || comp.Neutral {
+		t.Error("expected conference game at a non-neutral site")
+	}
+	if len(comp.Competitors) != 2 {
+		t.Fatalf("len(Competitors) = %d, want 2", len(comp.Competitors))
+	}
+	if comp.Competitors[0].ID != 12 || comp.Competitors[0].Score != 75 {
+		t.Errorf("competitor[0] = %+v", comp.Competitors[0])
+	}
+	if comp.Competitors[1].ID != 2641 || comp.Competitors[1].Score != 78 {
+		t.Errorf("competitor[1] = %+v", comp.Competitors[1])
+	}
+
+	// Box score: team statistics keyed by team ID (Texas Tech appears first).
+	teams := res.GamePackage.Boxscore.Teams
+	if len(teams) != 2 || teams[0].Team.ID != 2641 || teams[1].Team.ID != 12 {
+		t.Fatalf("boxscore teams = %+v", teams)
+	}
+	fg := teams[0].Statistics[0]
+	if fg.Name != "fieldGoalsMade-fieldGoalsAttempted" || fg.DisplayValue != "27-66" {
+		t.Errorf("Texas Tech FG stat = %+v", fg)
+	}
+
+	// Box score: player statistics with labels/totals/athletes (the category
+	// name is JSON null on basketball payloads).
+	players := res.GamePackage.Boxscore.Players
+	if len(players) != 2 {
+		t.Fatalf("len(Players) = %d, want 2", len(players))
+	}
+	stat := players[0].Statistics[0]
+	if stat.Name != "" || len(stat.Labels) == 0 || len(stat.Totals) == 0 {
+		t.Fatalf("player stats = %+v", stat)
+	}
+	if len(stat.Athletes) == 0 || stat.Athletes[0].Athlete.ID != 5143604 {
+		t.Errorf("player athletes = %+v", stat.Athletes)
 	}
 }
 
@@ -740,7 +945,7 @@ func TestMakeRequestMaxAttempts(t *testing.T) {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/schedule", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/schedule", ""))
 
 	start := time.Now()
 	_, err := client.DefaultSeason(context.Background())
@@ -788,7 +993,7 @@ func TestMakeRequestRetries202Challenge(t *testing.T) {
 		RateLimit:      0,
 		Sport:          CollegeFootball,
 	}}
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/scoreboard", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/scoreboard", ""))
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {

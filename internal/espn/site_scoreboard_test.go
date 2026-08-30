@@ -46,7 +46,7 @@ func setupSiteTestServer(t *testing.T) *httptest.Server {
 func TestGetCurrentWeekGames_SiteAPI(t *testing.T) {
 	ts := setupSiteTestServer(t)
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard", ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard", ""))
 
 	games, err := client.GetCurrentWeekGames(context.Background(), FBS)
 	if err != nil {
@@ -188,7 +188,7 @@ func TestSiteScoreboardValidate(t *testing.T) {
 func TestGetGameStats_SiteAPISummary(t *testing.T) {
 	ts := setupSiteTestServer(t)
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", ts.URL+"/apis/site/v2/sports/football/college-football/summary?event=%d", "", "", ""))
+	t.Cleanup(client.SetURLs(ts.URL+"/apis/site/v2/sports/football/college-football/summary?event=%d", "", "", ""))
 
 	res, err := client.GetGameStats(context.Background(), 401864494)
 	if err != nil {
@@ -245,52 +245,5 @@ func TestGetGameStats_SiteAPISummary(t *testing.T) {
 	}
 	if len(passing.Athletes) == 0 || passing.Athletes[0].Athlete.ID != 5295238 {
 		t.Errorf("passing athletes = %+v", passing.Athletes)
-	}
-}
-
-// TestGameInfoUnmarshalCDNShape guards the cdn.espn.com path (still used by
-// basketball and by the historical football schedule) against regressions
-// introduced by the dual-shape UnmarshalJSON.
-func TestGameInfoUnmarshalCDNShape(t *testing.T) {
-	cdnJSON := `{
-		"commentary": {"available": false},
-		"gamepackageJSON": {
-			"header": {
-				"id": "1001",
-				"season": {"year": 2023, "type": 2},
-				"week": 1,
-				"competitions": [{
-					"id": "1001",
-					"date": "2023-09-02T23:00Z",
-					"conferenceCompetition": true,
-					"neutralSite": false,
-					"competitors": [
-						{"homeAway": "home", "id": "1", "score": "28"},
-						{"homeAway": "away", "id": "2", "score": "14"}
-					]
-				}]
-			},
-			"boxscore": {
-				"teams": [{"team": {"id": "1"}, "statistics": [{"name": "firstDowns", "displayValue": "22"}]}],
-				"players": [{"team": {"id": "1"}, "statistics": [{"name": "passing", "labels": ["YDS"], "totals": ["285"]}]}]
-			}
-		}
-	}`
-
-	var res GameInfoESPN
-	if err := json.Unmarshal([]byte(cdnJSON), &res); err != nil {
-		t.Fatalf("unmarshal cdn shape: %v", err)
-	}
-	if err := res.validate(); err != nil {
-		t.Fatalf("validate: %v", err)
-	}
-	if res.GamePackage.Header.ID != 1001 || res.GamePackage.Header.Season.Year != 2023 {
-		t.Errorf("header = %+v", res.GamePackage.Header)
-	}
-	if len(res.GamePackage.Boxscore.Teams) != 1 || res.GamePackage.Boxscore.Teams[0].Statistics[0].DisplayValue != "22" {
-		t.Errorf("boxscore teams = %+v", res.GamePackage.Boxscore.Teams)
-	}
-	if len(res.GamePackage.Boxscore.Players) != 1 || res.GamePackage.Boxscore.Players[0].Statistics[0].Totals[0] != "285" {
-		t.Errorf("boxscore players = %+v", res.GamePackage.Boxscore.Players)
 	}
 }
