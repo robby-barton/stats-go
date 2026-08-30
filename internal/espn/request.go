@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -95,11 +96,21 @@ type validatable interface {
 	validate() error
 }
 
+// userAgentFor returns the User-Agent to send to the given endpoint URL.
+// See the header comment in makeRequest for the per-host rationale.
+func userAgentFor(endpoint string) string {
+	if strings.Contains(endpoint, "site.api.espn.com") {
+		return "curl/8.5.0"
+	}
+	return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+		"Chrome/131.0.0.0 Safari/537.36"
+}
+
 // Responses constrains the response types makeRequest can decode. Every
 // ESPN response implements validate, so decoded payloads are checked at the
 // transport boundary.
 type Responses interface {
-	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN
+	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN
 	validatable
 }
 
@@ -120,13 +131,16 @@ func makeRequest[T Responses](ctx context.Context, c *Client, endpoint string, o
 	}
 
 	headers := map[string]string{
-		// ESPN's CDN started returning HTTP 202 with an empty body for old
-		// browser User-Agents (2026-08-29), which decoders surface as a bare
-		// EOF. Keep this reasonably current; see the decode error below which
-		// now includes the status code to make this failure mode diagnosable.
-		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-			"Chrome/131.0.0.0 Safari/537.36",
-		"Accept": "application/json",
+		// Per-host User-Agent policy (both determined empirically 2026-08-29):
+		//
+		// - cdn.espn.com serves empty-body HTTP 202 challenges for old browser
+		//   User-Agents, so it needs a current browser UA.
+		// - site.api.espn.com 403s requests that CLAIM to be a browser (its
+		//   protection flags the TLS-fingerprint/UA mismatch) but allows
+		//   plain client UAs such as curl's. Verified by header matrix:
+		//   curl-like UA 200, custom and Chrome UAs 403.
+		"User-Agent": userAgentFor(endpoint),
+		"Accept":     "application/json",
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)

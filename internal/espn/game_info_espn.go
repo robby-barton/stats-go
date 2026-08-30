@@ -1,9 +1,33 @@
 package espn
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+)
 
 type GameInfoESPN struct {
 	GamePackage GamePackage `json:"gamepackageJSON"`
+}
+
+// UnmarshalJSON accepts both ESPN box-score shapes:
+// cdn.espn.com playbyplay wraps the payload in "gamepackageJSON";
+// the site.api summary carries the same header/boxscore objects at the top
+// level. Both end up in GamePackage so the game parser stays source-blind.
+func (g *GameInfoESPN) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		GamePackage *GamePackage `json:"gamepackageJSON"`
+		Header      Header       `json:"header"`
+		Boxscore    Boxscore     `json:"boxscore"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.GamePackage != nil {
+		g.GamePackage = *raw.GamePackage
+		return nil
+	}
+	g.GamePackage = GamePackage{Header: raw.Header, Boxscore: raw.Boxscore}
+	return nil
 }
 
 type GamePackage struct {
@@ -81,14 +105,14 @@ type Athlete struct {
 	LastName  string `json:"lastName"`
 }
 
-func (r GameInfoESPN) validate() error {
-	if r.GamePackage.Header.ID == 0 {
+func (g GameInfoESPN) validate() error {
+	if g.GamePackage.Header.ID == 0 {
 		return errors.New("game info response has zero header ID")
 	}
-	if len(r.GamePackage.Header.Competitions) == 0 {
+	if len(g.GamePackage.Header.Competitions) == 0 {
 		return errors.New("game info response missing competitions")
 	}
-	if len(r.GamePackage.Header.Competitions[0].Competitors) < 2 {
+	if len(g.GamePackage.Header.Competitions[0].Competitors) < 2 {
 		return errors.New("game info response has fewer than 2 competitors")
 	}
 	return nil
