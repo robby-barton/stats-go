@@ -4,10 +4,6 @@ on:
   pull_request:
     branches:
       - master
-    paths:
-      - 'go.*'                 # go.mod or go.sum changes
-      - 'cmd/**'               # command changes
-      - 'internal/**'          # internal package changes
 
 jobs:
   lint:
