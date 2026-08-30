@@ -119,11 +119,6 @@ func (fc *FootballClient) GetGamesBySeason(ctx context.Context, year int64, grou
 	return allGames, nil
 }
 
-// TeamConferencesByYear extracts team → conference ID mappings from the cdn
-// schedule for every week of the given year. This remains on cdn.espn.com
-// because no site.api endpoint covers it in bulk: the /teams rows carry no
-// conferenceId, and scoreboard responses cap events (~25) and only expand a
-// single date per request. See docs/tech-debt.md.
 // parseESPNTime parses scoreboard calendar timestamps, which omit seconds
 // (e.g. "2026-08-22T07:00Z") unlike strict RFC 3339.
 func parseESPNTime(v string) (time.Time, error) {

@@ -11,7 +11,7 @@ Format rules:
 
 ## Active
 
-### Historical week/date schedule fetches and TeamConferencesByYear still on cdn.espn.com
+### Historical week/date schedule fetches and basketball TeamConferencesByYear still on cdn.espn.com
 
 The site.api migration (2026-09) moved the current-week games fetch
 (`GetCurrentWeekGames` → scoreboard with the `groups` param), the football
@@ -26,14 +26,26 @@ prone to empty-body 202 bot challenges:
   (historical week fetching). The site.api scoreboard cannot serve this: its
   responses cap events (~25) and only expand a single date per `dates`
   request, so a week would need 4+ requests instead of one.
-- `TeamConferencesByYear` (both sports — team→conference extraction over all
-  weeks/dates of a season). No site.api endpoint covers this in bulk: the
-  `/teams?limit=1000` rows carry no `conferenceId`, and the scoreboard event
-  caps apply here too. `sports.core.api` was probed (2026-08-29) and its
-  season/teams list endpoints return application errors, so the cdn schedule
-  remains the only known source. The move is not trivially shared either:
-  `GetGamesByWeek` returns `*GameScheduleESPN` whose calendar/conferenceAPI
-  blocks the scoreboard doesn't provide.
+- Football `TeamConferencesByYear` now also runs on site.api: the season's
+  calendar span (from the `?dates=<year>` scoreboard calendar) is walked in
+  weekly chunks per division group with
+  `scoreboard?dates=start-end&groups=N`, and each competitor's
+  `team.conferenceId` is collected (postseason included for bowl-only
+  teams). Live-verified 2026-08-30: the ncaaf season one-shot produced 266
+  team_seasons rows (138 FBS / 128 FCS).
+- Basketball `TeamConferencesByYear` (team→conference extraction over all
+  game dates of a season) remains on the cdn schedule: the `/teams?limit=1000`
+  rows carry no `conferenceId`, and basketball calendar dates are flat date
+  strings rather than the week-entry objects football's walk relies on.
+  `sports.core.api` was probed (2026-08-29) and its season/teams list
+  endpoints return application errors, so the cdn schedule remains the only
+  known source. `GetGamesByWeek` returns `*GameScheduleESPN` whose
+  calendar/conferenceAPI blocks the scoreboard doesn't provide.
+- Watch item on the football walk: live observation showed the site.api
+  scoreboard date-range expansion behaves inconsistently (a one-week
+  historical range returned 0 events while a 37-day range returned ~200), so
+  the per-team coverage of the date-span walk is worth re-verifying against
+  past seasons before trusting it for historical re-runs.
 - All basketball schedule and box-score fetches (date-based schedule,
   playbyplay box scores).
 
