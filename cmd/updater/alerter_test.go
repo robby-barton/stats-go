@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
-	"sync"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -13,57 +10,49 @@ import (
 
 var errTest = errors.New("boom")
 
-func newTestAlerter(t *testing.T, hits *int) *alerter {
-	t.Helper()
-	var mu sync.Mutex
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		*hits++
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(ts.Close)
-
+func newTestAlerter(sent *[][]byte) *alerter {
 	a := newAlerter(zap.NewNop().Sugar())
-	a.url = ts.URL
+	a.to = "ops@example.com"
+	a.host = "smtp.example.com"
+	a.send = func(msg []byte) error {
+		*sent = append(*sent, msg)
+		return nil
+	}
 	return a
 }
 
 func TestAlerterFiresAtThreshold(t *testing.T) {
-	var hits int
-	a := newTestAlerter(t, &hits)
+	var sent [][]byte
+	a := newTestAlerter(&sent)
 
 	for i := 0; i < alertThreshold-1; i++ {
 		a.failure("games", errTest)
 	}
-	if hits != 0 {
-		t.Fatalf("alerts fired before threshold: hits = %d", hits)
+	if len(sent) != 0 {
+		t.Fatalf("alerts sent before threshold: %d", len(sent))
 	}
 
 	a.failure("games", errTest) // hits alertThreshold
-	if hits != 1 {
-		t.Fatalf("hits = %d, want 1 after crossing threshold", hits)
+	if len(sent) != 1 {
+		t.Fatalf("sent = %d, want 1 after crossing threshold", len(sent))
 	}
 }
 
 func TestAlerterRealertsEveryThresholdCrossing(t *testing.T) {
-	var hits int
-	a := newTestAlerter(t, &hits)
+	var sent [][]byte
+	a := newTestAlerter(&sent)
 
-	for i := 0; i < alertThreshold; i++ {
+	for i := 0; i < 2*alertThreshold; i++ {
 		a.failure("games", errTest)
 	}
-	for i := 0; i < alertThreshold; i++ {
-		a.failure("games", errTest)
-	}
-	if hits != 2 {
-		t.Fatalf("hits = %d, want 2 (one per threshold crossing)", hits)
+	if len(sent) != 2 {
+		t.Fatalf("sent = %d, want 2 (one per threshold crossing)", len(sent))
 	}
 }
 
 func TestAlerterSuccessResetsCounter(t *testing.T) {
-	var hits int
-	a := newTestAlerter(t, &hits)
+	var sent [][]byte
+	a := newTestAlerter(&sent)
 
 	for i := 0; i < alertThreshold-1; i++ {
 		a.failure("games", errTest)
@@ -72,41 +61,66 @@ func TestAlerterSuccessResetsCounter(t *testing.T) {
 	a.failure("games", errTest)
 	a.failure("games", errTest)
 
-	if hits != 0 {
-		t.Fatalf("hits = %d, want 0: success must reset the counter", hits)
+	if len(sent) != 0 {
+		t.Fatalf("sent = %d, want 0: success must reset the counter", len(sent))
 	}
 }
 
-func TestAlerterPayloadIsWebhookCompatible(t *testing.T) {
-	var got map[string]string
-	done := make(chan struct{})
-	ts := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
-			t.Errorf("decoding payload: %v", err)
-		}
-		close(done)
-	}))
-	defer ts.Close()
+func TestAlerterDisabledWithoutRecipient(t *testing.T) {
+	var sent [][]byte
+	a := newTestAlerter(&sent)
+	a.to = "" // no ALERT_EMAIL_TO
 
-	a := newAlerter(zap.NewNop().Sugar())
-	a.url = ts.URL
+	for i := 0; i < alertThreshold+1; i++ {
+		a.failure("games", errTest)
+	}
+	if len(sent) != 0 {
+		t.Fatalf("sent = %d, want 0 when recipient is unset", len(sent))
+	}
+}
+
+func TestAlerterSendFailureIsLoggedNotFatal(t *testing.T) {
+	t.Helper()
+	var sent [][]byte
+	a := newTestAlerter(&sent)
+	a.send = func([]byte) error { return errors.New("smtp down") }
+
+	// Must not panic; counter still resets so the next crossing re-attempts.
 	for i := 0; i < alertThreshold; i++ {
 		a.failure("games", errTest)
 	}
-	<-done
+	for i := 0; i < alertThreshold; i++ {
+		a.failure("games", errTest)
+	}
+	_ = sent
+}
 
-	if got["content"] == "" || got["text"] == "" {
-		t.Fatalf("payload missing content/text keys: %v", got)
+func TestBuildMessageHeaders(t *testing.T) {
+	msg, err := buildMessage("from@example.com", "to@example.com", "subject line", "body text")
+	if err != nil {
+		t.Fatalf("buildMessage: %v", err)
+	}
+	s := string(msg)
+	for _, want := range []string{
+		"From: from@example.com\r\n",
+		"To: to@example.com\r\n",
+		"Subject: subject line\r\n",
+		"Date: ",
+		"MIME-Version: 1.0\r\n",
+		"Content-Type: text/plain; charset=UTF-8\r\n",
+		"\r\nbody text",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("message missing %q", want)
+		}
 	}
 }
 
-func TestAlerterNoopWithoutURL(t *testing.T) {
-	a := newAlerter(zap.NewNop().Sugar())
-	if a.url != "" {
-		t.Fatalf("expected empty URL without ALERT_WEBHOOK set")
+func TestBuildMessageRequiresAddresses(t *testing.T) {
+	if _, err := buildMessage("", "to@example.com", "s", "b"); err == nil {
+		t.Error("expected error for empty sender")
 	}
-	// Must not panic and must not attempt any HTTP call (no server configured).
-	for i := 0; i < alertThreshold+1; i++ {
-		a.failure("games", errTest)
+	if _, err := buildMessage("from@example.com", "", "s", "b"); err == nil {
+		t.Error("expected error for empty recipient")
 	}
 }
