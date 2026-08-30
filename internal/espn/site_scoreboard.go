@@ -125,6 +125,13 @@ func (r SiteScoreboardESPN) validate() error {
 func (r SiteScoreboardESPN) finalGames() ([]Game, error) {
 	var games []Game
 	for _, ev := range r.Events {
+		// ESPN occasionally emits a degenerate empty event object (verified
+		// live 2026-08-30: an FCS date-range response in week 8 of the 2025
+		// season contained one `{}` event). Skip it — there is no game data —
+		// but still error on IDs that are present yet malformed.
+		if ev.ID == "" {
+			continue
+		}
 		id, err := strconv.ParseInt(ev.ID, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("parsing scoreboard event id %q: %w", ev.ID, err)

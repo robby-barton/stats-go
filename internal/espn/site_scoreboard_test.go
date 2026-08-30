@@ -120,6 +120,18 @@ func TestSiteScoreboardFinalGames(t *testing.T) {
 	if _, err := broken.finalGames(); err == nil {
 		t.Error("expected error for non-numeric event ID, got nil")
 	}
+
+	// ESPN occasionally emits a degenerate empty event object (verified live
+	// 2026-08-30 in an FCS date-range response); it must be skipped, not
+	// treated as a parse error.
+	empty := SiteScoreboardESPN{Events: []SiteEvent{{}, {ID: "401864494", Status: res.Events[0].Status}}}
+	emptyGames, err := empty.finalGames()
+	if err != nil {
+		t.Fatalf("finalGames with empty event: %v", err)
+	}
+	if len(emptyGames) != 1 || emptyGames[0].ID != 401864494 {
+		t.Errorf("empty-event walk = %+v, want only game 401864494", emptyGames)
+	}
 }
 
 func TestSiteScoreboardValidate(t *testing.T) {
