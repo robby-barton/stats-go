@@ -233,6 +233,19 @@ func setupBasketballTestServer(t *testing.T) *httptest.Server {
 			}
 		})
 
+	mux.HandleFunc("/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/conferences",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			resp := espn.ConferencesESPN{Conferences: []espn.SiteConference{
+				{GroupID: 50, Name: "NCAA Division I", ShortName: "Division I"},
+				{GroupID: 300, Name: "Big East Conference", ShortName: "Big East", ParentGroupID: espn.FlexInt64(50)},
+				{GroupID: 400, Name: "Atlantic Coast Conference", ShortName: "ACC", ParentGroupID: espn.FlexInt64(50)},
+			}}
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -260,6 +273,7 @@ func newBasketballTestUpdater(t *testing.T) *Updater {
 		ts.URL+"/core/mens-college-basketball/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000",
 		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+		ts.URL+"/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard/conferences",
 	))
 
 	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)

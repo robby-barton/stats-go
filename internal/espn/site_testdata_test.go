@@ -698,3 +698,421 @@ const siteSummaryFixture = `{
   ]
  }
 }`
+
+// siteScoreboardCalendarFixture is a trimmed scoreboard response for
+// ?dates=2026 (captured 2026-08-29), whose leagues[0].calendar carries the
+// object-shaped season-type entries the football season navigation consumes
+// (the plain scoreboard response omits the calendar entirely). Entry labels,
+// values and dates are unchanged; only the alternateLabel/detail fields and
+// all events were dropped.
+const siteScoreboardCalendarFixture = `{
+ "leagues": [
+  {
+   "id": "23",
+   "name": "NCAA - Football",
+   "slug": "college-football",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-02-01T08:00Z",
+    "endDate": "2027-01-28T07:59Z",
+    "displayName": "2026"
+   },
+   "calendar": [
+  {
+   "label": "Regular Season",
+   "value": "2",
+   "startDate": "2026-08-22T07:00Z",
+   "endDate": "2026-12-13T07:59Z",
+   "entries": [
+    {
+     "label": "Week 1",
+     "value": "1",
+     "startDate": "2026-08-22T07:00Z",
+     "endDate": "2026-09-08T06:59Z"
+    },
+    {
+     "label": "Week 2",
+     "value": "2",
+     "startDate": "2026-09-08T07:00Z",
+     "endDate": "2026-09-14T06:59Z"
+    },
+    {
+     "label": "Week 3",
+     "value": "3",
+     "startDate": "2026-09-14T07:00Z",
+     "endDate": "2026-09-21T06:59Z"
+    },
+    {
+     "label": "Week 4",
+     "value": "4",
+     "startDate": "2026-09-21T07:00Z",
+     "endDate": "2026-09-28T06:59Z"
+    },
+    {
+     "label": "Week 5",
+     "value": "5",
+     "startDate": "2026-09-28T07:00Z",
+     "endDate": "2026-10-05T06:59Z"
+    },
+    {
+     "label": "Week 6",
+     "value": "6",
+     "startDate": "2026-10-05T07:00Z",
+     "endDate": "2026-10-12T06:59Z"
+    },
+    {
+     "label": "Week 7",
+     "value": "7",
+     "startDate": "2026-10-12T07:00Z",
+     "endDate": "2026-10-19T06:59Z"
+    },
+    {
+     "label": "Week 8",
+     "value": "8",
+     "startDate": "2026-10-19T07:00Z",
+     "endDate": "2026-10-26T06:59Z"
+    },
+    {
+     "label": "Week 9",
+     "value": "9",
+     "startDate": "2026-10-26T07:00Z",
+     "endDate": "2026-11-02T07:59Z"
+    },
+    {
+     "label": "Week 10",
+     "value": "10",
+     "startDate": "2026-11-02T08:00Z",
+     "endDate": "2026-11-09T07:59Z"
+    },
+    {
+     "label": "Week 11",
+     "value": "11",
+     "startDate": "2026-11-09T08:00Z",
+     "endDate": "2026-11-16T07:59Z"
+    },
+    {
+     "label": "Week 12",
+     "value": "12",
+     "startDate": "2026-11-16T08:00Z",
+     "endDate": "2026-11-23T07:59Z"
+    },
+    {
+     "label": "Week 13",
+     "value": "13",
+     "startDate": "2026-11-23T08:00Z",
+     "endDate": "2026-11-30T07:59Z"
+    },
+    {
+     "label": "Week 14",
+     "value": "14",
+     "startDate": "2026-11-30T08:00Z",
+     "endDate": "2026-12-07T07:59Z"
+    },
+    {
+     "label": "Week 15",
+     "value": "15",
+     "startDate": "2026-12-07T08:00Z",
+     "endDate": "2026-12-13T07:59Z"
+    }
+   ]
+  },
+  {
+   "label": "Postseason",
+   "value": "3",
+   "startDate": "2026-12-13T08:00Z",
+   "endDate": "2027-01-28T07:59Z",
+   "entries": [
+    {
+     "label": "Bowls",
+     "value": "1",
+     "startDate": "2026-12-13T08:00Z",
+     "endDate": "2027-01-28T07:59Z"
+    },
+    {
+     "label": "CFP",
+     "value": "999",
+     "startDate": "2026-12-18T08:00Z",
+     "endDate": "2027-01-28T07:59Z"
+    }
+   ]
+  },
+  {
+   "label": "Off Season",
+   "value": "4",
+   "startDate": "2027-01-28T08:00Z",
+   "endDate": "2027-02-01T07:59Z",
+   "entries": [
+    {
+     "label": "All-Star",
+     "value": "1",
+     "startDate": "2027-01-28T08:00Z",
+     "endDate": "2027-02-01T07:59Z"
+    }
+   ]
+  }
+   ]
+  }
+ ],
+ "week": {
+  "number": 1
+ },
+ "events": []
+}`
+
+// siteConferencesFBSFixture is a trimmed scoreboard/conferences response
+// for ?groups=80 (captured 2026-08-29): the FBS root entry plus its 11
+// conferences. The logo and uid fields are dropped; values are unchanged.
+const siteConferencesFBSFixture = `{
+ "conferences": [
+  {"groupId": "80", "name": "FBS",
+   "shortName": "FBS"},
+  {"groupId": "1", "name": "Atlantic Coast Conference",
+   "parentGroupId": "80", "shortName": "ACC"},
+  {"groupId": "151", "name": "American Conference",
+   "parentGroupId": "80", "shortName": "American"},
+  {"groupId": "4", "name": "Big 12 Conference",
+   "parentGroupId": "80", "shortName": "Big 12"},
+  {"groupId": "5", "name": "Big Ten Conference",
+   "parentGroupId": "80", "shortName": "Big Ten"},
+  {"groupId": "12", "name": "Conference USA",
+   "parentGroupId": "80", "shortName": "CUSA"},
+  {"groupId": "18", "name": "FBS Independents",
+   "parentGroupId": "80", "shortName": "FBS Indep."},
+  {"groupId": "15", "name": "Mid-American Conference",
+   "parentGroupId": "80", "shortName": "MAC"},
+  {"groupId": "17", "name": "Mountain West Conference",
+   "parentGroupId": "80", "shortName": "Mountain West"},
+  {"groupId": "9", "name": "Pac-12 Conference",
+   "parentGroupId": "80", "shortName": "Pac-12"},
+  {"groupId": "8", "name": "Southeastern Conference",
+   "parentGroupId": "80", "shortName": "SEC"},
+  {"groupId": "37", "name": "Sun Belt Conference",
+   "parentGroupId": "80", "shortName": "Sun Belt"}
+ ]
+}`
+
+// siteConferencesFCSFixture is a trimmed scoreboard/conferences response
+// for ?groups=81 (captured 2026-08-29): the FCS root entry plus its 14
+// conferences.
+const siteConferencesFCSFixture = `{
+ "conferences": [
+  {"groupId": "81", "name": "FCS",
+   "shortName": "FCS"},
+  {"groupId": "20", "name": "Big Sky Conference",
+   "parentGroupId": "81", "shortName": "Big Sky"},
+  {"groupId": "48", "name": "Coastal Athletic Association",
+   "parentGroupId": "81", "shortName": "CAA"},
+  {"groupId": "32", "name": "FCS Independents",
+   "parentGroupId": "81", "shortName": "FCS Indep."},
+  {"groupId": "22", "name": "Ivy League",
+   "parentGroupId": "81", "shortName": "Ivy"},
+  {"groupId": "24", "name": "Mid-Eastern Athletic Conference",
+   "parentGroupId": "81", "shortName": "MEAC"},
+  {"groupId": "21", "name": "Missouri Valley Football Conference",
+   "parentGroupId": "81", "shortName": "MVFC"},
+  {"groupId": "25", "name": "Northeast Conference",
+   "parentGroupId": "81", "shortName": "NEC"},
+  {"groupId": "179", "name": "Ohio Valley Conference",
+   "parentGroupId": "81", "shortName": "OVC"},
+  {"groupId": "27", "name": "Patriot League",
+   "parentGroupId": "81", "shortName": "Patriot"},
+  {"groupId": "28", "name": "Pioneer Football League",
+   "parentGroupId": "81", "shortName": "Pioneer"},
+  {"groupId": "29", "name": "Southern Conference",
+   "parentGroupId": "81", "shortName": "Southern"},
+  {"groupId": "30", "name": "Southland Conference",
+   "parentGroupId": "81", "shortName": "Southland"},
+  {"groupId": "31", "name": "Southwestern Athletic Conference",
+   "parentGroupId": "81", "shortName": "SWAC"},
+  {"groupId": "177", "name": "United Athletic Conference",
+   "parentGroupId": "81", "shortName": "UAC"}
+ ]
+}`
+
+// siteConferencesDIIFixture is a trimmed scoreboard/conferences response
+// for ?groups=57 (captured 2026-08-29): the DII root entry plus its 17
+// conferences.
+const siteConferencesDIIFixture = `{
+ "conferences": [
+  {"groupId": "57", "name": "NCAA Division II",
+   "shortName": "NCAA Division II"},
+  {"groupId": "104", "name": "CIAA",
+   "parentGroupId": "57", "shortName": "CIAA"},
+  {"groupId": "187", "name": "Conference Carolinas",
+   "parentGroupId": "57", "shortName": "Conference Carolinas"},
+  {"groupId": "107", "name": "GLIAC",
+   "parentGroupId": "57", "shortName": "GLIAC"},
+  {"groupId": "146", "name": "Great American Conference",
+   "parentGroupId": "57", "shortName": "Great American"},
+  {"groupId": "108", "name": "Great Lakes",
+   "parentGroupId": "57", "shortName": "Great Lakes"},
+  {"groupId": "165", "name": "Great Midwest Athletic Conference",
+   "parentGroupId": "57", "shortName": "Great Midwest Athletic"},
+  {"groupId": "110", "name": "Gulf South",
+   "parentGroupId": "57", "shortName": "Gulf South"},
+  {"groupId": "112", "name": "Independent DII",
+   "parentGroupId": "57", "shortName": "Independent DII"},
+  {"groupId": "116", "name": "Lone Star",
+   "parentGroupId": "57", "shortName": "Lone Star"},
+  {"groupId": "118", "name": "Mid America",
+   "parentGroupId": "57", "shortName": "Mid America"},
+  {"groupId": "144", "name": "Mountain East Conference",
+   "parentGroupId": "57", "shortName": "Mountain East"},
+  {"groupId": "127", "name": "Northeast 10",
+   "parentGroupId": "57", "shortName": "Northeast 10"},
+  {"groupId": "129", "name": "Northern Sun",
+   "parentGroupId": "57", "shortName": "Northern Sun"},
+  {"groupId": "133", "name": "Pennsylvania State Athletic Conference",
+   "parentGroupId": "57", "shortName": "Pennsylvania State Athletic"},
+  {"groupId": "135", "name": "Rocky Mountain",
+   "parentGroupId": "57", "shortName": "Rocky Mountain"},
+  {"groupId": "136", "name": "SIAC",
+   "parentGroupId": "57", "shortName": "SIAC"},
+  {"groupId": "139", "name": "South Atlantic",
+   "parentGroupId": "57", "shortName": "South Atlantic"}
+ ]
+}`
+
+// siteConferencesDIIIFixture is a trimmed scoreboard/conferences response
+// for ?groups=58 (captured 2026-08-29): the DIII root entry plus its 30
+// conferences.
+const siteConferencesDIIIFixture = `{
+ "conferences": [
+  {"groupId": "58", "name": "NCAA Division III",
+   "shortName": "NCAA Division III"},
+  {"groupId": "114", "name": "American Rivers Conference",
+   "parentGroupId": "58", "shortName": "American Rivers"},
+  {"groupId": "100", "name": "American Southwest",
+   "parentGroupId": "58", "shortName": "American Southwest"},
+  {"groupId": "102", "name": "CCIW",
+   "parentGroupId": "58", "shortName": "CCIW"},
+  {"groupId": "103", "name": "Centennial",
+   "parentGroupId": "58", "shortName": "Centennial"},
+  {"groupId": "123", "name": "Conference of New England",
+   "parentGroupId": "58", "shortName": "Conference of New England"},
+  {"groupId": "106", "name": "Empire 8",
+   "parentGroupId": "58", "shortName": "Empire 8"},
+  {"groupId": "111", "name": "Heartland",
+   "parentGroupId": "58", "shortName": "Heartland"},
+  {"groupId": "113", "name": "Independent DIII",
+   "parentGroupId": "58", "shortName": "Independent DIII"},
+  {"groupId": "178", "name": "Landmark Conference",
+   "parentGroupId": "58", "shortName": "Landmark Conference"},
+  {"groupId": "115", "name": "Liberty League",
+   "parentGroupId": "58", "shortName": "Liberty League"},
+  {"groupId": "117", "name": "Michigan",
+   "parentGroupId": "58", "shortName": "Michigan"},
+  {"groupId": "119", "name": "Middle Atlantic Conference",
+   "parentGroupId": "58", "shortName": "Mid Atlantic"},
+  {"groupId": "120", "name": "Midwest",
+   "parentGroupId": "58", "shortName": "Midwest"},
+  {"groupId": "121", "name": "Minnesota",
+   "parentGroupId": "58", "shortName": "Minnesota"},
+  {"groupId": "160", "name": "Massachusetts State Collegiate Athletic Conference",
+   "parentGroupId": "58", "shortName": "MSCAC"},
+  {"groupId": "128", "name": "Northern Athletics Collegiate Conference",
+   "parentGroupId": "58", "shortName": "NACC"},
+  {"groupId": "122", "name": "NESCAC",
+   "parentGroupId": "58", "shortName": "NESCAC"},
+  {"groupId": "124", "name": "New Jersey",
+   "parentGroupId": "58", "shortName": "New Jersey"},
+  {"groupId": "166", "name": "New England Women's and Men's Athletic Conference",
+   "parentGroupId": "58", "shortName": "NEWMAC"},
+  {"groupId": "126", "name": "North Coast",
+   "parentGroupId": "58", "shortName": "North Coast"},
+  {"groupId": "130", "name": "Northwest",
+   "parentGroupId": "58", "shortName": "Northwest"},
+  {"groupId": "131", "name": "Ohio",
+   "parentGroupId": "58", "shortName": "Ohio"},
+  {"groupId": "132", "name": "Old Dominion",
+   "parentGroupId": "58", "shortName": "Old Dominion"},
+  {"groupId": "134", "name": "Presidents'",
+   "parentGroupId": "58", "shortName": "Presidents'"},
+  {"groupId": "138", "name": "So. Cal.",
+   "parentGroupId": "58", "shortName": "So. Cal."},
+  {"groupId": "147", "name": "Southern Athletic Association",
+   "parentGroupId": "58", "shortName": "Southern Athletic"},
+  {"groupId": "148", "name": "Southern Collegiate Athletic Conference",
+   "parentGroupId": "58", "shortName": "Southern Collegiate"},
+  {"groupId": "142", "name": "Upper Midwest",
+   "parentGroupId": "58", "shortName": "Upper Midwest"},
+  {"groupId": "143", "name": "USA South",
+   "parentGroupId": "58", "shortName": "USA South"},
+  {"groupId": "145", "name": "Wisconsin",
+   "parentGroupId": "58", "shortName": "Wisconsin"}
+ ]
+}`
+
+// siteConferencesD1Fixture is a trimmed scoreboard/conferences response for
+// basketball ?groups=50 (captured 2026-08-29): the D1 root entry plus its
+// 32 conferences.
+const siteConferencesD1Fixture = `{
+ "conferences": [
+  {"groupId": "50", "name": "NCAA Division I",
+   "shortName": "Division I"},
+  {"groupId": "3", "name": "Atlantic 10 Conference",
+   "parentGroupId": "50", "shortName": "A-10"},
+  {"groupId": "2", "name": "Atlantic Coast Conference",
+   "parentGroupId": "50", "shortName": "ACC"},
+  {"groupId": "1", "name": "America East Conference",
+   "parentGroupId": "50", "shortName": "Am. East"},
+  {"groupId": "62", "name": "American Conference",
+   "parentGroupId": "50", "shortName": "American"},
+  {"groupId": "46", "name": "Atlantic Sun Conference",
+   "parentGroupId": "50", "shortName": "Atlantic Sun"},
+  {"groupId": "8", "name": "Big 12 Conference",
+   "parentGroupId": "50", "shortName": "Big 12"},
+  {"groupId": "4", "name": "Big East Conference",
+   "parentGroupId": "50", "shortName": "Big East"},
+  {"groupId": "5", "name": "Big Sky Conference",
+   "parentGroupId": "50", "shortName": "Big Sky"},
+  {"groupId": "6", "name": "Big South Conference",
+   "parentGroupId": "50", "shortName": "Big South"},
+  {"groupId": "7", "name": "Big Ten Conference",
+   "parentGroupId": "50", "shortName": "Big Ten"},
+  {"groupId": "9", "name": "Big West Conference",
+   "parentGroupId": "50", "shortName": "Big West"},
+  {"groupId": "10", "name": "Coastal Athletic Association",
+   "parentGroupId": "50", "shortName": "CAA"},
+  {"groupId": "11", "name": "Conference USA",
+   "parentGroupId": "50", "shortName": "CUSA"},
+  {"groupId": "45", "name": "Horizon League",
+   "parentGroupId": "50", "shortName": "Horizon"},
+  {"groupId": "12", "name": "Ivy League",
+   "parentGroupId": "50", "shortName": "Ivy"},
+  {"groupId": "14", "name": "Mid-American Conference",
+   "parentGroupId": "50", "shortName": "MAC"},
+  {"groupId": "16", "name": "Mid-Eastern Athletic Conference",
+   "parentGroupId": "50", "shortName": "MEAC"},
+  {"groupId": "13", "name": "Metro Conference",
+   "parentGroupId": "50", "shortName": "Metro"},
+  {"groupId": "44", "name": "Mountain West Conference",
+   "parentGroupId": "50", "shortName": "Mountain West"},
+  {"groupId": "18", "name": "Missouri Valley Conference",
+   "parentGroupId": "50", "shortName": "MVC"},
+  {"groupId": "19", "name": "Northeast Conference",
+   "parentGroupId": "50", "shortName": "NEC"},
+  {"groupId": "20", "name": "Ohio Valley Conference",
+   "parentGroupId": "50", "shortName": "OVC"},
+  {"groupId": "21", "name": "Pac-12 Conference",
+   "parentGroupId": "50", "shortName": "Pac-12"},
+  {"groupId": "22", "name": "Patriot League",
+   "parentGroupId": "50", "shortName": "Patriot"},
+  {"groupId": "23", "name": "Southeastern Conference",
+   "parentGroupId": "50", "shortName": "SEC"},
+  {"groupId": "24", "name": "Southern Conference",
+   "parentGroupId": "50", "shortName": "SoCon"},
+  {"groupId": "25", "name": "Southland Conference",
+   "parentGroupId": "50", "shortName": "Southland"},
+  {"groupId": "49", "name": "Summit League",
+   "parentGroupId": "50", "shortName": "Summit"},
+  {"groupId": "27", "name": "Sun Belt Conference",
+   "parentGroupId": "50", "shortName": "Sun Belt"},
+  {"groupId": "26", "name": "Southwestern Athletic Conference",
+   "parentGroupId": "50", "shortName": "SWAC"},
+  {"groupId": "30", "name": "United Athletic Conference",
+   "parentGroupId": "50", "shortName": "UAC"},
+  {"groupId": "29", "name": "West Coast Conference",
+   "parentGroupId": "50", "shortName": "WCC"}
+ ]
+}`

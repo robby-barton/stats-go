@@ -113,14 +113,19 @@ func (c *Client) GetCompletedGamesByDate(ctx context.Context, date string, group
 	return completedGames(res), nil
 }
 
-// GetSeasonDates returns the list of game dates from the scoreboard calendar.
-// Each date is an ISO 8601 timestamp (e.g. "2025-11-03T08:00Z").
-func (c *Client) GetSeasonDates(ctx context.Context) ([]string, error) {
-	sb, err := c.GetScoreboard(ctx)
-	if err != nil {
+// GetSeasonDatesForYear returns the list of game dates from the scoreboard
+// calendar for the given season year. Each date is an ISO 8601 timestamp
+// (e.g. "2025-11-03T08:00Z"). The calendar is only included in the payload
+// when a `dates` query parameter is passed (verified 2026-08-29); the plain
+// scoreboard response omits it entirely, so the year must be supplied.
+func (c *Client) GetSeasonDatesForYear(ctx context.Context, year int64) ([]string, error) {
+	url := c.ScoreboardURL() + fmt.Sprintf("?dates=%d", year)
+
+	var res ScoreboardESPN
+	if err := makeRequest(ctx, c, url, &res); err != nil {
 		return nil, err
 	}
-	return sb.Leagues[0].Calendar, nil
+	return res.Leagues[0].Calendar, nil
 }
 
 func completedGames(res *GameScheduleESPN) []Game {
@@ -179,7 +184,7 @@ func extractTeamConfs(games *GameScheduleESPN) map[int64]int64 {
 				continue
 			}
 			for _, team := range event.Competitions[0].Competitors {
-				teamConfs[team.Team.ID] = team.Team.ConferenceID
+				teamConfs[team.Team.ID] = int64(team.Team.ConferenceID)
 			}
 		}
 	}

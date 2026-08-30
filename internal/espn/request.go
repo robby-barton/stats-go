@@ -40,6 +40,7 @@ type Client struct {
 	gameStatsURL  string
 	teamInfoURL   string
 	scoreboardURL string
+	conferenceURL string
 }
 
 // NewClientForSport returns a SportClient configured for the given sport.
@@ -56,6 +57,7 @@ func NewClientForSport(sport Sport) SportClient {
 		gameStatsURL:   urls.GameStats,
 		teamInfoURL:    urls.TeamInfo,
 		scoreboardURL:  urls.Scoreboard,
+		conferenceURL:  urls.Conferences,
 	}
 	return wrapClient(c)
 }
@@ -92,6 +94,11 @@ func (c *Client) ScoreboardURL() string {
 	return c.scoreboardURL
 }
 
+// ConferencesURL returns the scoreboard/conferences URL for this client.
+func (c *Client) ConferencesURL() string {
+	return c.conferenceURL
+}
+
 type validatable interface {
 	validate() error
 }
@@ -110,7 +117,7 @@ func userAgentFor(endpoint string) string {
 // ESPN response implements validate, so decoded payloads are checked at the
 // transport boundary.
 type Responses interface {
-	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN
+	GameInfoESPN | GameScheduleESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN | ConferencesESPN
 	validatable
 }
 

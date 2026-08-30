@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,8 +145,14 @@ func newFinalGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, awayS
 		}},
 		Competitions: []espn.Competition{{
 			Competitors: []espn.Competitor{
-				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
-				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+				{
+					ID: homeID, Score: homeScore, HomeAway: "home",
+					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
+				},
+				{
+					ID: awayID, Score: awayScore, HomeAway: "away",
+					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
+				},
 			},
 		}},
 	}
@@ -159,8 +166,14 @@ func newInProgressGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, 
 		}},
 		Competitions: []espn.Competition{{
 			Competitors: []espn.Competitor{
-				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
-				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+				{
+					ID: homeID, Score: homeScore, HomeAway: "home",
+					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
+				},
+				{
+					ID: awayID, Score: awayScore, HomeAway: "away",
+					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
+				},
 			},
 		}},
 	}
@@ -176,8 +189,14 @@ func newSiteEvent(id, homeID, homeConf, homeScore, awayID, awayConf, awayScore i
 		}},
 		Competitions: []espn.SiteCompetition{{
 			Competitors: []espn.Competitor{
-				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
-				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+				{
+					ID: homeID, Score: homeScore, HomeAway: "home",
+					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
+				},
+				{
+					ID: awayID, Score: awayScore, HomeAway: "away",
+					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
+				},
 			},
 		}},
 	}
@@ -195,8 +214,14 @@ func newSiteEventInProgress(id, homeID, homeConf, homeScore, awayID, awayConf, a
 		}},
 		Competitions: []espn.SiteCompetition{{
 			Competitors: []espn.Competitor{
-				{ID: homeID, Team: espn.ScheduleTeam{ID: homeID, ConferenceID: homeConf}, Score: homeScore, HomeAway: "home"},
-				{ID: awayID, Team: espn.ScheduleTeam{ID: awayID, ConferenceID: awayConf}, Score: awayScore, HomeAway: "away"},
+				{
+					ID: homeID, Score: homeScore, HomeAway: "home",
+					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
+				},
+				{
+					ID: awayID, Score: awayScore, HomeAway: "away",
+					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
+				},
 			},
 		}},
 	}
@@ -452,14 +477,41 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 		}
 	})
 
-	// site.api scoreboard endpoint — the current-week games fetch. Built from
-	// the same fixture games as the cdn schedule response, with the same
-	// score override applied.
+	// site.api scoreboard endpoint — the current-week games fetch and the
+	// season navigation (DefaultSeason, GetWeeksInSeason,
+	// HasPostseasonStarted). Requests carrying the `dates` parameter get a
+	// season calendar matching the cdn fixture (2 regular weeks, postseason
+	// starting 2023-12-16T08:00Z).
 	const scoreboardPath = "/apis/site/v2/sports/football/college-football/scoreboard"
-	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc(scoreboardPath, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("dates") != "" && !strings.Contains(r.URL.Query().Get("dates"), "-") {
+			calendar := espn.SiteScoreboardESPN{
+				Leagues: []espn.SiteScoreboardLeague{{
+					Season: espn.SiteScoreboardLeagueSeason{Year: 2023},
+					Calendar: []espn.SiteCalendarType{
+						{Label: "Regular Season", Value: 2,
+							StartDate: "2023-09-01T07:00Z", EndDate: "2023-12-02T07:00Z",
+							Entries: []espn.SiteCalendarWeek{
+								{Label: "Week 1", Value: 1},
+								{Label: "Week 2", Value: 2},
+							}},
+						{Label: "Postseason", Value: 3,
+							StartDate: "2023-12-16T08:00Z", EndDate: "2024-01-08T08:00Z",
+							Entries: []espn.SiteCalendarWeek{
+								{Label: "Bowls", Value: 1},
+							}},
+					},
+				}},
+				Season: espn.SiteSeason{Year: 2023, Type: 2},
+			}
+			if err := json.NewEncoder(w).Encode(calendar); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
 		resp := espn.SiteScoreboardESPN{
-			Leagues: []espn.SiteScoreboardLeague{{}},
+			Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2023}}},
 			Season:  espn.SiteSeason{Year: 2023, Type: 2},
 			Week:    espn.SiteWeek{Number: 1},
 			Events: []espn.SiteEvent{
@@ -492,6 +544,35 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 		}
 	})
 
+	// site.api scoreboard/conferences — ConferenceMap fetches one group per
+	// request (FBS, FCS, DII, DIII). DII/DIII return a minimal valid payload;
+	// the updater only consumes the FBS/FCS conference names.
+	mux.HandleFunc(scoreboardPath+"/conferences", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		conferences := map[string][]espn.SiteConference{
+			"80": {
+				{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: espn.FlexInt64(80)},
+				{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: espn.FlexInt64(80)},
+			},
+			"81": {
+				{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: espn.FlexInt64(81)},
+			},
+			"57": {
+				{GroupID: 400, ShortName: "DII", ParentGroupID: espn.FlexInt64(57)},
+			},
+			"58": {
+				{GroupID: 401, ShortName: "DIII", ParentGroupID: espn.FlexInt64(58)},
+			},
+		}[r.URL.Query().Get("groups")]
+		if conferences == nil {
+			http.Error(w, "unknown groups parameter", http.StatusBadRequest)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(espn.ConferencesESPN{Conferences: conferences}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
@@ -519,6 +600,7 @@ func newTestUpdater(t *testing.T) *Updater {
 		ts.URL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		ts.URL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard",
+		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
 	))
 
 	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)

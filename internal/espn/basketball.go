@@ -104,15 +104,18 @@ func (bc *BasketballClient) historicalSeasonDates(year int64) []string {
 }
 
 // getSeasonDates returns game dates for the given year.
-// For the current season it uses the scoreboard calendar (exact game dates only).
-// For historical seasons it generates the full date range for the season window.
+// For the current season it uses the site.api scoreboard calendar (exact game
+// dates only), which requires a `dates` query parameter — the plain
+// scoreboard response omits the calendar entirely (verified 2026-08-29).
+// For historical seasons it generates the full date range for the season
+// window.
 func (bc *BasketballClient) getSeasonDates(ctx context.Context, year int64) ([]string, error) {
 	current, err := bc.DefaultSeason(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if year == current {
-		return bc.GetSeasonDates(ctx)
+		return bc.GetSeasonDatesForYear(ctx, year)
 	}
 	return bc.historicalSeasonDates(year), nil
 }
@@ -170,6 +173,11 @@ func (bc *BasketballClient) getGamesByDates(ctx context.Context, dates []string,
 	return allGames, nil
 }
 
+// TeamConferencesByYear extracts team → conference ID mappings from the cdn
+// schedule for every game date of the given year. This remains on cdn.espn.com
+// because no site.api endpoint covers it in bulk: the /teams rows carry no
+// conferenceId, and scoreboard responses cap events (~25) and only expand a
+// single date per request. See docs/tech-debt.md.
 func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
 	dates, err := bc.getSeasonDates(ctx, year)
 	if err != nil {
@@ -195,34 +203,22 @@ func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int6
 	return teamConfs, nil
 }
 
+// ConferenceMap fetches D1 conference metadata off the site.api
+// scoreboard/conferences endpoint (groups=50 returns all 32 D1 conferences —
+// verified live 2026-08-29). This replaces the old cdn-schedule mid-season-
+// date workaround, which existed because March Madness schedule pages only
+// exposed tournament groupings; the dedicated conferences endpoint is immune
+// to that problem. ConferenceMap has no year parameter, so like the cdn path
+// it always reflects the current season's conferences.
 func (bc *BasketballClient) ConferenceMap(ctx context.Context) (ConferenceMapResult, error) {
-	// Use a mid-season date to guarantee regular-season conference data.
-	// During March Madness the default schedule page returns only tournament
-	// groupings (NCAA Tournament, NIT, etc.) whose parentGroupId is nil,
-	// causing the D1 conference list to come back empty.
-	current, err := bc.DefaultSeason(ctx)
+	res, err := bc.GetConferences(ctx, D1Basketball)
 	if err != nil {
 		return ConferenceMapResult{}, err
 	}
-	midSeasonDate := fmt.Sprintf("%d1215", current-1) // Dec 15 of prior calendar year
 
-	var res GameScheduleESPN
-	url := bc.WeekURL() + fmt.Sprintf("&date=%s", midSeasonDate)
-	if err := makeRequest(ctx, bc.Client, url, &res); err != nil {
-		return ConferenceMapResult{}, err
-	}
-
-	conferences := res.Content.ConferenceAPI.Conferences
-
-	d1 := map[int64]string{}
-	for _, conference := range conferences {
-		if int64(conference.ParentGroupID) == int64(D1Basketball) {
-			d1[conference.GroupID] = conference.ShortName
-		}
-	}
 	return ConferenceMapResult{
 		Conferences: map[Group]map[int64]string{ //nolint:exhaustive // basketball only has D1
-			D1Basketball: d1,
+			D1Basketball: res.conferenceShortNames(D1Basketball),
 		},
 	}, nil
 }

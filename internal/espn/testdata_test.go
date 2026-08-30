@@ -20,8 +20,8 @@ func testScheduleResponse() GameScheduleESPN {
 							Competitions: []Competition{
 								{
 									Competitors: []Competitor{
-										{ID: 1, Team: ScheduleTeam{ID: 1, ConferenceID: 100}, Score: 28, HomeAway: "home"},
-										{ID: 2, Team: ScheduleTeam{ID: 2, ConferenceID: 100}, Score: 14, HomeAway: "away"},
+										{ID: 1, Team: ScheduleTeam{ID: 1, ConferenceID: FlexInt64(100)}, Score: 28, HomeAway: "home"},
+										{ID: 2, Team: ScheduleTeam{ID: 2, ConferenceID: FlexInt64(100)}, Score: 14, HomeAway: "away"},
 									},
 								},
 							},
@@ -37,8 +37,8 @@ func testScheduleResponse() GameScheduleESPN {
 							Competitions: []Competition{
 								{
 									Competitors: []Competitor{
-										{ID: 3, Team: ScheduleTeam{ID: 3, ConferenceID: 200}, Score: 21, HomeAway: "home"},
-										{ID: 4, Team: ScheduleTeam{ID: 4, ConferenceID: 200}, Score: 10, HomeAway: "away"},
+										{ID: 3, Team: ScheduleTeam{ID: 3, ConferenceID: FlexInt64(200)}, Score: 21, HomeAway: "home"},
+										{ID: 4, Team: ScheduleTeam{ID: 4, ConferenceID: FlexInt64(200)}, Score: 10, HomeAway: "away"},
 									},
 								},
 							},
@@ -54,8 +54,8 @@ func testScheduleResponse() GameScheduleESPN {
 							Competitions: []Competition{
 								{
 									Competitors: []Competitor{
-										{ID: 5, Team: ScheduleTeam{ID: 5, ConferenceID: 100}, Score: 7, HomeAway: "home"},
-										{ID: 6, Team: ScheduleTeam{ID: 6, ConferenceID: 200}, Score: 3, HomeAway: "away"},
+										{ID: 5, Team: ScheduleTeam{ID: 5, ConferenceID: FlexInt64(100)}, Score: 7, HomeAway: "home"},
+										{ID: 6, Team: ScheduleTeam{ID: 6, ConferenceID: FlexInt64(200)}, Score: 3, HomeAway: "away"},
 									},
 								},
 							},

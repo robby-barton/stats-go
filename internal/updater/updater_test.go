@@ -251,6 +251,7 @@ func newTestURLs(t *testing.T, client espn.SportClient, serverURL string) {
 		serverURL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
 		serverURL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard",
+		serverURL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
 	))
 }
 

@@ -5,31 +5,6 @@ reverse-engineered from ESPN's web frontend and may change without notice.
 
 ## Endpoints
 
-### Game Schedule
-
-```
-GET https://cdn.espn.com/core/college-football/schedule
-    ?xhr=1&render=false&userab=18
-    [&year={year}]
-    [&week={week}]
-    [&group={group}]
-    [&seasonType={seasonType}]
-```
-
-Returns the schedule for a given week/year. Without parameters, returns the
-current week.
-
-**Response shape:** `GameScheduleESPN`
-- `Content.Schedule` — map of dates to game lists
-- `Content.Calendar` — season calendar with week boundaries
-- `Content.Calendar[1].StartDate` — postseason start date
-- `Content.Defaults.Year` — current default season year
-- `Content.ConferenceAPI.Conferences` — conference metadata
-
-**Used by:** `GetCurrentWeekGames`, `GetGamesByWeek`, `GetCompletedGamesByWeek`,
-`GetWeeksInSeason`, `HasPostseasonStarted`, `DefaultSeason`, `ConferenceMap`,
-`TeamConferencesByYear`
-
 ### Game Schedule (cdn.espn.com)
 
 ```
@@ -42,24 +17,28 @@ GET https://cdn.espn.com/core/college-football/schedule
 ```
 
 Returns the schedule for a given week/year. Without parameters, returns the
-current week. Note: cdn.espn.com intermittently serves empty-body HTTP 202
-bot challenges; the HTTP client retries those (see `request.go`).
+current week. One request covers a whole week for a division group, which is
+why historical week fetching still uses this endpoint (see the Scoreboard
+section for the site.api equivalent). Note: cdn.espn.com intermittently
+serves empty-body HTTP 202 bot challenges; the HTTP client retries those (see
+`request.go`).
 
 **Response shape:** `GameScheduleESPN`
 - `Content.Schedule` — map of dates to game lists
 - `Content.Calendar` — season calendar with week boundaries
-- `Content.Calendar[1].StartDate` — postseason start date
-- `Content.Defaults.Year` — current default season year
 - `Content.ConferenceAPI.Conferences` — conference metadata
 
-**Used by:** `GetGamesByWeek`, `GetCompletedGamesByWeek`, `GetWeeksInSeason`,
-`HasPostseasonStarted`, `DefaultSeason`, `ConferenceMap`, `TeamConferencesByYear`
+**Used by:** `GetGamesByWeek`, `GetCompletedGamesByWeek`,
+`GetGamesBySeason`, `TeamConferencesByYear` (football and basketball —
+season metadata and conference maps moved to site.api; no site.api endpoint
+provides a bulk team→conference mapping, see the Conferences section)
 
 ### Scoreboard (site.api.espn.com)
 
 ```
 GET https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard
-    ?groups={group}
+    [&groups={group}]
+    [&dates={year}]
 ```
 
 Returns the games for the current week (the endpoint ignores year/week
@@ -67,14 +46,58 @@ navigation for live data and embeds the current `season.year` and
 `week.number` directly). The cdn-style `group` parameter is ignored; the
 division filter uses `groups` (verified for FBS=80 / FCS=81).
 
+Passing `dates={year}` additionally returns the season calendar in
+`leagues[0].calendar`. Two important payload facts (verified live
+2026-08-29):
+
+- Without a `dates` parameter the calendar field is JSON **null** — even
+  mid-season. Any code that needs the calendar must pass `dates`.
+- The football calendar is a list of season-type objects
+  (`{label, value, startDate, endDate, entries: [{label, value, ...}]}`),
+  while the basketball calendar is a flat list of ISO date strings. The two
+  shapes decode into separate types (`SiteScoreboardLeague.Calendar` vs
+  `ScoreboardLeague.Calendar`).
+- The Regular Season entry (`value: "2"`) lists one entry per week numbered
+  1..N; the Postseason entry (`value: "3"`) carries its own start date and
+  non-week-numbered entries (Bowls = 1, CFP = 999).
+
 **Response shape:** `SiteScoreboardESPN`
+- `Leagues[0].Season.Year` — current season year (`DefaultSeason`)
+- `Leagues[0].Calendar` — object-shaped season calendar (`dates` param only)
 - `Events` — game list with embedded `status.type` completion flags
 - `Events[].Competitions[].Competitors` — same field names as the cdn
   schedule (`id`, `homeAway`, `score`, `team.id`, `team.conferenceId`)
 - `Season` / `Week` — current season year/type and week number
 
 **Used by:** `FootballClient.GetCurrentWeekGames` (via `finalGames`, which
-applies the same STATUS_FINAL filter as the cdn path)
+applies the same STATUS_FINAL filter as the cdn path), `DefaultSeason` /
+`GetWeeksInSeason` / `HasPostseasonStarted` (football season metadata),
+`GetScoreboard` + `GetSeasonDatesForYear` (basketball season metadata and
+current-season date navigation)
+
+### Conferences (site.api.espn.com)
+
+```
+GET https://site.api.espn.com/apis/site/v2/sports/{sport-path}/scoreboard/conferences
+    ?groups={group}
+```
+
+Returns the conference list of one division group. The plain endpoint returns
+**FBS only** — every other group (FCS 81, DII 57, DIII 58, basketball D1 50)
+requires an explicit `groups` value (verified live 2026-08-29: FBS returns 11
+conferences, FCS 14, DII 17, DIII 30, D1 32). The division-root entry (e.g.
+FBS itself) has no `parentGroupId`; child conferences carry their parent as a
+string. IDs are JSON strings.
+
+**Response shape:** `ConferencesESPN`
+- `Conferences[].groupId` / `parentGroupId` / `shortName` / `name`
+
+**Used by:** `ConferenceMap` (both sports). The endpoint reflects the
+current season only — same limitation the cdn path had. It does not cover
+the team→conference mapping (`TeamConferencesByYear`): the `/teams` rows
+carry no `conferenceId`, and scoreboard responses cap events (~25) and only
+expand a single date per request, so that extraction still runs on the cdn
+schedule (see docs/tech-debt.md).
 
 ### Game Stats / Box Score (site.api.espn.com)
 
