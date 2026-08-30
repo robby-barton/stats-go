@@ -5,29 +5,32 @@ import (
 	"errors"
 )
 
+// GameInfoESPN is the site.api summary response (both sports): header and
+// boxscore at the top level. The old cdn.espn.com playbyplay shape (wrapped
+// in "gamepackageJSON") is no longer accepted — both sports moved to the
+// site.api summary (football 2026-09, basketball 2026-08-30) after cdn began
+// serving empty-body 202 bot challenges.
 type GameInfoESPN struct {
-	GamePackage GamePackage `json:"gamepackageJSON"`
+	GamePackage GamePackage
 }
 
-// UnmarshalJSON accepts both ESPN box-score shapes:
-// cdn.espn.com playbyplay wraps the payload in "gamepackageJSON";
-// the site.api summary carries the same header/boxscore objects at the top
-// level. Both end up in GamePackage so the game parser stays source-blind.
+// UnmarshalJSON decodes the site.api summary shape (header/boxscore at the
+// top level) into GamePackage so the game parser keeps its single accessor
+// path.
 func (g *GameInfoESPN) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		GamePackage *GamePackage `json:"gamepackageJSON"`
-		Header      Header       `json:"header"`
-		Boxscore    Boxscore     `json:"boxscore"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var payload GamePackage
+	if err := json.Unmarshal(data, &payload); err != nil {
 		return err
 	}
-	if raw.GamePackage != nil {
-		g.GamePackage = *raw.GamePackage
-		return nil
-	}
-	g.GamePackage = GamePackage{Header: raw.Header, Boxscore: raw.Boxscore}
+	g.GamePackage = payload
 	return nil
+}
+
+// MarshalJSON re-encodes the GamePackage payload at the top level — the same
+// shape UnmarshalJSON accepts — so test fixtures round-trip through the mock
+// HTTP servers.
+func (g GameInfoESPN) MarshalJSON() ([]byte, error) {
+	return json.Marshal(g.GamePackage)
 }
 
 type GamePackage struct {

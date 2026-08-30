@@ -140,7 +140,7 @@ func TestFootballSeasonMetadata_MissingCalendar(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := newTestClient()
-	t.Cleanup(client.SetURLs("", "", "", ts.URL, ""))
+	t.Cleanup(client.SetURLs("", "", ts.URL, ""))
 
 	if _, err := client.GetWeeksInSeason(context.Background(), 2026); err == nil {
 		t.Error("expected error for missing calendar, got nil")
@@ -227,8 +227,137 @@ func TestBasketball_GetSeasonDatesForYear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSeasonDatesForYear: %v", err)
 	}
-	if len(dates) != 2 || dates[0] != "2023-11-06T08:00Z" {
+	if len(dates) != 2 || dates[0] != "2024-01-06T08:00Z" || dates[1] != "2024-01-13T08:00Z" {
 		t.Errorf("dates = %v, want the fixture's two game dates", dates)
+	}
+}
+
+// TestSiteBasketballScoreboardFixtureDecode pins the live basketball
+// scoreboard shape: the flat date-string calendar decodes to nil inside
+// SiteScoreboardLeague, competitors carry team.conferenceId, and a real
+// STATUS_SCHEDULED event (separate capture, 2026-27 season preview) is
+// dropped by finalGames.
+func TestSiteBasketballScoreboardFixtureDecode(t *testing.T) {
+	var res SiteScoreboardESPN
+	if err := json.Unmarshal([]byte(siteBasketballScoreboardFixture), &res); err != nil {
+		t.Fatalf("unmarshal basketball scoreboard fixture: %v", err)
+	}
+	if err := res.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	// The flat basketball calendar must decode to nil (not an error).
+	if res.Leagues[0].Calendar != nil {
+		t.Errorf("flat calendar decoded to %+v, want nil", res.Leagues[0].Calendar)
+	}
+
+	// The captured day (2026-02-14, groups=50) has three finals with
+	// conference IDs on every competitor.
+	for _, ev := range res.Events {
+		for _, comp := range ev.Competitions {
+			for _, c := range comp.Competitors {
+				if c.Team.ConferenceID == 0 {
+					t.Errorf("event %s competitor %d has no conferenceId", ev.ID, c.ID)
+				}
+			}
+		}
+	}
+
+	games, err := res.finalGames()
+	if err != nil {
+		t.Fatalf("finalGames: %v", err)
+	}
+	if len(games) != 3 {
+		t.Fatalf("len(games) = %d, want 3", len(games))
+	}
+	// Texas Tech 78 at Arizona 75 (OT) — scores must survive the mapping.
+	if games[0].ID != 401827679 {
+		t.Errorf("game[0].ID = %d, want 401827679", games[0].ID)
+	}
+	competitors := games[0].Competitions[0].Competitors
+	if competitors[0].Team.ID != 12 || competitors[0].Score != 75 ||
+		competitors[1].Team.ID != 2641 || competitors[1].Score != 78 {
+		t.Errorf("competitors = %+v", competitors)
+	}
+
+	// A real scheduled event (separate capture) must be filtered out.
+	var sched SiteScoreboardESPN
+	if err := json.Unmarshal(
+		[]byte(`{"leagues":[{"season":{"year":2027}}],"events":[`+siteBasketballScheduledEventJSON+`]}`),
+		&sched); err != nil {
+		t.Fatalf("unmarshal scheduled event: %v", err)
+	}
+	schedGames, err := sched.finalGames()
+	if err != nil {
+		t.Fatalf("finalGames(scheduled): %v", err)
+	}
+	if len(schedGames) != 0 {
+		t.Errorf("scheduled event survived finalGames: %+v", schedGames)
+	}
+}
+
+// TestSiteBasketballPlainFixtureDecode documents the plain (no dates)
+// basketball scoreboard: the flat calendar IS present without a dates
+// parameter (unlike football), and ESPN had already flipped the current
+// season to 2027 at capture time (2026-08-30).
+func TestSiteBasketballPlainFixtureDecode(t *testing.T) {
+	var sb ScoreboardESPN
+	if err := json.Unmarshal([]byte(siteBasketballPlainFixture), &sb); err != nil {
+		t.Fatalf("unmarshal plain fixture into ScoreboardESPN: %v", err)
+	}
+	if err := sb.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if sb.Leagues[0].Season.Year != 2027 {
+		t.Errorf("season year = %d, want 2027 (ESPN flipped to the 2026-27 preview)", sb.Leagues[0].Season.Year)
+	}
+	if len(sb.Leagues[0].Calendar) != 2 {
+		t.Errorf("calendar entries = %d, want 2 (trimmed)", len(sb.Leagues[0].Calendar))
+	}
+
+	// The same payload decodes into SiteScoreboardESPN without error (the
+	// flat calendar is ignored there).
+	var site SiteScoreboardESPN
+	if err := json.Unmarshal([]byte(siteBasketballPlainFixture), &site); err != nil {
+		t.Fatalf("unmarshal plain fixture into SiteScoreboardESPN: %v", err)
+	}
+	if site.Leagues[0].Calendar != nil {
+		t.Errorf("flat calendar decoded to %+v, want nil", site.Leagues[0].Calendar)
+	}
+}
+
+// TestSiteBasketballSummaryFixturesDecode verifies both captured basketball
+// summary responses (current-season 2025-26 and a historical 2024-25 game)
+// decode through GameInfoESPN with the fields the game parser consumes.
+func TestSiteBasketballSummaryFixturesDecode(t *testing.T) {
+	var cur GameInfoESPN
+	if err := json.Unmarshal([]byte(siteBasketballSummaryFixture), &cur); err != nil {
+		t.Fatalf("unmarshal summary fixture: %v", err)
+	}
+	if err := cur.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if cur.GamePackage.Header.ID != 401827679 || cur.GamePackage.Header.Week != 15 {
+		t.Errorf("header = %+v", cur.GamePackage.Header)
+	}
+	if cur.GamePackage.Header.Competitions[0].Date != "2026-02-14T23:30Z" {
+		t.Errorf("date = %q", cur.GamePackage.Header.Competitions[0].Date)
+	}
+	if len(cur.GamePackage.Boxscore.Teams) != 2 || len(cur.GamePackage.Boxscore.Players) != 2 {
+		t.Errorf("boxscore = %+v", cur.GamePackage.Boxscore)
+	}
+
+	var hist GameInfoESPN
+	if err := json.Unmarshal([]byte(siteBasketballSummaryHistoricalFixture), &hist); err != nil {
+		t.Fatalf("unmarshal historical summary fixture: %v", err)
+	}
+	if err := hist.validate(); err != nil {
+		t.Fatalf("validate historical: %v", err)
+	}
+	// header.season.year must be the game's own season (2024-25 = 2025),
+	// not the current season — historical backfills depend on it.
+	if hist.GamePackage.Header.Season.Year != 2025 || hist.GamePackage.Header.Week != 11 {
+		t.Errorf("historical header = %+v", hist.GamePackage.Header)
 	}
 }
 

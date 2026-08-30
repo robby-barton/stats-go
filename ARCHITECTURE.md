@@ -154,20 +154,20 @@ per-client URLs for that sport's ESPN endpoints. Every client carries its own
 URL set (no package-level vars); tests point a single client at a mock HTTP
 server via `Client.SetURLs`.
 
-Endpoint ownership by host (since 2026-09): cdn.espn.com has been
+Endpoint ownership by host (since 2026-08-30): cdn.espn.com had been
 intermittently serving empty-body 202 bot challenges to automated clients, so
-the current-week games fetch, the football box-score fetch, the football
-season metadata (`DefaultSeason`, `GetWeeksInSeason`, `HasPostseasonStarted`
-via the scoreboard's object-shaped calendar), `ConferenceMap` (both
-sports, via the `scoreboard/conferences` endpoint), and the football season
-backfill (`GetGamesBySeason` — a per-day walk over the scoreboard calendar
-spans) have all moved to site.api.espn.com. cdn.espn.com still serves the
-basketball schedule and box-score fetches plus basketball
-`TeamConferencesByYear` — no site.api endpoint provides a bulk team→
-conference mapping (teams rows lack `conferenceId`; scoreboard responses
-cap events and, for date ranges, are lossy against single-day fetches) —
-plus all remaining basketball schedule and box-score fetches. See
-docs/tech-debt.md for the remaining cdn dependencies.
+ALL ESPN fetches now run on site.api.espn.com: the current-week games fetch
+(scoreboard with the `groups` param, one request per ET day for basketball's
+today+yesterday window), both sports' box-score fetch (summary), the season
+metadata (`DefaultSeason`, `GetWeeksInSeason`, `HasPostseasonStarted`),
+`ConferenceMap` (via the `scoreboard/conferences` endpoint), the season
+backfills (`GetGamesBySeason` — per-day walks over the calendar spans for
+football and the game-date list for basketball), and both sports'
+`TeamConferencesByYear` (basketball per-day scoreboard walk; basketball
+scoreboard competitors carry `team.conferenceId` like football's — verified
+live 2026-08-30). The cdn.espn.com schedule/playbyplay endpoints and their
+wire types (`GameScheduleESPN` and friends) were deleted. See
+docs/tech-debt.md for the migration history.
 
 ## Database
 

@@ -86,99 +86,6 @@ const (
 	fixtureGameID6 int64 = 401006 // in-progress
 )
 
-func fixtureScheduleResponse() espn.GameScheduleESPN {
-	return espn.GameScheduleESPN{
-		Content: espn.Content{
-			Schedule: map[string]espn.Day{
-				"2023-09-02": {
-					Games: []espn.Game{
-						newFinalGame(fixtureGameID1, 1, 100, 28, 2, 100, 14),
-						newFinalGame(fixtureGameID2, 3, 200, 21, 4, 200, 10),
-						newInProgressGame(fixtureGameID3, 5, 100, 7, 6, 200, 3),
-					},
-				},
-				"2023-09-09": {
-					Games: []espn.Game{
-						newFinalGame(fixtureGameID4, 1, 100, 35, 3, 200, 17),
-						newFinalGame(fixtureGameID5, 2, 100, 24, 4, 200, 21),
-						newInProgressGame(fixtureGameID6, 5, 100, 14, 6, 200, 10),
-					},
-				},
-			},
-			Parameters: espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
-			Defaults:   espn.Parameters{Week: 1, Year: 2023, SeasonType: 2, Group: espn.FlexInt64(80)},
-			Calendar: []espn.Calendar{
-				{
-					StartDate:  "2023-08-26T07:00Z",
-					EndDate:    "2023-12-03T07:59Z",
-					SeasonType: 2,
-					Weeks: []espn.Week{
-						{Num: 1, StartDate: "2023-09-04T07:00Z", EndDate: "2023-09-11T06:59Z"},
-						{Num: 2, StartDate: "2023-09-11T07:00Z", EndDate: "2023-09-18T06:59Z"},
-					},
-				},
-				{
-					StartDate:  "2023-12-16T08:00Z",
-					EndDate:    "2024-01-09T07:59Z",
-					SeasonType: 3,
-					Weeks: []espn.Week{
-						{Num: 1, StartDate: "2023-12-16T08:00Z", EndDate: "2024-01-09T07:59Z"},
-					},
-				},
-			},
-			ConferenceAPI: espn.ConferenceAPI{
-				Conferences: []espn.Conference{
-					{GroupID: 100, Name: "Southeastern Conference", ShortName: "SEC", ParentGroupID: espn.FlexInt64(80)},
-					{GroupID: 200, Name: "Big Ten Conference", ShortName: "Big Ten", ParentGroupID: espn.FlexInt64(80)},
-					{GroupID: 300, Name: "Missouri Valley", ShortName: "MVFC", ParentGroupID: espn.FlexInt64(81)},
-				},
-			},
-		},
-	}
-}
-
-func newFinalGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, awayScore int64) espn.Game {
-	return espn.Game{
-		ID: id,
-		Status: espn.Status{StatusType: espn.StatusType{
-			Name: "STATUS_FINAL", Completed: true,
-		}},
-		Competitions: []espn.Competition{{
-			Competitors: []espn.Competitor{
-				{
-					ID: homeID, Score: homeScore, HomeAway: "home",
-					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
-				},
-				{
-					ID: awayID, Score: awayScore, HomeAway: "away",
-					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
-				},
-			},
-		}},
-	}
-}
-
-func newInProgressGame(id int64, homeID, homeConf, homeScore, awayID, awayConf, awayScore int64) espn.Game {
-	return espn.Game{
-		ID: id,
-		Status: espn.Status{StatusType: espn.StatusType{
-			Name: "STATUS_IN_PROGRESS", Completed: false,
-		}},
-		Competitions: []espn.Competition{{
-			Competitors: []espn.Competitor{
-				{
-					ID: homeID, Score: homeScore, HomeAway: "home",
-					Team: espn.ScheduleTeam{ID: homeID, ConferenceID: espn.FlexInt64(homeConf)},
-				},
-				{
-					ID: awayID, Score: awayScore, HomeAway: "away",
-					Team: espn.ScheduleTeam{ID: awayID, ConferenceID: espn.FlexInt64(awayConf)},
-				},
-			},
-		}},
-	}
-}
-
 func newSiteEvent(id, homeID, homeConf, homeScore, awayID, awayConf, awayScore int64) espn.SiteEvent {
 	ev := espn.SiteEvent{
 		ID:     strconv.FormatInt(id, 10),
@@ -419,34 +326,9 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/core/college-football/schedule", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/summary", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		resp := fixtureScheduleResponse()
-		if scoreOverride != nil {
-			for date, day := range resp.Content.Schedule {
-				for i, g := range day.Games {
-					if scores, ok := scoreOverride[g.ID]; ok {
-						for j := range g.Competitions[0].Competitors {
-							if g.Competitions[0].Competitors[j].HomeAway == "home" {
-								g.Competitions[0].Competitors[j].Score = scores[0]
-							} else {
-								g.Competitions[0].Competitors[j].Score = scores[1]
-							}
-						}
-						day.Games[i] = g
-					}
-				}
-				resp.Content.Schedule[date] = day
-			}
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
-
-	mux.HandleFunc("/core/college-football/playbyplay", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		gameIDStr := r.URL.Query().Get("gameId")
+		gameIDStr := r.URL.Query().Get("event")
 		var gameID int64
 		fmt.Sscanf(gameIDStr, "%d", &gameID) //nolint:errcheck // test helper
 
@@ -596,8 +478,7 @@ func newTestUpdater(t *testing.T) *Updater {
 		Sport:          espn.CollegeFootball,
 	}}
 	t.Cleanup(client.SetURLs(
-		ts.URL+"/core/college-football/schedule?xhr=1&render=false&userab=18",
-		ts.URL+"/core/college-football/playbyplay?gameId=%d&xhr=1&render=false&userab=18",
+		ts.URL+"/apis/site/v2/sports/football/college-football/summary?event=%d",
 		ts.URL+"/apis/site/v2/sports/football/college-football/teams?limit=1000",
 		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard",
 		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
