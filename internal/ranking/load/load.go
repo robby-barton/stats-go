@@ -22,6 +22,8 @@ import (
 // the boundary day, which matters for basketball's late tips. Pinning the
 // zone keeps rankings deterministic across servers while matching the old
 // behavior. Falls back to UTC if the zone database is unavailable.
+//
+//nolint:gochecknoglobals // immutable, computed once; loading per call adds no value
 var boundaryLoc = func() *time.Location {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
