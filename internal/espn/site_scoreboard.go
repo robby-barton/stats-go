@@ -5,6 +5,9 @@ import (
 	"strconv"
 )
 
+// statusFinal is ESPN's completed-game state name.
+const statusFinal = "STATUS_FINAL"
+
 // SiteScoreboardESPN represents the site.api.espn.com scoreboard response.
 // It carries no calendar or conference API data (season navigation stays on
 // cdn for that reason) but embeds the current season year and week number
@@ -77,7 +80,7 @@ func (r SiteScoreboardESPN) validate() error {
 }
 
 // finalGames maps scoreboard events to the shared Game shape, keeping only
-// games that are fully completed (STATUS_FINAL) — the same filter the cdn
+// games that are fully completed (statusFinal) — the same filter the cdn
 // schedule path applies in completedGames. Team and conference IDs come from
 // the competitor blocks; the game start time itself is consumed later from
 // the per-game summary fetch, as with the cdn path.
@@ -88,7 +91,7 @@ func (r SiteScoreboardESPN) finalGames() ([]Game, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing scoreboard event id %q: %w", ev.ID, err)
 		}
-		if !ev.Status.StatusType.Completed || ev.Status.StatusType.Name != "STATUS_FINAL" {
+		if !ev.Status.StatusType.Completed || ev.Status.StatusType.Name != statusFinal {
 			continue
 		}
 
