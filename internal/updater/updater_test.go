@@ -287,3 +287,41 @@ func TestNewUpdater_Validation(t *testing.T) {
 		t.Errorf("sportDB() = %q, want %q", u.sportDB(), sport.Football)
 	}
 }
+
+func TestBackfillMissingTeamNames(t *testing.T) {
+	u := newTestUpdater(t)
+
+	// Team 999 has a team_seasons row (as a reclassified D-I school would)
+	// but no team_names row, so rankings render it without a name.
+	if err := u.db.Create(&database.TeamSeason{
+		TeamID: 999, Year: 2023, Sport: "ncaaf", Conf: "Test Conf", FBS: 1,
+	}).Error; err != nil {
+		t.Fatalf("seeding team_seasons: %v", err)
+	}
+
+	created, err := u.backfillMissingTeamNames(context.Background(), 2023)
+	if err != nil {
+		t.Fatalf("backfillMissingTeamNames: %v", err)
+	}
+	if created != 1 {
+		t.Fatalf("created = %d, want 1", created)
+	}
+
+	var row database.TeamName
+	if err := u.db.Where("team_id = ? AND sport = ?", 999, "ncaaf").First(&row).Error; err != nil {
+		t.Fatalf("team_names row not created: %v", err)
+	}
+	// apiToDB maps Name from the team's location (school name convention).
+	if row.Name != "Backfilled" || row.Abbreviation != "BFT" || row.DisplayName != "Backfilled Team 999" || !row.IsActive {
+		t.Errorf("unexpected backfilled row: %+v", row)
+	}
+
+	// Idempotent: teams with rows are not re-fetched.
+	created, err = u.backfillMissingTeamNames(context.Background(), 2023)
+	if err != nil {
+		t.Fatalf("second backfill: %v", err)
+	}
+	if created != 0 {
+		t.Fatalf("second run created = %d, want 0", created)
+	}
+}

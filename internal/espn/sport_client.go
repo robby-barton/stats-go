@@ -27,6 +27,7 @@ type SportClient interface {
 	GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error)
 	GetGameStats(ctx context.Context, gameID int64) (*GameInfoESPN, error)
 	GetTeamInfo(ctx context.Context) (*TeamInfoESPN, error)
+	GetTeamByID(ctx context.Context, id int64) (*TeamDetailESPN, error)
 
 	// Season navigation (sport-specific)
 	DefaultSeason(ctx context.Context) (int64, error)
