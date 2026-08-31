@@ -110,7 +110,7 @@ func userAgentFor(endpoint string) string {
 // ESPN response implements validate, so decoded payloads are checked at the
 // transport boundary.
 type Responses interface {
-	GameInfoESPN | TeamInfoESPN | ScoreboardESPN | SiteScoreboardESPN | ConferencesESPN
+	GameInfoESPN | TeamInfoESPN | TeamDetailESPN | ScoreboardESPN | SiteScoreboardESPN | ConferencesESPN
 	validatable
 }
 

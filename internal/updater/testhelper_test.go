@@ -352,6 +352,15 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 		}
 	})
 
+	// Per-team endpoint (team name backfill): echoes the requested team id.
+	mux.HandleFunc("/apis/site/v2/sports/football/college-football/teams/", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"team": {"id": "%s", "slug": "backfilled-team", "location": "Backfilled",`+
+			` "name": "Team %s", "abbreviation": "BFT", "displayName": "Backfilled Team %s",`+
+			` "shortDisplayName": "B Team", "nickname": "B Team", "isActive": true,`+
+			` "logos": [{"href": "https://a.espncdn.com/i/teamlogos/ncaa/500/%s.png"}]}}`, id, id, id, id)
+	})
 	mux.HandleFunc("/apis/site/v2/sports/football/college-football/teams", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(fixtureTeamInfoResponse()); err != nil {

@@ -1,8 +1,11 @@
 package espn
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 type TeamInfoESPN struct {
@@ -117,4 +120,35 @@ func SportURLs(sport Sport) SportURLConfig {
 	default:
 		panic(fmt.Sprintf("unknown sport: %q", sport))
 	}
+}
+
+// TeamDetailESPN wraps the site.api per-team response
+// (/teams/{id}), which carries the same team object as the
+// bulk /teams?limit=1000 endpoint.
+type TeamDetailESPN struct {
+	Team TeamInfo `json:"team"`
+}
+
+func (r TeamDetailESPN) validate() error {
+	if r.Team.ID == 0 {
+		return errors.New("team detail response missing team id")
+	}
+	return nil
+}
+
+// GetTeamByID fetches a single team's identity data off the site.api
+// per-team endpoint. Used to backfill team_names rows for teams that
+// ESPN's bulk teams endpoint omits (e.g. recent D-I transition schools).
+func (c *Client) GetTeamByID(ctx context.Context, id int64) (*TeamDetailESPN, error) {
+	base := c.teamInfoURL
+	if i := strings.IndexByte(base, '?'); i >= 0 {
+		base = base[:i]
+	}
+	url := base + "/" + strconv.FormatInt(id, 10)
+
+	var res TeamDetailESPN
+	if err := makeRequest(ctx, c, url, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/espn"
+	"github.com/robby-barton/stats-go/internal/team"
 )
 
 func (u *Updater) insertSeasonToDB(seasons []database.TeamSeason) error {
@@ -122,5 +123,54 @@ func (u *Updater) updateTeamSeasonsForYear(ctx context.Context, year int64, forc
 		return 0, err
 	}
 
+	// Season-discovered teams may be absent from team_names: ESPN's bulk
+	// /teams endpoint omits some teams (e.g. recent D-I transition schools
+	// like Southern Indiana, Queens, Lindenwood). Backfill identity rows
+	// from the site.api per-team endpoint so rankings render names/logos.
+	if created, err := u.backfillMissingTeamNames(ctx, year); err != nil {
+		u.logger.Errorf("team name backfill for %d: %v", year, err)
+	} else if created > 0 {
+		u.logger.Infof("backfilled %d missing team_names rows", created)
+	}
+
 	return len(teamSeasons), nil
+}
+
+// backfillMissingTeamNames creates team_names rows for teams that have a
+// team_seasons row for the given year but no team_names entry. Identity
+// data comes from the site.api per-team endpoint; one failing fetch is
+// logged and skipped rather than aborting the season update.
+func (u *Updater) backfillMissingTeamNames(ctx context.Context, year int64) (int, error) {
+	var ids []int64
+	err := u.db.Raw(`select distinct ts.team_id
+		from team_seasons ts
+		where ts.sport = ? and ts.year = ?
+		  and not exists (select 1 from team_names n
+		                  where n.team_id = ts.team_id and n.sport = ts.sport)`,
+		u.sportDB(), year).Scan(&ids).Error
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	created := 0
+	for _, id := range ids {
+		detail, err := u.espn.GetTeamByID(ctx, id)
+		if err != nil {
+			u.logger.Errorf("team name backfill: fetching team %d: %v", id, err)
+			continue
+		}
+		rows := apiToDB([]team.ParsedTeamInfo{team.ParsedFromESPN(detail.Team)})
+		for i := range rows {
+			rows[i].Sport = u.sportDB()
+		}
+		if err := u.insertTeamsToDB(rows); err != nil {
+			u.logger.Errorf("team name backfill: inserting team %d: %v", id, err)
+			continue
+		}
+		created++
+	}
+	return created, nil
 }
