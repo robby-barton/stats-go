@@ -16,16 +16,22 @@ import (
 	"go.uber.org/zap"
 )
 
-// alertThreshold is the number of consecutive scheduled-job failures that
-// trigger an email alert. With the 5-minute games poll, threshold 3 means
-// an operator hears about a broken poll within ~15 minutes.
-const alertThreshold = 3
+const (
+	// alertThreshold is the number of consecutive scheduled-job failures that
+	// trigger an email alert. With the 5-minute games poll, threshold 3 means
+	// an operator hears about a broken poll within ~15 minutes.
+	alertThreshold = 3
+	// alertInterval rate-limits alerts: one email per job per interval while
+	// the job keeps failing. The failure count keeps accumulating across
+	// alerts so recovery-time emails show the full outage length.
+	alertInterval = 24 * time.Hour
+)
 
-// alerter emails the operator after alertThreshold consecutive
-// scheduled-job failures. It is disabled unless both ALERT_EMAIL_TO and
-// SMTP_HOST are set. The counter resets after alerting, so a persistent
-// outage re-alerts on every threshold crossing instead of staying silent,
-// and any success resets it cleanly.
+// alerter emails the operator when scheduled jobs fail: after
+// alertThreshold consecutive failures of a job, it sends one email, and
+// re-alerts for that job at most once per alertInterval for as long as the
+// failures continue. It is disabled unless both ALERT_EMAIL_TO and SMTP_HOST
+// are set. Any successful run of a job resets its failure counter.
 type alerter struct {
 	log *zap.SugaredLogger
 
@@ -37,9 +43,12 @@ type alerter struct {
 
 	// send delivers an alert message. A field so tests can stub delivery.
 	send func(msg []byte) error
+	// now returns the current time. A field so tests can control the clock.
+	now func() time.Time
 
-	mu       sync.Mutex
-	failures int
+	mu          sync.Mutex
+	failures    map[string]int
+	lastAlerted map[string]time.Time
 }
 
 // newAlerter builds the alerter from environment variables:
@@ -52,11 +61,13 @@ type alerter struct {
 //	SMTP_FROM       sender address (defaults to ALERT_EMAIL_TO)
 func newAlerter(log *zap.SugaredLogger) *alerter {
 	a := &alerter{
-		log:  log,
-		to:   os.Getenv("ALERT_EMAIL_TO"),
-		host: os.Getenv("SMTP_HOST"),
-		user: os.Getenv("SMTP_USER"),
-		pass: os.Getenv("SMTP_PASS"),
+		log:         log,
+		to:          os.Getenv("ALERT_EMAIL_TO"),
+		host:        os.Getenv("SMTP_HOST"),
+		user:        os.Getenv("SMTP_USER"),
+		pass:        os.Getenv("SMTP_PASS"),
+		failures:    map[string]int{},
+		lastAlerted: map[string]time.Time{},
 	}
 	if p := os.Getenv("SMTP_PORT"); p != "" {
 		if n, err := strconv.Atoi(p); err == nil {
@@ -71,22 +82,26 @@ func newAlerter(log *zap.SugaredLogger) *alerter {
 		a.from = a.to
 	}
 	a.send = a.smtpSend
+	a.now = time.Now
 	return a
 }
 
-// failure records a failed job run and alerts on threshold crossings.
+// failure records a failed job run and alerts on threshold crossings,
+// rate-limited to one email per job per alertInterval.
 func (a *alerter) failure(job string, jobErr error) {
-	if a == nil {
+	if a == nil || a.to == "" || a.host == "" {
 		return
 	}
+
 	a.mu.Lock()
-	a.failures++
-	n := a.failures
-	if n >= alertThreshold {
-		a.failures = 0
+	a.failures[job]++
+	n := a.failures[job]
+	due := n >= alertThreshold && a.now().Sub(a.lastAlerted[job]) >= alertInterval
+	if due {
+		delete(a.failures, job)
 	}
 	a.mu.Unlock()
-	if a.to == "" || a.host == "" || n < alertThreshold {
+	if !due {
 		return
 	}
 
@@ -94,12 +109,12 @@ func (a *alerter) failure(job string, jobErr error) {
 	if from == "" {
 		from = a.to
 	}
-	subject := fmt.Sprintf("stats-go: job %q failed %d consecutive times", job, alertThreshold)
+	subject := fmt.Sprintf("stats-go: job %q failing (%d consecutive failures)", job, n)
 	body := fmt.Sprintf(
 		"stats-go updater: job %q has failed %d consecutive times.\n\nLast error:\n%v\n\n"+
-			"The counter has reset; you will hear again after %d more consecutive failures,\n"+
-			"or immediately after recovery if the job starts failing again.\n",
-		job, alertThreshold, jobErr, alertThreshold,
+			"You will not receive another alert for this job for 24 hours\n"+
+			"unless it recovers and fails again from scratch.\n",
+		job, n, jobErr,
 	)
 	a.log.Errorf("ALERT: %s: %v", subject, jobErr)
 
@@ -109,17 +124,23 @@ func (a *alerter) failure(job string, jobErr error) {
 		return
 	}
 	if err := a.send(msg); err != nil {
+		// Do not record the alert time on failed delivery: the next crossing
+		// should attempt again rather than wait out the rate-limit window.
 		a.log.Errorf("alert: delivering email to %s: %v", a.to, err)
+		return
 	}
+	a.mu.Lock()
+	a.lastAlerted[job] = a.now()
+	a.mu.Unlock()
 }
 
-// success resets the consecutive-failure counter after a good run.
-func (a *alerter) success() {
+// success resets the failure counter for a job after a good run.
+func (a *alerter) success(job string) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
-	a.failures = 0
+	delete(a.failures, job)
 	a.mu.Unlock()
 }
 
