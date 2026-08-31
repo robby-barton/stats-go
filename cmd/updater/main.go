@@ -176,7 +176,7 @@ func (ss sportSchedule) registerJobs(
 						al.failure(ss.Name+" ranking", err)
 						return
 					}
-					al.success()
+					al.success(ss.Name + " ranking")
 					log.Infof("%s rankings updated", ss.Name)
 					d.Trigger()
 				}()
@@ -199,7 +199,7 @@ func (ss sportSchedule) registerJobs(
 			log.Error(err)
 			al.failure(ss.Name+" games", err)
 		} else {
-			al.success()
+			al.success(ss.Name + " games")
 			log.Infof("%s: added %d games: %v", ss.Name, len(result.Processed), result.Processed)
 			if len(result.Failed) > 0 {
 				log.Errorf("%s: failed to fetch %d games (marked for retry): %v",
@@ -227,7 +227,7 @@ func (ss sportSchedule) registerJobs(
 			al.failure(ss.Name+" team info", err)
 			return
 		}
-		al.success()
+		al.success(ss.Name + " team info")
 		log.Infof("%s: updated %d teams", ss.Name, addedTeams)
 	})); err != nil {
 		panic(err)
@@ -247,7 +247,7 @@ func (ss sportSchedule) registerJobs(
 			log.Error(err)
 			al.failure(ss.Name+" new season", err)
 		} else {
-			al.success()
+			al.success(ss.Name + " new season")
 		}
 		if addedSeasons > 0 {
 			update <- true
