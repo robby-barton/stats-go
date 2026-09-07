@@ -84,6 +84,12 @@ func newUpdater(
 	return updater.NewUpdater(db, log, espn.NewClientForSport(sport))
 }
 
+// deployTimeout is the hard limit for a single deploy script run. The script
+// clones, installs, builds, and deploys stats-web, which normally takes a few
+// minutes; a stuck run (hung network, orphaned child) is killed well before it
+// can block the deployer goroutine indefinitely.
+const deployTimeout = 30 * time.Minute
+
 // deployer runs a deploy script in the background after rankings are updated.
 // Calls to Trigger are coalesced: if a deploy is already queued, extra triggers
 // are dropped so at most one deploy is pending at a time.
@@ -93,14 +99,18 @@ func newUpdater(
 type deployer struct {
 	script   string
 	log      *zap.SugaredLogger
+	al       *alerter
+	timeout  time.Duration
 	trigger  chan struct{}
 	stopOnce sync.Once
 }
 
-func newDeployer(log *zap.SugaredLogger, script string) *deployer {
+func newDeployer(log *zap.SugaredLogger, script string, al *alerter) *deployer {
 	d := &deployer{
 		script:  script,
 		log:     log,
+		al:      al,
+		timeout: deployTimeout,
 		trigger: make(chan struct{}, 1),
 	}
 	go d.run()
@@ -124,14 +134,34 @@ func (d *deployer) stop() {
 
 func (d *deployer) run() {
 	for range d.trigger {
+		ctx, cancel := context.WithTimeout(context.Background(), d.timeout)
 		//nolint:gosec // DEPLOY_SCRIPT is operator-supplied config, not user input
-		cmd := exec.CommandContext(context.Background(), d.script)
+		cmd := exec.CommandContext(ctx, d.script)
+		// Kill the whole process group on timeout, not just the sh process:
+		// otherwise orphaned yarn/node children keep the output pipe open and
+		// block Wait forever. WaitDelay bounds any remaining pipe read anyway.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process != nil {
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil
+		}
+		cmd.WaitDelay = 30 * time.Second
 		out, err := cmd.CombinedOutput()
+		cancel()
 		if err != nil {
-			d.log.Errorf("deploy script failed: %v\n%s", err, out)
+			if ctx.Err() == context.DeadlineExceeded {
+				d.log.Errorf("deploy script timed out after %s: %v\n%s", d.timeout, err, out)
+				d.al.failure("site deploy", fmt.Errorf("deploy script timed out after %s: %w", d.timeout, err))
+			} else {
+				d.log.Errorf("deploy script failed: %v\n%s", err, out)
+				d.al.failure("site deploy", err)
+			}
 			continue
 		}
 		d.log.Infof("deploy script completed:\n%s", out)
+		d.al.success("site deploy")
 	}
 }
 
@@ -281,8 +311,8 @@ func scheduleCommand(
 				panic(err)
 			}
 
-			d := newDeployer(log, deployScript)
 			al := newAlerter(log)
+			d := newDeployer(log, deployScript, al)
 
 			sports := []struct {
 				schedule sportSchedule

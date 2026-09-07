@@ -6,6 +6,9 @@ x-pg-environment: &pg-environment
   PG_DBNAME: ${PG_DBNAME}
   PG_SSLMODE: ${PG_SSLMODE}
 
+volumes:
+  yarn-cache:
+
 services:
   migrate-schema:
     container_name: migrate-schema
@@ -39,8 +42,14 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-}
+      # Persistent yarn cache so the deploy script's install step does not
+      # re-download every package on each ranking-triggered deploy.
+      YARN_CACHE_FOLDER: /cache/yarn
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
       CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
+    volumes:
+      - yarn-cache:/cache/yarn
     depends_on:
       db:
         condition: service_healthy
