@@ -42,7 +42,7 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       CF_PAGES_PROJECT: ${CF_PAGES_PROJECT}
-      DEPLOY_REF: ${DEPLOY_REF:-}
+      DEPLOY_BRANCH: ${DEPLOY_BRANCH:-}
       # Persistent yarn cache so the deploy script's install step does not
       # re-download every package on each ranking-triggered deploy.
       YARN_CACHE_FOLDER: /cache/yarn

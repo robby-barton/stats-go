@@ -11,6 +11,22 @@ Format rules:
 
 ## Active
 
+### Deployer `stop()` neither cancels nor joins an in-flight deploy
+
+The deployer's `stop()` only closes the trigger channel: a deploy script
+already running is neither cancelled nor waited on, so `run()` may still be
+inside `CombinedOutput` while the process exits. Inside the container this is
+harmless — container shutdown tears down the whole process namespace,
+including the deploy's process group — so the practical impact is limited to
+non-container runs, where a deploy can be killed mid-write with no shutdown
+ordering guarantee. A deployer lifecycle context (cancel on shutdown plus a
+done channel joined before exit) would close it.
+
+Related: the "site deploy" alerter path has no independent deploy-retry
+schedule — deploys only run when a ranking update triggers them, so alert
+latency for a broken deploy is bounded by trigger frequency, not by wall
+clock. See `docs/design-decisions.md` (Post-Rankings Deploy Hook).
+
 ### Basketball season navigation is current-season only
 
 Basketball historical support is now largely implemented:

@@ -7,8 +7,10 @@ set -e
 : "${PG_PORT:?PG_PORT is required}"
 : "${PG_DBNAME:?PG_DBNAME is required}"
 : "${CF_PAGES_PROJECT:?CF_PAGES_PROJECT is required}"
+: "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required}"
+: "${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID is required}"
 
-REF="${DEPLOY_REF:-master}"
+REF="${DEPLOY_BRANCH:-master}"
 
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -32,7 +34,7 @@ while [ "$attempt" -le "$max_attempts" ]; do
     attempt=$((attempt + 1))
 done
 if [ "$clone_ok" -ne 1 ]; then
-    echo "deploy: git clone of stats-web (ref $REF) failed after $max_attempts attempts" >&2
+    echo "deploy: git clone of stats-web (branch/tag $REF) failed after $max_attempts attempts" >&2
     exit 1
 fi
 
@@ -44,6 +46,6 @@ export DATABASE_URL="postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT
 yarn install --frozen-lockfile
 yarn build
 # wrangler is a pinned devDependency, so this resolves locally without npx.
-# --branch routes master to the CF Pages production branch; other refs deploy
-# as previews.
+# --branch routes master to the CF Pages production branch; other branches/tags
+# deploy as previews.
 yarn wrangler pages deploy _site/ --project-name "${CF_PAGES_PROJECT}" --branch "$REF"
