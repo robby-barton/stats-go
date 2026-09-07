@@ -144,6 +144,22 @@ in quick succession coalesce into a single deploy — if one is already queued,
 extra triggers are dropped. This prevents deploy storms during rapid back-to-back
 ranking runs. If `DEPLOY_SCRIPT` is empty, the hook is a no-op.
 
+Each deploy is bounded by a 30-minute hard timeout: the script's whole process
+group is killed on expiry (so orphaned yarn/node children cannot block the
+deployer), with a 30-second `WaitDelay` so `Wait` cannot block on the output
+pipes even after the kill. Failures and timeouts feed the same alerter pipeline
+as the cron jobs under the job name `site deploy` (threshold 3 consecutive
+failures, 24-hour rate limit), so a broken deploy pages within ~15–20 minutes
+in season. Successful deploys reset the failure counter.
+
+The default script (`scripts/deploy-web.sh`) does a shallow, single-branch
+clone of `DEPLOY_REF` (default `master`) with 3 retry attempts, logs the built
+commit, and deploys via the lockfile-pinned `wrangler` devDependency
+(`yarn wrangler ... --branch "$REF"`): `master` maps to the Cloudflare Pages
+production branch, any other ref to a preview deployment. A persistent named
+volume (`yarn-cache`) backs `YARN_CACHE_FOLDER` so installs between deploys
+reuse the package cache instead of re-downloading everything.
+
 On shutdown, the ranking workers are cancelled and joined (via a process-level
 context and WaitGroup) *before* the deployer's trigger channel is closed, so a
 worker can never send on a closed channel.
