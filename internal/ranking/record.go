@@ -8,7 +8,12 @@ func (r *Ranker) record(teamList TeamList) {
 	teamRecords := make(map[int64]*Record)
 	for _, team := range r.in.Teams {
 		allowedTeam[team.ID] = true
-		teamRecords[team.ID] = &Record{}
+		// Seed the add-one smoothing baseline: a team with no current-season
+		// games yet (e.g. an opening bye) gets Record = (1+0)/(2+0) = 0.5 with
+		// zero W/L/T, so it still contributes RecordWeight*0.5 to the composite
+		// instead of being zeroed out. Any played game overwrites this value
+		// with the usual (1+W+0.5T)/(2+N) arithmetic below.
+		teamRecords[team.ID] = &Record{Record: 0.5}
 	}
 
 	for _, game := range r.in.Games {
