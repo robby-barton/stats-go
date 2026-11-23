@@ -9,7 +9,12 @@ FinalRaw = (Record * RecordWeight) + (SRS_normalized * SRSWeight) + (SOS_normali
 ```
 
 - **Win-Loss Record** — Winning more games is the primary signal for football;
-  less dominant for basketball where margin matters more.
+  less dominant for basketball where margin matters more. The record uses
+  add-one smoothing: `Record = (1 + W + 0.5*T) / (2 + W + L + T)`, and teams
+  with no current-season games yet (e.g. an opening bye) keep the neutral
+  baseline `(1+0)/(2+0) = 0.5` with zero W/L/T, so they still contribute
+  `RecordWeight * 0.5` to the composite instead of being zeroed out. This
+  baseline is shared by both sports via the common `record` step.
 - **SRS (Simple Rating System)** — An iterative margin-of-victory rating
   adjusted for opponent strength. Run with two margin-of-victory caps and
   averaged. The dual-MOV approach balances "did you win?" with "did you
