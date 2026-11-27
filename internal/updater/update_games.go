@@ -15,14 +15,20 @@ import (
 	"github.com/robby-barton/stats-go/internal/sport"
 )
 
+// checkGames filters out games whose scores already match, except protected
+// duplicates, which must reach processGames to be explicitly reported.
 func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 	gameIDs := []int64{}
 	for _, game := range games {
-		gameIDs = append(gameIDs, game.ID)
+		if !u.isProtectedDuplicate(game.ID) {
+			gameIDs = append(gameIDs, game.ID)
+		}
 	}
 	var existing []database.Game
-	if err := u.db.Where("game_id in ? and sport = ?", gameIDs, u.sportDB()).Find(&existing).Error; err != nil {
-		return nil, err
+	if len(gameIDs) > 0 {
+		if err := u.db.Where("game_id in ? and sport = ?", gameIDs, u.sportDB()).Find(&existing).Error; err != nil {
+			return nil, err
+		}
 	}
 
 	existsMap := map[int64]database.Game{}
@@ -32,6 +38,10 @@ func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 
 	var newGames []espn.Game
 	for _, game := range games {
+		if u.isProtectedDuplicate(game.ID) {
+			newGames = append(newGames, game)
+			continue
+		}
 		existingGame, ok := existsMap[game.ID]
 		if !ok {
 			newGames = append(newGames, game)
@@ -268,6 +278,13 @@ func (u *Updater) insertGameInfo(parsed *game.ParsedGameInfo) error {
 	}
 
 	dbGameInfo := gameInfoToDB(parsed.Info, u.sportDB())
+	if u.isProtectedDuplicate(dbGameInfo.GameID) {
+		sourceDetail := ""
+		if !armyTempleIdentity(dbGameInfo) {
+			sourceDetail = "source parsed identity mismatch"
+		}
+		return u.protectedDuplicate(dbGameInfo.GameID, sourceDetail).refusal()
+	}
 
 	// Upsert specs in FK-satisfying order: the game row must be inserted
 	// before the stats rows that reference it. Adding a stats table is one
@@ -351,11 +368,14 @@ type FailedGame struct {
 
 // GameUpdateResult separates successfully persisted games from per-game
 // failures so callers can report partial results instead of silently
-// dropping them. Failed games are also persisted with retry=1 (see
-// markGameRetry) so the next update cycle re-fetches them.
+// dropping them. Fetch failures are also persisted with retry=1 (see
+// markGameRetry) so the next update cycle re-fetches them. Known-event
+// protection skips are reported in Skipped; they are never fetched, retried,
+// or written.
 type GameUpdateResult struct {
 	Processed []int64
 	Failed    []FailedGame
+	Skipped   []ProtectedGame
 }
 
 // FailedIDs returns the IDs of games that failed to fetch.
@@ -367,12 +387,25 @@ func (r *GameUpdateResult) FailedIDs() []int64 {
 	return ids
 }
 
+// SkippedIDs returns the IDs of games refused by known-event protection.
+func (r *GameUpdateResult) SkippedIDs() []int64 {
+	ids := make([]int64, len(r.Skipped))
+	for i, p := range r.Skipped {
+		ids[i] = p.GameID
+	}
+	return ids
+}
+
 // markGameRetry durably records a failed fetch using the games.retry column
 // so the game is re-fetched on the next update cycle. If the game already has
 // a row, only the retry flag is updated; otherwise a minimal row is seeded
 // from the schedule entry. A successful later fetch clears the flag because
 // insertGameInfo upserts the full row (retry defaults to 0).
 func (u *Updater) markGameRetry(g espn.Game) error {
+	if u.isProtectedDuplicate(g.ID) {
+		return u.protectedDuplicate(g.ID, armyTempleScheduleSourceDetail(g)).refusal()
+	}
+
 	retry := &database.Game{GameID: g.ID, Sport: u.sportDB(), Retry: 1}
 
 	if len(g.Competitions) > 0 && len(g.Competitions[0].Competitors) >= 2 {
@@ -401,6 +434,16 @@ func (u *Updater) processGames(ctx context.Context, games []espn.Game) (*GameUpd
 		batch := games[start:end]
 
 		for _, g := range batch {
+			// Known-event protection is enforced before any summary fetch so a
+			// protected import can never create a retry row or touch canonical
+			// stats. Unlike the retired abort-on-first behavior, the rest of
+			// the batch still imports normally.
+			if u.isProtectedDuplicate(g.ID) {
+				protected := u.protectedDuplicate(g.ID, armyTempleScheduleSourceDetail(g))
+				result.Skipped = append(result.Skipped, protected)
+				continue
+			}
+
 			stats, err := game.GetSingleGame(ctx, u.espn, u.logger, g.ID)
 			if err != nil {
 				u.logger.Warnf("skipping game %d: %v", g.ID, err)
@@ -452,6 +495,10 @@ func (u *Updater) UpdateGamesForYear(ctx context.Context, year int64) (*GameUpda
 }
 
 func (u *Updater) UpdateSingleGame(ctx context.Context, gameID int64) error {
+	if u.isProtectedDuplicate(gameID) {
+		return u.protectedDuplicate(gameID, "").refusal()
+	}
+
 	gameStats, err := game.GetSingleGame(ctx, u.espn, u.logger, gameID)
 	if err != nil {
 		return err
