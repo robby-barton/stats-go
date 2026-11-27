@@ -75,7 +75,10 @@ make ranker OPTS="ncaaw"                # current women's basketball season, D1
 
 The `ncaaw` command ranks the same single D-I division with the same
 basketball parameters as `ncaam` (25-game SRS quota, one season of lookback,
-25/60/15 record/SRS/SOS weights) on women's ESPN data.
+25/60/15 record/SRS/SOS weights) on women's ESPN data. A women's regular
+snapshot covers completed games through the named ESPN week, ending at the
+next Monday midnight Eastern. A missing week is an error, not an alias for
+the latest ranking. Postseason results update one Final per season.
 
 ### Offline NCAAF replay
 
@@ -119,6 +122,26 @@ make updater OPTS="ncaaw ranking"                 # compute the latest women's r
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |
 | | `backfill` | `--from`, `--to` | Backfill seasons, games, and rankings for a year range |
+| `ncaaw` | `backfill` | `--publish-from` (optional) | Earliest verified year to publish (defaults to `--to`) |
+
+### Verified women's basketball backfill
+
+```sh
+make updater OPTS="ncaaw backfill --from 2026 --to 2027"
+```
+
+This audits completed games and D-I team metadata for both seasons, then
+publishes **only 2026–27**. The prior season is loaded for the model's lookback,
+not published. To include an archive, set `--publish-from` and include the
+preceding lookback season in `--from` (for example, `--from 2025 --to 2027
+--publish-from 2026`). Years outside the publication range are not modified.
+
+A failed audit leaves existing rankings in place; successfully imported games
+and metadata can remain for the next attempt. Start on a disposable database,
+allow time for the rate-limited game summaries, and don't run another women's
+import or ranking update concurrently. Use the backfill, not the one-off
+`ranking` command, for a verified publication. See the
+[launch plan](docs/ncaaw-launch-plan.md) for release checks.
 
 ### FBS early-season prior (opt-in, default off)
 

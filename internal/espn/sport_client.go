@@ -31,6 +31,12 @@ type SportClient interface {
 
 	// Season navigation (sport-specific)
 	DefaultSeason(ctx context.Context) (int64, error)
+	// GetSeasonDatesForYear returns the season calendar dates for a season-
+	// ending year; basketball's payload is the flat date list the strict
+	// ncaaw backfill validates. GetScoreboardDay is the validated one-day
+	// scoreboard fetch its daily walk uses.
+	GetSeasonDatesForYear(ctx context.Context, year int64) ([]string, error)
+	GetScoreboardDay(ctx context.Context, date string, group Group) (SiteScoreboardESPN, []Game, error)
 	GetWeeksInSeason(ctx context.Context, year int64) (int64, error)
 	HasPostseasonStarted(ctx context.Context, year int64, startTime time.Time) (bool, error)
 	GetGamesBySeason(ctx context.Context, year int64, group Group) ([]Game, error)

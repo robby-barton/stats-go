@@ -209,6 +209,32 @@ type SiteCompetition struct {
 	Competitors           []Competitor `json:"competitors"`
 }
 
+// GetScoreboardDay is the exported form of getScoreboardDay for strict
+// callers that must validate the raw payload themselves: the ncaaw backfill
+// walks one ET calendar day at a time and fails closed on any unusable or
+// wrong-season response, so it needs the full site.api scoreboard response
+// (leagues[0].season.year) alongside the completed finals. The response is
+// validated (leagues and season year present) and the finals are produced by
+// the same finalGames mapping the day-walk uses.
+func (c *Client) GetScoreboardDay(
+	ctx context.Context, date string, group Group,
+) (SiteScoreboardESPN, []Game, error) {
+	url := c.ScoreboardURL() + fmt.Sprintf("?dates=%s&groups=%d", date, group)
+
+	var res SiteScoreboardESPN
+	if err := makeRequest(ctx, c, url, &res); err != nil {
+		return SiteScoreboardESPN{}, nil, err
+	}
+	if res.Events == nil {
+		return res, nil, fmt.Errorf("site scoreboard response missing events for %s", date)
+	}
+	games, err := res.finalGames()
+	if err != nil {
+		return res, nil, err
+	}
+	return res, games, nil
+}
+
 // getScoreboardDay fetches the site.api scoreboard for one ET calendar day
 // (dates=YYYYMMDD), filtered server-side to a division group via the groups
 // parameter (basketball verified for D1=50, football for FBS=80/FCS=81), and

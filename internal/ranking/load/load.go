@@ -6,6 +6,7 @@ package load
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -109,29 +110,56 @@ func resolve(opts Options) (ranking.Input, Window, error) {
 	// Resolve the week and the window start time.
 	var game database.Game
 	if opts.Week > 0 {
-		if err := opts.DB.
-			Where("sport = ? and season = ? and week = ? and postseason = 0", opts.Sport, year, opts.Week).
-			Order("start_time asc").
-			Limit(1).
-			Find(&game).Error; err != nil {
+		q := opts.DB.Where("sport = ? and season = ? and week = ? and postseason = 0", opts.Sport, year, opts.Week)
+		if opts.Sport == sport.WomensBasketball {
+			// ESPN sometimes starts Week 1 on the Sunday before the first
+			// Monday slate. Anchor on the latest game, not that opener.
+			q = q.Where("retry = 0").Order("start_time desc")
+		} else {
+			q = q.Order("start_time asc")
+		}
+		if err := q.Limit(1).Find(&game).Error; err != nil {
 			return ranking.Input{}, Window{}, err
 		}
 		if game != (database.Game{}) {
 			// The boundary date is a local-timezone concept: derive the
-			// Tuesday of the week in the fixed boundary zone (a late game
-			// can land on a different UTC calendar day), then express
-			// midnight of that date as a UTC instant for comparisons.
-			et := game.StartTime.In(boundaryLoc)
-			y, m, d := et.
-				AddDate(0, 0, -int(et.Weekday()-time.Tuesday)).Date()
-			in.StartTime = time.Date(y, m, d, 0, 0, 0, 0, boundaryLoc).UTC()
+			// cutoff day in the fixed boundary zone (a late game can land
+			// on a different UTC calendar day), then express midnight of
+			// that date as a UTC instant for comparisons.
+			in.StartTime = weekCutoff(opts.Sport, game.StartTime)
 		} else {
 			in.Week = 0
+			if opts.Sport == sport.WomensBasketball {
+				// An explicit women's regular week with no stored games must
+				// not silently resolve to the latest window: the strict
+				// backfill enumerates the stored regular weeks, so an absent
+				// week (or season) is a data problem, not a latest request.
+				return ranking.Input{}, Window{}, fmt.Errorf(
+					"load: no %s regular games for season %d week %d",
+					opts.Sport, year, opts.Week)
+			}
 		}
 	}
 
 	if game == (database.Game{}) {
-		if err := opts.DB.
+		if opts.Sport == sport.WomensBasketball {
+			// The women's latest window resolves from the selected season's
+			// actual rankable games only: never a phantom preview built from
+			// a previous season, an unparsed retry placeholder, or a
+			// preseason exhibition.
+			if err := opts.DB.
+				Where("sport = ? and season = ? and retry = 0", opts.Sport, year).
+				Where("postseason = 1 or (postseason = 0 and week > 0)").
+				Order("start_time desc, postseason desc").
+				Limit(1).
+				Find(&game).Error; err != nil {
+				return ranking.Input{}, Window{}, err
+			}
+			if game == (database.Game{}) {
+				return ranking.Input{}, Window{}, fmt.Errorf(
+					"load: no %s rankable games for season %d", opts.Sport, year)
+			}
+		} else if err := opts.DB.
 			Where("sport = ? and season <= ?", opts.Sport, year).
 			Order("start_time desc").
 			Limit(1).
@@ -145,6 +173,15 @@ func resolve(opts Options) (ranking.Input, Window, error) {
 	} else {
 		if in.Week == 0 {
 			in.Week = game.Week + 1
+			if opts.Sport == sport.WomensBasketball {
+				// Women's regular rankings are labeled by the week they
+				// cover. Finals always use week zero, regardless of which
+				// week (if any) ESPN assigns a postseason event.
+				in.Week = game.Week
+				if game.Postseason == 1 {
+					in.Week = 0
+				}
+			}
 		}
 
 		if game.Postseason > 0 {
@@ -172,15 +209,50 @@ func resolve(opts Options) (ranking.Input, Window, error) {
 	}
 	in.Teams = teams
 
-	games, err := loadGames(opts.DB, opts.Sport, year, in.StartTime)
+	q := baseGameQuery(opts.DB, opts.Sport, year, in.StartTime)
+	if opts.Sport == sport.WomensBasketball && opts.Week > 0 {
+		q = q.Where("start_time < ?", in.StartTime).
+			Where("season < ? or (postseason = 0 and week <= ?)", year, opts.Week)
+	}
+	games, err := loadGameRows(q)
 	if err != nil {
 		return ranking.Input{}, Window{}, err
 	}
 	in.Games = games
 
-	in.Backfill = backfillFunc(opts.DB, opts.Sport)
+	// Women's publication audits the configured one-season lookback. Do not
+	// supplement those inputs with earlier, unaudited database rows.
+	if opts.Sport != sport.WomensBasketball {
+		in.Backfill = backfillFunc(opts.DB, opts.Sport)
+	}
 
 	return in, window, nil
+}
+
+// weekCutoff resolves a regular week's ranking cutoff from its anchor game.
+//
+// Football and men's basketball keep the historical Tuesday derivation: the
+// cutoff is midnight of the Tuesday of the game's calendar week, so the
+// snapshot covers that calendar week up to the Tuesday midnight.
+//
+// Women's basketball instead opens each week at Monday 00:00 Eastern (live
+// ESPN summary checks: Sundays 2026-11-08/15/22 are weeks 1/2/3 while the
+// adjacent Mondays are weeks 2/3/4, and a Tuesday game still belongs to the
+// Monday's week). The cutoff is therefore the Monday 00:00 Eastern that opens
+// the calendar week after the game's week. That keeps a late Sunday tip in its
+// own week, keeps the following Monday's games out of it, and survives DST
+// because the boundary is built as local midnight. Using the latest game as
+// the anchor also handles ESPN's occasional Sunday Week 1 opener.
+func weekCutoff(sp sport.Sport, startTime time.Time) time.Time {
+	et := startTime.In(boundaryLoc)
+	if sp != sport.WomensBasketball {
+		y, m, d := et.
+			AddDate(0, 0, -int(et.Weekday()-time.Tuesday)).Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, boundaryLoc).UTC()
+	}
+	weekOpen := time.Date(et.Year(), et.Month(), et.Day(), 0, 0, 0, 0, boundaryLoc).
+		AddDate(0, 0, -(int(et.Weekday())+6)%7) // Monday 00:00 Eastern of the game's week
+	return weekOpen.AddDate(0, 0, 7).UTC() // Monday 00:00 Eastern opening the next week
 }
 
 // loadTeams loads every team for the sport/year (team_names ⋈ team_seasons),
@@ -223,21 +295,20 @@ func loadTeamRows(query *gorm.DB) ([]ranking.TeamInfo, error) {
 	return teams, nil
 }
 
-// loadGames loads the games available for computation: the sport's season
-// window (as far back as the ranking reaches, YearsBack) up to the window
-// start time, ordered by start time descending (the srs game selection
-// depends on this order).
-func loadGames(db *gorm.DB, sp sport.Sport, year int64, startTime time.Time) ([]ranking.Game, error) {
-	return loadGameRows(baseGameQuery(db, sp, year, startTime))
-}
-
-// baseGameQuery returns the shared production base-game predicate: the
-// sport's season window up to an inclusive start time, ordered by start time
-// descending. There is deliberately no upper season bound; replay validation
-// rejects future-season rows instead of adding a production predicate.
+// baseGameQuery returns games in the sport's season window through the cutoff,
+// in descending order (SRS game selection depends on this order).
+// Only women’s basketball pins both season bounds; the historical loaders and
+// FBS replay retain the legacy predicate.
 func baseGameQuery(db *gorm.DB, sp sport.Sport, year int64, startTime time.Time) *gorm.DB {
-	return db.Where("sport = ? and season >= ? and start_time <= ?", sp, year-ranking.YearsBack(sp), startTime).
-		Order("start_time desc")
+	q := db.Where("sport = ? and season >= ? and start_time <= ?", sp, year-ranking.YearsBack(sp), startTime)
+	if sp == sport.WomensBasketball {
+		// Women's rankable games exclude unparsed retry placeholders and
+		// preseason exhibitions; the other sports keep the unfiltered
+		// historical predicate.
+		q = q.Where("season <= ? and retry = 0", year).
+			Where("postseason = 1 or (postseason = 0 and week > 0)")
+	}
+	return q.Order("start_time desc")
 }
 
 // olderGameQuery returns the shared production backfill predicate: prior-season

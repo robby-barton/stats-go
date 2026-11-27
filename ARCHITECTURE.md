@@ -65,6 +65,9 @@ The `Updater` and `Ranker` structs each carry a typed sport identifier
 sport subcommands (`ncaaf`, `ncaam`, `ncaaw`). The `schedule` command runs
 football and men's basketball in a single process with sport-appropriate cron
 schedules; women's basketball is one-shot only until its scheduled jobs land.
+Its `backfill` command audits daily ESPN finals and D-I metadata for every
+imported year, then atomically replaces the explicitly scoped women's ranking
+seasons. Rank rows for other sports and lookback-only years are untouched.
 
 ## Package Dependency Rules
 
@@ -196,8 +199,17 @@ resolved ranking window are loaded once at the persistence edge —
 ranking pipeline is GORM-free and computes entirely on plain values:
 `setup → record → srs → sos → finalRanking`.
 
-One part of the input is deliberately not loaded eagerly: pre-window game
-backfill (the "James Madison problem" search in `srs`). Eagerly resolving it
+For `ncaaw`, the explicit regular-week cutoff is the Monday midnight Eastern
+following the last game in that ESPN week; the latest regular snapshot uses
+the same ESPN week number. Missing explicit weeks are errors. Postseason
+publishes one Final per season at `(postseason=1, week=0)` even if ESPN
+provides no week. Football and men's basketball keep their historical window
+and numbering rules.
+
+For football and men's basketball, one part of the input is deliberately not
+loaded eagerly: pre-window game backfill (the "James Madison problem" search
+in `srs`). Women's basketball uses only the current and audited prior season,
+without the older-game fallback. Eagerly resolving the fallback
 for every team would over-fetch, since only teams short on division games
 need it. Instead, the loader injects a `ranking.BackfillFunc` — a query seam
 implemented in `internal/ranking/load` — and the SRS stage invokes it on
