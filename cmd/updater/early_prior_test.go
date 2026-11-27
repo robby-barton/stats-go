@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -71,5 +72,67 @@ func TestRegisterFBSPriorRetryJob(t *testing.T) {
 	}
 	if len(s.Jobs()) != 1 {
 		t.Fatalf("jobs = %d, want exactly the one daily retry job", len(s.Jobs()))
+	}
+}
+
+// TestRankingCommand_PriorFlagScope verifies the opt-in CLI scope: the
+// ranking command's --fbs-early-season-prior flag exists on the football
+// command only, defaults off, and requires --all — plain ranking runs and
+// basketball never touch the prior.
+func TestRankingCommand_PriorFlagScope(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		sport    espn.Sport
+		wantFlag bool
+	}{
+		{name: "ncaaf", sport: espn.CollegeFootball, wantFlag: true},
+		{name: "ncaam", sport: espn.CollegeBasketball, wantFlag: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, err := sportCommand(zap.NewNop().Sugar(), db, tc.sport)
+			if err != nil {
+				t.Fatalf("sportCommand: %v", err)
+			}
+			rankingCmd, _, err := cmd.Find([]string{"ranking"})
+			if err != nil {
+				t.Fatalf("find ranking: %v", err)
+			}
+			flag := rankingCmd.Flags().Lookup("fbs-early-season-prior")
+			if tc.wantFlag {
+				if flag == nil {
+					t.Fatal("flag fbs-early-season-prior is not registered on ncaaf ranking")
+				}
+				if flag.DefValue != "false" {
+					t.Errorf("fbs-early-season-prior default = %q, want false", flag.DefValue)
+				}
+			} else if flag != nil {
+				t.Error("flag fbs-early-season-prior must not be registered on ncaam ranking")
+			}
+		})
+	}
+
+	// The flag requires --all: a plain ranking run must refuse it.
+	cmd, err := sportCommand(zap.NewNop().Sugar(), db, espn.CollegeFootball)
+	if err != nil {
+		t.Fatalf("sportCommand: %v", err)
+	}
+	rankingCmd, _, err := cmd.Find([]string{"ranking"})
+	if err != nil {
+		t.Fatalf("find ranking: %v", err)
+	}
+	if err := rankingCmd.Flags().Set("fbs-early-season-prior", "true"); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+	if err := rankingCmd.RunE(rankingCmd, nil); err == nil {
+		t.Fatal("ranking --fbs-early-season-prior without --all succeeded; want an error")
+	} else if !strings.Contains(err.Error(), "requires --all") {
+		t.Errorf("error = %v, want 'requires --all'", err)
 	}
 }

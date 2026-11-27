@@ -385,9 +385,11 @@ func scheduleCommand(
 
 			var wg sync.WaitGroup
 			// The early-season prior is football-only: enable it for the ncaaf
-			// worker and freeze task, and leave basketball, one-shot commands,
-			// and UpdateAllRankings entirely baseline. With the flag off no
-			// prior job is registered and the stored table is never touched.
+			// worker and freeze task, and leave basketball and backfill entirely
+			// baseline. One-shot commands stay baseline unless the ranking
+			// command's own --fbs-early-season-prior flag is used with --all.
+			// With the schedule flag off no prior job is registered and the
+			// scheduled worker never touches the stored table.
 			var footballUpdater *updater.Updater
 			for _, sp := range sports {
 				u, err := newUpdater(log, db, sp.sport)
@@ -500,20 +502,32 @@ func sportCommand(
 	gamesCmd.MarkFlagsMutuallyExclusive("all", "single", "year")
 
 	var rankingAll bool
+	var rankingPrior bool
 	rankingCmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "One-time ranking update",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			var err error
-			if rankingAll {
-				err = u.UpdateAllRankings()
-			} else {
-				err = u.UpdateRecentRankings()
+			if rankingPrior && !rankingAll {
+				return fmt.Errorf("--fbs-early-season-prior requires --all")
 			}
-			return err
+			if rankingAll {
+				if rankingPrior {
+					return u.UpdateAllRankingsWithPrior()
+				}
+				return u.UpdateAllRankings()
+			}
+			return u.UpdateRecentRankings()
 		},
 	}
 	rankingCmd.Flags().BoolVar(&rankingAll, "all", false, "update all rankings")
+	if sport == espn.CollegeFootball {
+		// The sole opt-in FBS early-season prior flag, shared with `schedule`.
+		// It is football-only and only meaningful with --all: plain ranking
+		// runs and backfill recomputation stay at the exact baseline.
+		rankingCmd.Flags().BoolVar(&rankingPrior, "fbs-early-season-prior", false,
+			"blend the reconstructed FBS early-season prior into early-season rankings "+
+				"while rebuilding all rankings (requires --all; default off)")
+	}
 
 	teamsCmd := &cobra.Command{
 		Use:   "teams",

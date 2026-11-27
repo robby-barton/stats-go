@@ -57,9 +57,9 @@ type FieldRow struct {
 	TeamName string `json:"team_name"`
 }
 
-// Prior is a validated ncaaf-season-prior/1 artifact. Construct it only
-// through Build (freeze side) or Parse (read side), which enforce the full
-// contract before returning.
+// Prior is a validated FBS strength prior. Build and Parse handle the stored
+// artifact; NewReconstructed handles the in-memory rebuild without capture
+// metadata or a stored-byte digest.
 type Prior struct {
 	// Season is the target season the prior was frozen for.
 	Season int64
@@ -217,6 +217,43 @@ func Parse(data []byte) (*Prior, error) {
 	}, nil
 }
 
+// NewReconstructed validates prior strengths computed by a ranking rebuild.
+// A rebuild was never frozen, so it does not carry capture timestamps or an
+// artifact checksum. The fixed season anchor and expiry still apply.
+func NewReconstructed(
+	season int64,
+	field []FieldRow,
+	strength map[int64]float64,
+	missing []int64,
+	inputSHA256 string,
+) (*Prior, error) {
+	anchor, err := AnchorInstantFor(season)
+	if err != nil {
+		return nil, err
+	}
+	if !isHex64(inputSHA256) {
+		return nil, errors.New("fbsprior: input hash is not 64 lowercase hex digits")
+	}
+	if err := validateFieldRows(field); err != nil {
+		return nil, err
+	}
+	if err := validatePayload(field, artifactPrior{
+		ZStrength: strength, MissingHistory: missing, FieldSize: len(field),
+	}); err != nil {
+		return nil, err
+	}
+	return &Prior{
+		Season:         season,
+		Anchor:         anchor.In(easternZone()).Format(time.DateOnly),
+		AnchorInstant:  anchor,
+		CalendarExpiry: anchor.AddDate(0, 0, CalendarDays),
+		Field:          field,
+		ZStrength:      strength,
+		MissingHistory: missing,
+		InputSHA256:    inputSHA256,
+	}, nil
+}
+
 // CoversField reports whether the ranking's FBS teams match the prior's
 // frozen field exactly, by team ID and name, with no team on either side.
 func (p *Prior) CoversField(teams ranking.TeamList) bool {
@@ -288,7 +325,7 @@ func validate(file artifact) error {
 	if err := validateFieldRows(file.Field); err != nil {
 		return err
 	}
-	return validatePayload(file)
+	return validatePayload(file.Field, file.Prior)
 }
 
 // easternMidnight parses a YYYY-MM-DD date as midnight Eastern (the verified
@@ -333,16 +370,16 @@ func validateFieldRows(field []FieldRow) error {
 	return nil
 }
 
-func validatePayload(file artifact) error {
-	if file.Prior.FieldSize != len(file.Field) || len(file.Prior.ZStrength) != len(file.Field) {
+func validatePayload(field []FieldRow, prior artifactPrior) error {
+	if prior.FieldSize != len(field) || len(prior.ZStrength) != len(field) {
 		return errors.New("strength map does not cover the frozen field exactly")
 	}
-	fieldIDs := make(map[int64]bool, len(file.Field))
-	for _, row := range file.Field {
+	fieldIDs := make(map[int64]bool, len(field))
+	for _, row := range field {
 		fieldIDs[row.TeamID] = true
 	}
 	zeros := true
-	for id, z := range file.Prior.ZStrength {
+	for id, z := range prior.ZStrength {
 		if !fieldIDs[id] {
 			return fmt.Errorf("strength covers unknown team %d", id)
 		}
@@ -354,13 +391,13 @@ func validatePayload(file artifact) error {
 		}
 	}
 	previous := int64(0)
-	for _, id := range file.Prior.MissingHistory {
+	for _, id := range prior.MissingHistory {
 		if id <= 0 || id <= previous || !fieldIDs[id] {
 			return fmt.Errorf("missing history %d is invalid, unsorted or outside the field", id)
 		}
 		previous = id
 	}
-	if file.Prior.Degenerate && !zeros {
+	if prior.Degenerate && !zeros {
 		return errors.New("degenerate prior claims nonzero strength")
 	}
 	return nil

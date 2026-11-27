@@ -75,20 +75,52 @@ With the flag enabled, the updater itself creates and persists the prior:
 
 ## Scope
 
-- Only the **scheduled football** ranking worker uses the stored prior. The
+Two paths use the opt-in prior; everything else stays at baseline.
+
+- **Scheduled football worker** (`schedule --fbs-early-season-prior`). The
   latest regular-season FBS window is resolved first, and the row keyed by
   that resolved season is read fresh on every run — a row frozen after
   startup is usable without a restart. Preseason (stored phase `-1`),
   postseason, windows with no current-season game, and the at/after-expiry
-  case are normal silent skips that never read the table.
-- Missing, unreadable, checksum-mismatched, or season-mismatched rows log a
-  warning and leave the computed baseline unchanged. The retained capture,
-  clock, field, and game-count checks (exact FBS field match by ID and name)
-  apply exactly as before.
-- Basketball, one-shot `ncaaf ranking`, `ranking --all`, and backfill
-  recomputation never touch the prior. They write baseline rows and can
-  overwrite earlier blended rankings. `ncaaf games --year` updates only
-  games, not rankings.
+  case are normal silent skips that never read the table. Missing,
+  unreadable, checksum-mismatched, or season-mismatched rows log a warning
+  and leave the computed baseline unchanged; a stored row is never repaired,
+  replaced, or synthesized.
+- **Inline rebuild** (`updater ncaaf ranking --all --fbs-early-season-prior`).
+  The rebuild never reads, validates, reuses, creates, or updates
+  `fbs_season_priors` — it works identically with a valid row, a corrupt
+  row, no row, or the table dropped entirely. Instead it **reconstructs one
+  prior in memory per eligible season** (completed previous seasons *and*
+  the current Eastern season) using exactly the scheduled freeze method:
+  the same fixed August 10 Eastern anchor, the same bounded two-donor-season
+  input window, the same field validation and SRS strength algorithm. It
+  never calls ESPN/AP, never fabricates persisted capture metadata, and
+  never writes a prior row.
+- Basketball, one-shot `ncaaf ranking` without `--all`, plain
+  `ranking --all`, and backfill recomputation never touch the prior. They
+  write baseline rows and **can overwrite earlier blended rankings**.
+  `ncaaf games --year` updates only games, not rankings.
+
+### Inline rebuild clocks and caveats
+
+- The rebuild's **current/latest** week-0 slot uses the actual observation
+  clock, so it agrees with the scheduled worker even when the last game is
+  stale. **Explicit historical weeks and past-season final snapshots use
+  their own resolved historical ranking cutoff** (the Tuesday Eastern
+  pre-week boundary, or the season's final snapshot cutoff) — never the
+  first kickoff of the requested week, and never today's clock.
+- The reconstructed prior is computed from today's stored data: **it uses
+  the same method as the scheduled freeze but does not promise the same
+  numbers** as any hypothetical historical snapshot when team metadata or
+  game data has been revised since the freeze. Historical weeks are
+  recomputed at their resolved cutoffs, not replayed at the exact times the
+  scheduler originally published them.
+- A manual rebuild of the current season can blend even when the scheduler
+  did not freeze (no stored row). The scheduler's midseason guard does not
+  apply to the rebuild: the donor window is bounded to seasons year-2..year-1
+  through the anchor and verified to contain no target-season or future
+  game, so no target or future game leaks into the prior; if the inputs are
+  unusable, the window stays at the exact baseline.
 
 ## Enabling and disabling (one-time)
 
@@ -97,6 +129,15 @@ Enable:
 ```sh
 updater schedule --fbs-early-season-prior
 ```
+
+The same flag opts the one-shot ranking command into the same policy:
+
+```sh
+updater ncaaf ranking --all --fbs-early-season-prior
+```
+
+The rebuild flag requires `--all` (plain `ncaaf ranking` and backfill stay
+at baseline) and is registered on the football command only.
 
 Disable: restart without the flag. The stored rows are left in place
 (they are additive history); with the flag off they are never read and the
@@ -111,7 +152,13 @@ mount, pin, or rotate, and no yearly runbook step.
   verified on every read.
 - Rankings are persisted per (team, year, week, phase, sport). Disabling the
   prior does not retroactively restore blended rows; the next scheduled
-  update for the same keys overwrites them. Historical backfills and
+  update for the same keys overwrites them. Historical backfills and plain
   `ranking --all` never apply the prior, so keys they upsert are baseline.
+  The opt-in rebuild computes every row through the same baseline loader and
+  score calculation and substitutes only the blended FBS scores and ranks on
+  early regular-season windows — but because it recomputes from current
+  stored data, running it (or `--all` alone) can overwrite rows that the
+  scheduler blended earlier with different (possibly baseline) values.
 - The `fbs_season_priors` table is additive and never destructively
-  migrated; `stats-web` has no dependency on it.
+  migrated; `stats-web` has no dependency on it, and the inline rebuild
+  works with the table dropped.

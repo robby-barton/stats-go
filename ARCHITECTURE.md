@@ -122,9 +122,26 @@ transaction serialized against game writes (table locks on PostgreSQL,
 immediate write lock on SQLite). The scheduled football ranking worker
 (`UpdateRecentRankingsWithPrior`) resolves the latest regular-season FBS
 window and reads the same-season row on eligible runs before expiry;
-missing or invalid rows fall back to the exact baseline with a warning. Everything else
-(basketball, one-shot commands, `UpdateAllRankings`, historical backfills)
-stays exact baseline, and with the flag off the scheduler neither registers
+missing or invalid rows fall back to the exact baseline with a warning.
+The same flag also opts the one-shot football ranking command into the same
+policy: `updater ncaaf ranking --all --fbs-early-season-prior`
+(`UpdateAllRankingsWithPrior`) rebuilds every ranking window through the
+same baseline loader and score calculation and reconstructs one prior in
+memory per eligible season (completed previous seasons and the current
+Eastern season) with exactly the scheduled freeze method — same anchor,
+same bounded two-donor-season input, same strength math — inside one
+consistent snapshot transaction, with a defensive recheck that no
+target-season or future game leaks into the donor window. The rebuild never
+reads, validates, or writes `fbs_season_priors` (it works with the table
+dropped), never calls ESPN/AP, and never fabricates persisted capture
+metadata. Its current/latest week-0 slot uses the actual observation clock;
+explicit historical weeks and past-season final snapshots use their resolved
+historical ranking cutoffs, so historical weeks are recomputed at their
+cutoffs rather than replayed at the exact times the scheduler originally
+published them, and the numbers can differ from any hypothetical historical
+snapshot when data has been revised. Everything else
+(basketball, one-shot commands without the flag, plain `UpdateAllRankings`,
+historical backfills) stays exact baseline, and with the flag off the scheduler neither registers
 a freeze job nor reads or writes stored prior rows. The blend only substitutes
 `FinalRaw`/`FinalRank` on the staged FBS rows after success. See
 docs/fbs-early-season-prior.md for the policy and one-time

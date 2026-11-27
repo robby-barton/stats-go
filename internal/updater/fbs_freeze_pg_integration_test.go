@@ -90,7 +90,8 @@ func TestIntegration_FreezeOnPostgres(t *testing.T) {
 		t.Fatalf("freeze on postgres: %v", err)
 	}
 	row := storedPriorRow(t, u.db, 2023)
-	if _, err := fbsprior.Parse([]byte(row.Artifact)); err != nil {
+	stored, err := fbsprior.Parse([]byte(row.Artifact))
+	if err != nil {
 		t.Fatalf("stored artifact: %v", err)
 	}
 
@@ -158,5 +159,21 @@ func TestIntegration_FreezeOnPostgres(t *testing.T) {
 	}
 	if err := <-result; err == nil || !strings.Contains(err.Error(), "already persisted") {
 		t.Fatalf("freeze did not observe the committed target-season game: %v", err)
+	}
+
+	// The inline path works after the season starts and without prior
+	// storage. Its input fingerprint must still match the preseason freeze.
+	if err := db.Migrator().DropTable(&database.FBSSeasonPrior{}); err != nil {
+		t.Fatalf("drop prior table in fixture: %v", err)
+	}
+	inMemory, err := u.reconstructPrior(2023)
+	if err != nil {
+		t.Fatalf("reconstruct on postgres: %v", err)
+	}
+	if inMemory.InputSHA256 != stored.InputSHA256 {
+		t.Fatal("the target-season game changed the rebuild's donor inputs")
+	}
+	if !inMemory.CapturedAt.IsZero() || inMemory.SHA256 != "" {
+		t.Fatal("reconstructed prior unexpectedly has frozen capture metadata")
 	}
 }

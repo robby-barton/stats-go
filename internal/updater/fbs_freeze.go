@@ -28,6 +28,10 @@ import (
 const (
 	fbsPriorMaxFieldRows = 512
 	fbsPriorMaxGameRows  = 8192
+
+	// postgresDialect is gorm's dialect name for PostgreSQL, used to pick
+	// the transaction isolation and locking behavior.
+	postgresDialect = "postgres"
 )
 
 // fbsFreezeInput is the bounded, freeze-specific input for one season's
@@ -44,9 +48,9 @@ type fbsFreezeInput struct {
 }
 
 // RunFBSPriorFreezeTask is the automatic, idempotent preseason task behind
-// the sole --fbs-early-season-prior flag. It requires a football updater
-// and is a no-op outside August 10-16 Eastern or during another attempt. The target season is the Eastern
-// calendar year of the observed clock; a season whose metadata is wholly
+// the schedule's --fbs-early-season-prior flag. It requires a football updater
+// and is a no-op outside August 10-16 Eastern or during another attempt.
+// The target season is the Eastern calendar year; a season whose metadata is wholly
 // absent is initialized first (the same annual path the scheduled job uses).
 // Metadata that exists but fails coverage is never rewritten: the attempt
 // warns and a later retry in the window picks it up.
@@ -201,12 +205,12 @@ func (u *Updater) freezeFBSPrior(db *gorm.DB, season int64, now time.Time) error
 // without creating or deleting any rows.
 func freezeTransaction(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 	var opts *sql.TxOptions
-	if db.Name() == "postgres" {
+	if db.Name() == postgresDialect {
 		opts = &sql.TxOptions{Isolation: sql.LevelRepeatableRead}
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		switch tx.Name() {
-		case "postgres":
+		case postgresDialect:
 			if err := tx.Exec("SET LOCAL lock_timeout = '10s'").Error; err != nil {
 				return fmt.Errorf("fbs prior freeze: bounding lock wait: %w", err)
 			}
