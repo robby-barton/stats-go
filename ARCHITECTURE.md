@@ -68,7 +68,9 @@ same level or from `cmd/`.
 cmd/ranker   → config, database, ranking, ranking/load, sport
 cmd/updater  → config, database, logger, updater, espn
 cmd/migrate  → database
+cmd/ncaaf-replay → config, database, ncaafreplay, ranking/load
 
+ncaafreplay  → database, ranking, ranking/load, sport
 updater      → database, espn, game, ranking, ranking/load, sport, team, updater/fbsprior
 game         → espn
 team         → espn
@@ -88,6 +90,15 @@ URLs stay inside `espn`, which converts to the persistence ID at its edge via
 `Sport.DBSport()`.
 
 ## Key Abstractions
+
+### Offline NCAAF Replay
+
+`cmd/ncaaf-replay` is a developer tool, not an updater dependency. It
+compares the normal unblended FBS baseline with bounded explicit-cutoff
+inputs. Both read paths share ranking predicates, but the replay loads its
+own data and snapshots older history separately. Capture runs in a verified
+read-only PostgreSQL transaction; the replay is evaluated after rollback.
+See [the replay guide](docs/ncaaf-readonly-replay.md) for scope and fixtures.
 
 ### Updater Struct
 

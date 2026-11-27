@@ -67,6 +67,13 @@ make ranker OPTS="ncaam -t 25"          # top 25 basketball
 | | `-t` | int | all | Print only the top N teams |
 | | `-r` | bool | false | Print SRS ratings instead of full ranking |
 
+### Offline NCAAF replay
+
+To check that an explicit-cutoff replay matches the default FBS ranking
+calculation on a local PostgreSQL fixture, use `cmd/ncaaf-replay`. It does
+not publish rankings or fetch game or poll data. See the
+[setup and parity guide](docs/ncaaf-readonly-replay.md).
+
 ### Updater
 
 Run one-off operations or start the scheduled service. One-shot commands are
