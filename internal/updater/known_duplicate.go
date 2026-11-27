@@ -12,96 +12,63 @@ import (
 	"github.com/robby-barton/stats-go/internal/sport"
 )
 
-// This exact pair is the reviewed 2012 Army–Temple repair, not a general dedup
-// rule. The canonical repair was applied separately; this guard only prevents
-// the retired duplicate from being reimported. Keep the identity in sync with
-// docs/ncaaf-reimport-guard.md.
 const (
-	canonicalArmyTempleID int64 = 323220349
-	duplicateArmyTempleID int64 = 400368353
-	scheduleHome                = "home"
-	scheduleAway                = "away"
+	scheduleHome = "home"
+	scheduleAway = "away"
 
 	// knownEventLogMessage is the structured warning key for a protected import.
 	knownEventLogMessage = "known-event import rejected"
 )
 
-// armyTempleIdentity reports whether g is the full, reviewed canonical header.
-// It is used for diagnostics only: the duplicate is refused even when this
-// returns false.
-func armyTempleIdentity(g database.Game) bool {
-	return g.Sport == sport.Football && g.Season == 2012 && g.Week == 12 &&
-		g.StartTime.Equal(time.Date(2012, 11, 17, 17, 0, 0, 0, time.UTC)) &&
-		g.HomeID == 349 && g.HomeScore == 32 && g.AwayID == 218 && g.AwayScore == 63 &&
-		g.Postseason == 0 && !g.Neutral && !g.ConfGame && g.Retry == 0
+type duplicateKey struct {
+	sport   sport.Sport
+	eventID int64
 }
 
-// isProtectedDuplicate reports whether id is the retired Army–Temple duplicate
-// for this updater's sport. The decision is unconditional; absent or drifted
-// canonical metadata cannot disable it.
-func (u *Updater) isProtectedDuplicate(id int64) bool {
-	return u.sportDB() == sport.Football && id == duplicateArmyTempleID
-}
+type duplicateRegistry map[duplicateKey]database.Game
 
-// ProtectedGame is a game intentionally refused by the known-event guard. It is
-// reported in GameUpdateResult.Skipped and is never fetched, retried, or
-// written.
-type ProtectedGame struct {
-	GameID int64
-	Reason string
-}
-
-// refusal returns the direct-call refusal error for a protected game.
-func (p ProtectedGame) refusal() error {
-	return fmt.Errorf(
-		"known-event protection: ncaaf game %d rejected against canonical %d: %s",
-		p.GameID, canonicalArmyTempleID, p.Reason,
-	)
-}
-
-// protectedDuplicate records a refusal and logs the diagnostic. A canonical
-// read failure cannot change the refusal or block unrelated entries in a batch.
-func (u *Updater) protectedDuplicate(id int64, sourceDetail string) ProtectedGame {
-	reason, err := u.protectedDuplicateReason(sourceDetail)
-	if err != nil {
-		reason = "canonical game could not be verified"
-		u.logger.Warnw(knownEventLogMessage,
-			"game_id", id, "canonical_game_id", canonicalArmyTempleID, "reason", reason, "error", err)
-	} else {
-		u.logger.Warnw(knownEventLogMessage,
-			"game_id", id, "canonical_game_id", canonicalArmyTempleID, "reason", reason)
-	}
-	return ProtectedGame{GameID: id, Reason: reason}
-}
-
-// protectedDuplicateReason explains why the protected duplicate is refused.
-// Canonical state only changes the diagnostic, never the outcome. sourceDetail
-// carries an optional source-identity mismatch found before the canonical read;
-// it is a diagnostic string, not a control-flow error.
-func (u *Updater) protectedDuplicateReason(sourceDetail string) (string, error) {
-	var canonical database.Game
-	err := u.db.Where("game_id = ? and sport = ?", canonicalArmyTempleID, sport.Football).
-		First(&canonical).Error
-
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		return "canonical game missing", nil
-	case err != nil:
-		return "", fmt.Errorf("known-event protection: reading canonical %d: %w", canonicalArmyTempleID, err)
-	case !armyTempleIdentity(canonical):
-		return "canonical identity mismatch", nil
-	case sourceDetail != "":
-		return sourceDetail, nil
-	default:
-		return "protected duplicate; canonical stats preserved (no redirect or retry)", nil
+// knownDuplicateHeaders lists reviewed retired ESPN event IDs keyed by sport.
+// Values are the expected canonical game headers, used only for diagnostics.
+// Each updater owns its registry; adding a case requires no import-flow edits.
+func knownDuplicateHeaders() duplicateRegistry {
+	return duplicateRegistry{
+		// Army–Temple (2012): keep the canonical event repaired separately.
+		{sport: sport.Football, eventID: 400368353}: {
+			GameID: 323220349, Season: 2012, Week: 12,
+			StartTime: time.Date(2012, 11, 17, 17, 0, 0, 0, time.UTC),
+			HomeID:    349, HomeScore: 32, AwayID: 218, AwayScore: 63,
+		},
 	}
 }
 
-// armyTempleScheduleSourceDetail validates the schedule DTO fields that
-// site.api retains. Scores and competitor identity are checked; missing
-// full-header fields are not invented. It returns an empty string when the
-// source matches and is diagnostic only.
-func armyTempleScheduleSourceDetail(g espn.Game) string {
+type duplicateRule struct {
+	eventID   int64
+	canonical database.Game
+}
+
+// duplicateRule looks up protection by exact sport and retired event ID.
+// Missing or drifted canonical data cannot disable a registered refusal.
+func (u *Updater) duplicateRule(id int64) (duplicateRule, bool) {
+	sp := u.sportDB()
+	canonical, ok := u.duplicateHeaders[duplicateKey{sport: sp, eventID: id}]
+	canonical.Sport = sp
+	return duplicateRule{eventID: id, canonical: canonical}, ok
+}
+
+// matchesHeader compares the reviewed identity without regard to event ID:
+// the canonical row is queried by its own ID, and parsed duplicate headers
+// legitimately carry the retired ID. Kickoff equality compares instants.
+func (r duplicateRule) matchesHeader(actual database.Game) bool {
+	want := r.canonical
+	return actual.Sport == want.Sport && actual.Season == want.Season && actual.Week == want.Week &&
+		actual.StartTime.Equal(want.StartTime) && actual.HomeID == want.HomeID && actual.HomeScore == want.HomeScore &&
+		actual.AwayID == want.AwayID && actual.AwayScore == want.AwayScore && actual.Postseason == want.Postseason &&
+		actual.Neutral == want.Neutral && actual.ConfGame == want.ConfGame && actual.Retry == want.Retry
+}
+
+// scheduleSourceDetail checks the competition fields that the scoreboard DTO
+// actually retains. Missing full-header fields are not inferred.
+func (r duplicateRule) scheduleSourceDetail(g espn.Game) string {
 	if len(g.Competitions) != 1 || len(g.Competitions[0].Competitors) != 2 {
 		return "source schedule identity malformed"
 	}
@@ -110,10 +77,66 @@ func armyTempleScheduleSourceDetail(g espn.Game) string {
 	if home.HomeAway == scheduleAway {
 		home, away = away, home
 	}
+	want := r.canonical
 	if home.HomeAway != scheduleHome || away.HomeAway != scheduleAway ||
-		home.ID != 349 || home.Team.ID != 349 || home.Score != 32 ||
-		away.ID != 218 || away.Team.ID != 218 || away.Score != 63 {
+		home.ID != want.HomeID || home.Team.ID != want.HomeID || home.Score != want.HomeScore ||
+		away.ID != want.AwayID || away.Team.ID != want.AwayID || away.Score != want.AwayScore {
 		return "source schedule identity mismatch"
 	}
 	return ""
+}
+
+// ProtectedGame is a game intentionally refused by the known-event guard. It is
+// reported in GameUpdateResult.Skipped and is never fetched, retried, or written.
+type ProtectedGame struct {
+	GameID          int64
+	CanonicalGameID int64
+	Sport           sport.Sport
+	Reason          string
+}
+
+func (p ProtectedGame) refusal() error {
+	return fmt.Errorf(
+		"known-event protection: %s game %d rejected against canonical %d: %s",
+		p.Sport, p.GameID, p.CanonicalGameID, p.Reason,
+	)
+}
+
+// protectedDuplicate logs a registered refusal. A canonical read failure
+// cannot change the refusal or block unrelated entries in a batch.
+func (u *Updater) protectedDuplicate(rule duplicateRule, sourceDetail string) ProtectedGame {
+	reason, err := u.protectedDuplicateReason(rule, sourceDetail)
+	if err != nil {
+		reason = "canonical game could not be verified"
+	}
+	p := ProtectedGame{
+		GameID: rule.eventID, CanonicalGameID: rule.canonical.GameID,
+		Sport: rule.canonical.Sport, Reason: reason,
+	}
+	fields := []any{"sport", p.Sport, "game_id", p.GameID, "canonical_game_id", p.CanonicalGameID, "reason", reason}
+	if err != nil {
+		fields = append(fields, "error", err)
+	}
+	u.logger.Warnw(knownEventLogMessage, fields...)
+	return p
+}
+
+// protectedDuplicateReason uses canonical state for diagnostics only.
+func (u *Updater) protectedDuplicateReason(rule duplicateRule, sourceDetail string) (string, error) {
+	want := rule.canonical
+	var canonical database.Game
+	err := u.db.Where("game_id = ? and sport = ?", want.GameID, want.Sport).First(&canonical).Error
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return "canonical game missing", nil
+	case err != nil:
+		return "", fmt.Errorf("known-event protection: reading canonical %d: %w", want.GameID, err)
+	case !rule.matchesHeader(canonical):
+		return "canonical identity mismatch", nil
+	case sourceDetail != "":
+		return sourceDetail, nil
+	default:
+		return "protected duplicate; canonical stats preserved (no redirect or retry)", nil
+	}
 }

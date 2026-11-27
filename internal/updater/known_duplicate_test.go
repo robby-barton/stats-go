@@ -23,6 +23,20 @@ import (
 	"github.com/robby-barton/stats-go/internal/sport"
 )
 
+const (
+	canonicalArmyTempleID int64 = 323220349
+	duplicateArmyTempleID int64 = 400368353
+)
+
+func testDuplicateRule(t *testing.T, u *Updater, id int64) duplicateRule {
+	t.Helper()
+	rule, ok := u.duplicateRule(id)
+	if !ok {
+		t.Fatalf("no duplicate rule for %s event %d", u.sportDB(), id)
+	}
+	return rule
+}
+
 // repairedArmyTemple is the reviewed canonical game, including the six passing
 // rows, the single rusher, and both corrected punt inside_20 values. It seeds
 // canonical stats without touching the protected duplicate.
@@ -191,7 +205,7 @@ func TestProtectedDuplicate_MixedBatchSkipsAndImportsUnrelated(t *testing.T) {
 		First(&canonical).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !armyTempleIdentity(canonical) {
+	if !testDuplicateRule(t, u, duplicateArmyTempleID).matchesHeader(canonical) {
 		t.Fatalf("canonical row changed: %+v", canonical)
 	}
 }
@@ -406,7 +420,7 @@ func TestProtectedDuplicate_FailClosedOnCanonicalMetadata(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			protected := u.protectedDuplicate(duplicateArmyTempleID, "")
+			protected := u.protectedDuplicate(testDuplicateRule(t, u, duplicateArmyTempleID), "")
 			if protected.GameID != duplicateArmyTempleID || protected.Reason == "" {
 				t.Fatalf("expected a fail-closed diagnostic, got %+v", protected)
 			}
@@ -430,11 +444,62 @@ func TestProtectedDuplicate_SourceIdentityMismatchStillSkips(t *testing.T) {
 	}
 	for name, g := range cases {
 		t.Run(name, func(t *testing.T) {
-			protected := u.protectedDuplicate(g.ID, armyTempleScheduleSourceDetail(g))
+			rule := testDuplicateRule(t, u, g.ID)
+			protected := u.protectedDuplicate(rule, rule.scheduleSourceDetail(g))
 			if !strings.Contains(protected.Reason, "source schedule identity") {
 				t.Fatalf("reason = %+v, want a source identity diagnostic", protected)
 			}
 		})
+	}
+}
+
+func TestKnownDuplicateHeadersNeverRetireACanonicalEvent(t *testing.T) {
+	headers := knownDuplicateHeaders()
+	for key, want := range headers {
+		if key.sport.Validate() != nil || key.eventID <= 0 || want.GameID <= 0 {
+			t.Fatalf("invalid registry entry: %+v -> %+v", key, want)
+		}
+		if _, retired := headers[duplicateKey{sport: key.sport, eventID: want.GameID}]; retired {
+			t.Fatalf("canonical event %s/%d is itself retired", key.sport, want.GameID)
+		}
+	}
+}
+
+func TestProtectedDuplicate_SecondRegistryEntryUsesItsOwnCanonicalGame(t *testing.T) {
+	u, logs := observedUpdater(t)
+	const retiredID int64 = 700002
+	const canonicalID int64 = 700001
+	want := database.Game{
+		GameID: canonicalID, Sport: sport.Football, Season: 2020, Week: 7,
+		StartTime: time.Date(2020, 10, 17, 12, 0, 0, 0, time.UTC),
+		HomeID:    11, AwayID: 22, HomeScore: 7, AwayScore: 3, Neutral: true,
+	}
+	u.duplicateHeaders[duplicateKey{sport: sport.Football, eventID: retiredID}] = want
+	if err := u.db.Create(&want).Error; err != nil {
+		t.Fatal(err)
+	}
+	second := finalScheduleGame(retiredID, []espn.Competitor{
+		{ID: want.HomeID, Team: espn.ScheduleTeam{ID: want.HomeID}, Score: want.HomeScore, HomeAway: scheduleHome},
+		{ID: want.AwayID, Team: espn.ScheduleTeam{ID: want.AwayID}, Score: want.AwayScore, HomeAway: scheduleAway},
+	})
+	before := ingestionSnapshot(t, u.db)
+	forbidIngestionDML(t, u.db)
+	result, err := u.processGames(t.Context(), []espn.Game{duplicateSchedule(), second})
+	if err != nil || len(result.Skipped) != 2 || len(result.Processed) != 0 || len(result.Failed) != 0 {
+		t.Fatalf("expected both registered events skipped: %+v, %v", result, err)
+	}
+	first, next := result.Skipped[0], result.Skipped[1]
+	if first.CanonicalGameID != canonicalArmyTempleID || next.GameID != retiredID ||
+		next.CanonicalGameID != canonicalID || next.Sport != sport.Football ||
+		!strings.Contains(next.Reason, "canonical stats preserved") {
+		t.Fatalf("registry diagnostics did not use each event's own header: %+v", result.Skipped)
+	}
+	err = u.UpdateSingleGame(t.Context(), retiredID)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("canonical %d", canonicalID)) {
+		t.Fatalf("direct refusal did not use the registered canonical ID: %v", err)
+	}
+	if logs.FilterMessage(knownEventLogMessage).Len() != 3 || ingestionSnapshot(t, u.db) != before {
+		t.Fatal("registry addition did not preserve reporting and no-write behavior")
 	}
 }
 
@@ -496,7 +561,7 @@ func TestProtectedDuplicate_CanonicalAndUnrelatedUnaffected(t *testing.T) {
 		First(&canonical).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !armyTempleIdentity(canonical) {
+	if !testDuplicateRule(t, u, duplicateArmyTempleID).matchesHeader(canonical) {
 		t.Fatalf("canonical identity not stored: %+v", canonical)
 	}
 

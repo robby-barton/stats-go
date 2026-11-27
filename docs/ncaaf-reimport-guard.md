@@ -9,8 +9,9 @@ tool, or ranking change.
 
 ## Scope and decisions
 
-Only NCAAF duplicate event `400368353`, judged against canonical `323220349`, is
-protected. Basketball events with the same numeric ID and every unrelated game
+The guard looks up an exact `(sport, retired ESPN event ID)` in a reviewed
+registry. Its only current entry is NCAAF `400368353`, with canonical event
+`323220349`. Basketball events with the same numeric ID and unlisted games
 are untouched.
 
 | Entry point | Behavior on the protected ID |
@@ -24,7 +25,7 @@ are untouched.
 A batch skip is visible, not silent:
 
 - a structured warning `known-event import rejected` carries `game_id`,
-  `canonical_game_id`, and `reason`;
+  `canonical_game_id`, `sport`, and `reason`;
 - `GameUpdateResult.Skipped` holds a `ProtectedGame` per refusal (with
   `SkippedIDs()` for callers);
 - `cmd/updater` logs skipped IDs after the existing processed/failed summaries.
@@ -54,6 +55,18 @@ The reviewed canonical identity is: NCAAF, season 2012, week 12, start
 `2012-11-17T17:00:00Z`, home 349 score 32, away 218 score 63, postseason 0,
 neutral false, conference false, retry 0.
 
+## Add another reviewed duplicate
+
+1. Confirm the exact retired and canonical ESPN IDs for the sport. Confirm
+   the canonical header, including kickoff, teams, scores, season, week,
+   phase, and game flags. Resolve any existing duplicate separately.
+2. Add an entry to `knownDuplicateHeaders` in
+   `internal/updater/known_duplicate.go`: use the sport and retired event ID
+   as the key, and the canonical ID and reviewed header as the value. No
+   importer changes, configuration, or migration are needed.
+3. Exercise the registry with a fixture for that pair. The guard uses header
+   comparisons to explain refusals, not to identify additional duplicates.
+
 ## Verification
 
 Hermetic tests use mock ESPN HTTP and in-memory SQLite; no credentials, live
@@ -69,7 +82,8 @@ go build ./...
 Coverage includes a mixed `processGames` batch, current-week and
 historical-season discovery, explicit single-game refusal, direct stat-write and
 retry defense, canonical/source metadata drift, canonical and unrelated normal
-imports, and basketball with the same numeric ID.
+imports, basketball with the same numeric ID, and a second synthetic registry
+entry with different teams, scores, and canonical ID.
 
 ## Boundaries
 

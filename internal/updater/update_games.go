@@ -20,7 +20,7 @@ import (
 func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 	gameIDs := []int64{}
 	for _, game := range games {
-		if !u.isProtectedDuplicate(game.ID) {
+		if _, protected := u.duplicateRule(game.ID); !protected {
 			gameIDs = append(gameIDs, game.ID)
 		}
 	}
@@ -38,7 +38,7 @@ func (u *Updater) checkGames(games []espn.Game) ([]espn.Game, error) {
 
 	var newGames []espn.Game
 	for _, game := range games {
-		if u.isProtectedDuplicate(game.ID) {
+		if _, protected := u.duplicateRule(game.ID); protected {
 			newGames = append(newGames, game)
 			continue
 		}
@@ -278,12 +278,12 @@ func (u *Updater) insertGameInfo(parsed *game.ParsedGameInfo) error {
 	}
 
 	dbGameInfo := gameInfoToDB(parsed.Info, u.sportDB())
-	if u.isProtectedDuplicate(dbGameInfo.GameID) {
+	if rule, protected := u.duplicateRule(dbGameInfo.GameID); protected {
 		sourceDetail := ""
-		if !armyTempleIdentity(dbGameInfo) {
+		if !rule.matchesHeader(dbGameInfo) {
 			sourceDetail = "source parsed identity mismatch"
 		}
-		return u.protectedDuplicate(dbGameInfo.GameID, sourceDetail).refusal()
+		return u.protectedDuplicate(rule, sourceDetail).refusal()
 	}
 
 	// Upsert specs in FK-satisfying order: the game row must be inserted
@@ -402,8 +402,8 @@ func (r *GameUpdateResult) SkippedIDs() []int64 {
 // from the schedule entry. A successful later fetch clears the flag because
 // insertGameInfo upserts the full row (retry defaults to 0).
 func (u *Updater) markGameRetry(g espn.Game) error {
-	if u.isProtectedDuplicate(g.ID) {
-		return u.protectedDuplicate(g.ID, armyTempleScheduleSourceDetail(g)).refusal()
+	if rule, protected := u.duplicateRule(g.ID); protected {
+		return u.protectedDuplicate(rule, rule.scheduleSourceDetail(g)).refusal()
 	}
 
 	retry := &database.Game{GameID: g.ID, Sport: u.sportDB(), Retry: 1}
@@ -438,9 +438,8 @@ func (u *Updater) processGames(ctx context.Context, games []espn.Game) (*GameUpd
 			// protected import can never create a retry row or touch canonical
 			// stats. Unlike the retired abort-on-first behavior, the rest of
 			// the batch still imports normally.
-			if u.isProtectedDuplicate(g.ID) {
-				protected := u.protectedDuplicate(g.ID, armyTempleScheduleSourceDetail(g))
-				result.Skipped = append(result.Skipped, protected)
+			if rule, protected := u.duplicateRule(g.ID); protected {
+				result.Skipped = append(result.Skipped, u.protectedDuplicate(rule, rule.scheduleSourceDetail(g)))
 				continue
 			}
 
@@ -495,8 +494,8 @@ func (u *Updater) UpdateGamesForYear(ctx context.Context, year int64) (*GameUpda
 }
 
 func (u *Updater) UpdateSingleGame(ctx context.Context, gameID int64) error {
-	if u.isProtectedDuplicate(gameID) {
-		return u.protectedDuplicate(gameID, "").refusal()
+	if rule, protected := u.duplicateRule(gameID); protected {
+		return u.protectedDuplicate(rule, "").refusal()
 	}
 
 	gameStats, err := game.GetSingleGame(ctx, u.espn, u.logger, gameID)

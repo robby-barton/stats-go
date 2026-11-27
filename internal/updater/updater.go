@@ -17,9 +17,10 @@ import (
 // validates the dependencies; the fields are unexported so wiring always
 // goes through that seam.
 type Updater struct {
-	db     *gorm.DB
-	logger *zap.SugaredLogger
-	espn   espn.SportClient
+	db               *gorm.DB
+	logger           *zap.SugaredLogger
+	espn             espn.SportClient
+	duplicateHeaders duplicateRegistry // read-only after initialization
 
 	// priorFreezeMu serializes in-process FBS prior freeze attempts so a
 	// retry job and a season-init trigger can never run concurrently on
@@ -44,7 +45,7 @@ func NewUpdater(db *gorm.DB, log *zap.SugaredLogger, client espn.SportClient) (*
 	if err := client.SportInfo().DBSport().Validate(); err != nil {
 		return nil, fmt.Errorf("updater: %w", err)
 	}
-	return &Updater{db: db, logger: log, espn: client}, nil
+	return &Updater{db: db, logger: log, espn: client, duplicateHeaders: knownDuplicateHeaders()}, nil
 }
 
 // sportDB returns the persistence identifier for the updater's sport.
