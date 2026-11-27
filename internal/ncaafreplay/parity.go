@@ -39,8 +39,9 @@ const (
 	// HistoryMode names the replay's independent bounded history loading.
 	HistoryMode = "independent_materialized_older_backfill"
 
-	componentSRS = "srs"
-	componentSOS = "sos"
+	componentSRS   = "srs"
+	componentSOS   = "sos"
+	nonfiniteLabel = "nonfinite"
 )
 
 // Counts describe this run only; they are never efficacy evidence.
@@ -198,10 +199,10 @@ type capturedWindow struct {
 	snapshot *load.ReplaySnapshot
 }
 
-// CaptureWindow resolves the production window and computes the traced
+// captureWindow resolves the production window and computes the traced
 // reference ranking, then independently materializes the bounded replay
 // snapshot. It must run inside the verified read-only transaction.
-func CaptureWindow(tx *gorm.DB, spec WindowSpec, limits load.ReplayLimits) (*capturedWindow, []Failure, error) {
+func captureWindow(tx *gorm.DB, spec WindowSpec, limits load.ReplayLimits) (*capturedWindow, []Failure, error) {
 	in, window, err := load.InputWindow(load.Options{DB: tx, Sport: sport.Football,
 		Year: spec.Year, Week: spec.Week})
 	if err != nil {
@@ -245,9 +246,9 @@ func CaptureWindow(tx *gorm.DB, spec WindowSpec, limits load.ReplayLimits) (*cap
 		input: in, teams: teams, traces: traces, snapshot: snapshot}, nil, nil
 }
 
-// VerifyWindow computes the offline replay ranking from the snapshot and
+// verifyWindow computes the offline replay ranking from the snapshot and
 // compares it with the captured reference under the parity contract.
-func VerifyWindow(captured *capturedWindow) WindowResult {
+func verifyWindow(captured *capturedWindow) WindowResult {
 	in := captured.snapshot.Input()
 	teams, traces, err := CalculateTraced(in)
 	result := WindowResult{
@@ -463,7 +464,7 @@ func safeValue(v float64) any {
 	if finite(v) {
 		return v
 	}
-	return "nonfinite"
+	return nonfiniteLabel
 }
 
 // compareTeams applies the parity contract to two ranking outputs. Every
@@ -642,7 +643,7 @@ func captureWindows(tx *gorm.DB, manifest Manifest, limits load.ReplayLimits,
 	captured := []*capturedWindow{}
 	failed := []WindowResult{}
 	for _, spec := range manifest.Windows {
-		window, specFailures, err := CaptureWindow(tx, spec, limits)
+		window, specFailures, err := captureWindow(tx, spec, limits)
 		if err != nil {
 			return captured, failed, err
 		}
@@ -663,7 +664,7 @@ func verifyOffline(report *Report, captured []*capturedWindow) Report {
 	}
 	report.Counts.Windows = len(captured)
 	for _, window := range captured {
-		result := VerifyWindow(window)
+		result := verifyWindow(window)
 		report.Windows = append(report.Windows, result)
 		report.Counts.TeamComparisons += len(result.ReplaySelected)
 		report.Counts.BackfillRequests += len(result.ReferenceOlder)

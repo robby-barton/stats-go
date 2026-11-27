@@ -169,7 +169,7 @@ func TestParityFailsOnChangedScore(t *testing.T) {
 		t.Fatal(err)
 	}
 	in.Backfill = nil
-	result := VerifyWindow(&capturedWindow{year: in.Year, week: in.Week, cutoff: window.StartTime,
+	result := verifyWindow(&capturedWindow{year: in.Year, week: in.Week, cutoff: window.StartTime,
 		input: in, teams: teams, traces: traces, snapshot: snapshot})
 	if result.Status != StatusFailed || len(result.Mismatches) == 0 {
 		t.Fatalf("changed score must fail parity: %+v", result)
