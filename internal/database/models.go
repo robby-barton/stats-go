@@ -63,13 +63,16 @@ func (TeamWeekResult) TableName() string {
 	return "team_week_results"
 }
 
-// FBSSeasonPrior is one immutable, validated FBS preseason prior per football
-// season, written by the scheduled updater's automatic preseason freeze task
-// (behind the opt-in --fbs-early-season-prior flag). The artifact is the
-// versioned fbsprior payload; Checksum is the SHA-256 of the exact stored
-// bytes. Rows are insert-once keyed by season: they are never replaced,
-// regenerated, or deleted — repeat attempts, races, and restarts leave an
-// existing row (even a corrupt one) untouched.
+// FBSSeasonPrior is one validated FBS preseason prior per football season.
+// The artifact is the versioned fbsprior payload; Checksum is the SHA-256 of
+// the exact stored bytes. The automatic preseason freeze task (behind the
+// opt-in --fbs-early-season-prior flag) inserts each row once and never
+// replaces it — repeat attempts, races, and restarts leave an existing row
+// (even a corrupt one) untouched. The single exception is the explicit
+// `ncaaf ranking --all --fbs-early-season-prior` rebuild, which
+// authoritatively replaces a season's row with the freshly recomputed prior
+// (or deletes it when no usable prior can be reconstructed), atomically with
+// its rebuilt ranking upserts.
 type FBSSeasonPrior struct {
 	Season   int64  `json:"season" gorm:"column:season;primaryKey;autoIncrement:false;not null"`
 	Artifact string `json:"artifact" gorm:"column:artifact;not null"`

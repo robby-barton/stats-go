@@ -1,7 +1,9 @@
 // Package fbsprior implements the opt-in FBS early-season prior blend used by
 // the scheduled football updater. It contains the ncaaf-season-prior/1
 // artifact contract (a versioned, checksum-verified preseason prior that the
-// scheduled updater itself freezes and persists) and the blend math fixed by
+// scheduled updater itself freezes and persists) plus the
+// ncaaf-season-prior/2 rebuild artifact written by the explicit ranking
+// rebuild, and the blend math fixed by
 // the 2026 retrospective research: rho 0.9, a 4-game (W+L+T, including
 // FBS-FCS games) per-team expiry, a 56-Eastern-calendar-day full bypass
 // measured from the fixed August 10 midnight Eastern anchor, and an SD floor
@@ -29,10 +31,19 @@ import (
 
 // The fixed research policy constants. None of these are operator-tunable.
 const (
-	// Schema is the only supported artifact schema. The old
+	// Schema is the automatic preseason freeze artifact schema. The old
 	// ncaaf-shadow-prior/1 schema (operator-supplied files pinned by a
 	// manual SHA-256 flag) is deliberately rejected.
 	Schema = "ncaaf-season-prior/1"
+	// RebuildSchema is the artifact schema written by the explicit
+	// `ranking --all --fbs-early-season-prior` rebuild: the same payload
+	// stamped with the real rebuild time and source instead of an August
+	// preseason capture, which a later rebuild must never fabricate.
+	// Automatic preseason artifacts remain fully readable.
+	RebuildSchema = "ncaaf-season-prior/2"
+	// RebuildSource is the fixed source identifier recorded inside a rebuilt
+	// artifact.
+	RebuildSource = "ncaaf ranking --all --fbs-early-season-prior"
 	// Rho scales the frozen prior z-score. There is deliberately no
 	// restandardization after blending, so the combined field's variance
 	// shrinks below 1 by design.
@@ -81,8 +92,15 @@ type Prior struct {
 	AsOf time.Time
 	// CapturedAt is the observed-clock instant at capture, recorded inside
 	// the artifact. The blend requires the observed clock to be at or
-	// after it.
+	// after it. For a rebuilt artifact it is the real rebuild/publication
+	// instant, so a scheduled run can never rank against a prior that was
+	// not yet published.
 	CapturedAt time.Time
+	// RebuiltAt is the real observed instant at which the explicit ranking
+	// rebuild recomputed and published this prior. It is zero for an
+	// automatic preseason freeze artifact, which carries AsOf/CapturedAt
+	// instead.
+	RebuiltAt time.Time
 	// Field is the frozen FBS field: sorted, unique, positive team IDs with
 	// nonempty names. The blend requires an exact ID and name match with
 	// the current FBS field.
@@ -106,17 +124,21 @@ type Prior struct {
 
 // artifact is the JSON layout of the stored payload.
 type artifact struct {
-	Schema         string        `json:"schema"`
-	Season         int64         `json:"season"`
-	Anchor         string        `json:"anchor"`
-	AnchorInstant  time.Time     `json:"anchor_instant"`
-	CalendarExpiry time.Time     `json:"calendar_expiry"`
-	FreezeDate     string        `json:"freeze_date"`
-	AsOf           time.Time     `json:"as_of"`
-	CapturedAt     time.Time     `json:"captured_at"`
-	Field          []FieldRow    `json:"field"`
-	Prior          artifactPrior `json:"prior"`
-	InputSHA256    string        `json:"input_sha256"`
+	Schema         string    `json:"schema"`
+	Season         int64     `json:"season"`
+	Anchor         string    `json:"anchor"`
+	AnchorInstant  time.Time `json:"anchor_instant"`
+	CalendarExpiry time.Time `json:"calendar_expiry"`
+	FreezeDate     string    `json:"freeze_date"`
+	AsOf           time.Time `json:"as_of"`
+	CapturedAt     time.Time `json:"captured_at"`
+	// RebuiltAt and Source are present only in rebuilt artifacts; the
+	// pointer keeps v1 automatic-freeze bytes byte-for-byte unchanged.
+	RebuiltAt   *time.Time    `json:"rebuilt_at,omitempty"`
+	Source      string        `json:"source,omitempty"`
+	Field       []FieldRow    `json:"field"`
+	Prior       artifactPrior `json:"prior"`
+	InputSHA256 string        `json:"input_sha256"`
 }
 
 type artifactPrior struct {
@@ -181,8 +203,8 @@ func Build(out FreezeOutput) ([]byte, *Prior, error) {
 	return data, prior, nil
 }
 
-// Parse verifies the exact artifact bytes and validates the full
-// ncaaf-season-prior/1 contract. It returns an error on an oversized or
+// Parse hashes the exact artifact bytes and validates the versioned
+// scheduled freeze or rebuild contract. It returns an error on an oversized or
 // malformed payload, an unsupported (including legacy) schema, an invalid
 // clock, or an inconsistent field: the caller must warn and stay on the
 // exact baseline rather than block ordinary updater operation.
@@ -195,12 +217,21 @@ func Parse(data []byte) (*Prior, error) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("fbsprior: parse prior: %w", err)
 	}
-	if err := validate(file); err != nil {
-		return nil, fmt.Errorf("fbsprior: invalid prior: %w", err)
+	switch file.Schema {
+	case Schema:
+		if err := validate(file); err != nil {
+			return nil, fmt.Errorf("fbsprior: invalid prior: %w", err)
+		}
+	case RebuildSchema:
+		if err := validateRebuilt(file); err != nil {
+			return nil, fmt.Errorf("fbsprior: invalid rebuilt prior: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("fbsprior: unsupported schema %q", file.Schema)
 	}
 
 	sum := sha256.Sum256(data)
-	return &Prior{
+	prior := &Prior{
 		Season:         file.Season,
 		Anchor:         file.Anchor,
 		AnchorInstant:  file.AnchorInstant,
@@ -214,7 +245,14 @@ func Parse(data []byte) (*Prior, error) {
 		Degenerate:     file.Prior.Degenerate,
 		InputSHA256:    file.InputSHA256,
 		SHA256:         hex.EncodeToString(sum[:]),
-	}, nil
+	}
+	if file.RebuiltAt != nil {
+		prior.RebuiltAt = *file.RebuiltAt
+		// Use the recorded rebuild clock for the same sanity check as a
+		// scheduled freeze. Transaction ordering controls visibility.
+		prior.CapturedAt = *file.RebuiltAt
+	}
+	return prior, nil
 }
 
 // NewReconstructed validates prior strengths computed by a ranking rebuild.
@@ -276,25 +314,16 @@ func (p *Prior) CoversField(teams ranking.TeamList) bool {
 	return true
 }
 
-// validate enforces the full artifact contract: header, the fixed August 10
-// midnight Eastern anchor and day-56 expiry, an actual Eastern freeze date
-// inside the August 10-16 window, ordered timestamps, input-hash format,
-// field identity, and strength-payload consistency.
+// validate enforces the full automatic-freeze artifact contract: header, the
+// fixed August 10 midnight Eastern anchor and day-56 expiry, an actual
+// Eastern freeze date inside the August 10-16 window, ordered timestamps,
+// input-hash format, field identity, and strength-payload consistency.
 func validate(file artifact) error {
-	if file.Schema != Schema {
-		return fmt.Errorf("unsupported schema %q", file.Schema)
-	}
 	if file.Season <= 0 || file.Anchor == "" || file.FreezeDate == "" {
 		return errors.New("header is incomplete")
 	}
-	anchorInstant, err := AnchorInstantFor(file.Season)
-	if err != nil {
-		return fmt.Errorf("anchor: %w", err)
-	}
-	anchorDate := anchorInstant.In(easternZone()).Format(time.DateOnly)
-	if file.Anchor != anchorDate || !file.AnchorInstant.Equal(anchorInstant) ||
-		!file.CalendarExpiry.Equal(anchorInstant.AddDate(0, 0, CalendarDays)) {
-		return errors.New("anchor/expiry is not the fixed August 10 midnight Eastern anchor and day-56 boundary")
+	if err := validateFixedAnchor(file); err != nil {
+		return err
 	}
 	if file.AnchorInstant.IsZero() || file.CalendarExpiry.IsZero() ||
 		file.AsOf.IsZero() || file.CapturedAt.IsZero() {
@@ -326,6 +355,106 @@ func validate(file artifact) error {
 		return err
 	}
 	return validatePayload(file.Field, file.Prior)
+}
+
+// validateFixedAnchor enforces the policy constants shared by every schema:
+// the fixed August 10 midnight Eastern anchor and the derived day-56 expiry.
+func validateFixedAnchor(file artifact) error {
+	anchorInstant, err := AnchorInstantFor(file.Season)
+	if err != nil {
+		return fmt.Errorf("anchor: %w", err)
+	}
+	anchorDate := anchorInstant.In(easternZone()).Format(time.DateOnly)
+	if file.Anchor != anchorDate || !file.AnchorInstant.Equal(anchorInstant) ||
+		!file.CalendarExpiry.Equal(anchorInstant.AddDate(0, 0, CalendarDays)) {
+		return errors.New("anchor/expiry is not the fixed August 10 midnight Eastern anchor and day-56 boundary")
+	}
+	return nil
+}
+
+// validateRebuilt enforces the rebuilt-artifact contract: the same fixed
+// anchor and expiry, field identity, and strength payload as the automatic
+// freeze, plus the real rebuild instant and source — and no fabricated
+// preseason capture metadata, which a later rebuild must never invent.
+func validateRebuilt(file artifact) error {
+	if file.Season <= 0 || file.Anchor == "" {
+		return errors.New("header is incomplete")
+	}
+	if err := validateFixedAnchor(file); err != nil {
+		return err
+	}
+	if file.RebuiltAt == nil || file.RebuiltAt.IsZero() {
+		return errors.New("rebuilt timestamp is missing")
+	}
+	if file.Source == "" {
+		return errors.New("rebuild source is missing")
+	}
+	if file.FreezeDate != "" || !file.AsOf.IsZero() || !file.CapturedAt.IsZero() {
+		return errors.New("a rebuilt artifact must not carry preseason capture metadata")
+	}
+	if file.RebuiltAt.Before(file.AnchorInstant) {
+		return errors.New("rebuild instant predates the preseason anchor")
+	}
+	if !isHex64(file.InputSHA256) {
+		return errors.New("input hash is not 64 lowercase hex digits")
+	}
+	if err := validateFieldRows(file.Field); err != nil {
+		return err
+	}
+	return validatePayload(file.Field, file.Prior)
+}
+
+// BuildRebuilt encodes an in-memory reconstructed prior as a rebuilt
+// artifact stamped with the real rebuild instant and source, then validates
+// the exact encoded bytes. The fixed anchor and expiry, the field identity,
+// and the strength payload carry over from the reconstruction; no preseason
+// capture metadata is fabricated.
+func BuildRebuilt(season int64, rebuiltAt time.Time, prior *Prior) ([]byte, *Prior, error) {
+	anchor, err := AnchorInstantFor(season)
+	if err != nil {
+		return nil, nil, err
+	}
+	if prior == nil {
+		return nil, nil, errors.New("fbsprior: build requires a reconstructed prior")
+	}
+	if prior.Season != season {
+		return nil, nil, fmt.Errorf("fbsprior: reconstructed prior is for season %d, want %d", prior.Season, season)
+	}
+	if rebuiltAt.IsZero() {
+		return nil, nil, errors.New("fbsprior: rebuild instant is missing")
+	}
+	// Encode the field sorted by team ID regardless of the input order so
+	// equivalent reconstructions encode to identical bytes.
+	field := make([]FieldRow, len(prior.Field))
+	copy(field, prior.Field)
+	sort.Slice(field, func(i, j int) bool { return field[i].TeamID < field[j].TeamID })
+	rebuilt := rebuiltAt.UTC()
+	file := artifact{
+		Schema:         RebuildSchema,
+		Season:         season,
+		Anchor:         anchor.In(easternZone()).Format(time.DateOnly),
+		AnchorInstant:  anchor,
+		CalendarExpiry: anchor.AddDate(0, 0, CalendarDays),
+		RebuiltAt:      &rebuilt,
+		Source:         RebuildSource,
+		Field:          field,
+		Prior: artifactPrior{
+			ZStrength:      prior.ZStrength,
+			MissingHistory: prior.MissingHistory,
+			Degenerate:     prior.Degenerate,
+			FieldSize:      len(field),
+		},
+		InputSHA256: prior.InputSHA256,
+	}
+	data, err := json.Marshal(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fbsprior: encode rebuilt prior: %w", err)
+	}
+	published, err := Parse(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fbsprior: built rebuilt artifact is invalid: %w", err)
+	}
+	return data, published, nil
 }
 
 // easternMidnight parses a YYYY-MM-DD date as midnight Eastern (the verified

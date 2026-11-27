@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/robby-barton/stats-go/internal/database"
 	"github.com/robby-barton/stats-go/internal/ranking"
@@ -23,17 +24,25 @@ import (
 
 // priorRun carries the per-run state of the opt-in FBS early-season prior:
 // the observation clock, the current Eastern season, whether the run
-// reconstructs priors in memory (the inline `ranking --all` rebuild only),
-// and the memoized prior loads/reconstructions and earliest-kickoff lookups,
-// including misses and errors. A fresh priorRun is created for every run, so
-// memoization never crosses runs and the scheduled worker still reads the
-// stored row fresh on every run.
+// reconstructs priors in memory (the inline `ranking --all` rebuild only)
+// and publishes them, and the memoized prior loads/reconstructions and
+// earliest-kickoff lookups, including misses and errors. A fresh priorRun is
+// created for every run, so memoization never crosses runs and the scheduled
+// worker still reads the stored row fresh on every run.
 type priorRun struct {
 	now           time.Time
 	currentSeason int64
 	reconstruct   bool
+	publish       bool
 	priors        map[int64]*fbsprior.Prior
+	failed        map[int64]bool
+	readErr       error // datastore failure, not proof of an unusable prior
 	earliest      map[int64]earliestKickoff
+	// tx, when set, overrides the updater's database handle so the whole
+	// scheduled read/calc/write runs inside the publication-serialized
+	// transaction. The inline rebuild never sets it: its reads happen
+	// before the publication transaction opens.
+	tx *gorm.DB
 }
 
 type earliestKickoff struct {
@@ -51,8 +60,19 @@ func newPriorRun(now time.Time, reconstruct bool) *priorRun {
 		currentSeason: currentSeason,
 		reconstruct:   reconstruct,
 		priors:        make(map[int64]*fbsprior.Prior),
+		failed:        make(map[int64]bool),
 		earliest:      make(map[int64]earliestKickoff),
 	}
+}
+
+// runDB returns the database handle a run must read through: the serialized
+// publication transaction when the scheduled worker runs inside one, and the
+// updater's handle otherwise.
+func runDB(u *Updater, run *priorRun) *gorm.DB {
+	if run != nil && run.tx != nil {
+		return run.tx
+	}
+	return u.db
 }
 
 // priorForWindow resolves the same-season prior for one FBS window: the
@@ -92,6 +112,9 @@ func (u *Updater) priorForWindow(
 			return nil
 		}
 	}
+	if run.publish {
+		return run.priors[window.Season] // only seasons staged for publication
+	}
 	return u.priorForSeason(run, window.Season)
 }
 
@@ -110,12 +133,18 @@ func (u *Updater) priorForSeason(run *priorRun, season int64) *fbsprior.Prior {
 func (u *Updater) priorForSeasonOnce(run *priorRun, season int64) *fbsprior.Prior {
 	if run.reconstruct {
 		// The inline rebuild's purpose is to remake priors as it goes: it
-		// never reads, validates, or reuses fbs_season_priors — not even a
-		// valid stored row — and never writes one. This includes the current
-		// Eastern season, so a manual rebuild can blend even when the
-		// scheduler has not frozen (or could not freeze) a prior.
+		// never reads, validates, or reuses fbs_season_priors as an input —
+		// not even a valid stored row. This includes the current Eastern
+		// season, so a manual rebuild can blend even when the scheduler has
+		// not frozen (or could not freeze) a prior. The freshly computed
+		// prior is later published over the stored row.
 		prior, err := u.reconstructPrior(season)
 		if err != nil {
+			if run.publish && errors.Is(err, errFBSPriorRead) {
+				run.readErr = fmt.Errorf("fbs early-season prior: reading inputs for season %d: %w", season, err)
+				return nil
+			}
+			run.failed[season] = true
 			u.logger.Warnf("fbs early-season prior: reconstructing the prior for season %d: %v; staying on baseline rankings",
 				season, err)
 			return nil
@@ -128,7 +157,7 @@ func (u *Updater) priorForSeasonOnce(run *priorRun, season int64) *fbsprior.Prio
 		return prior
 	}
 
-	prior, err := u.loadStoredPrior(season)
+	prior, err := u.loadStoredPrior(runDB(u, run), season)
 	switch {
 	case err == nil:
 		return prior
@@ -146,11 +175,16 @@ func (u *Updater) priorForSeasonOnce(run *priorRun, season int64) *fbsprior.Prio
 // loadStoredPrior reads and validates the stored prior row for one season
 // (scheduled worker only). It returns gorm.ErrRecordNotFound when no row is
 // stored, and a validation error for read failures, checksum mismatches,
-// unparsable payloads, or a payload keyed by another season. A stored row is
-// immutable: even a corrupt one is never repaired, replaced, or regenerated.
-func (u *Updater) loadStoredPrior(season int64) (*fbsprior.Prior, error) {
+// unparsable payloads, or a payload keyed by another season. The scheduled
+// worker never repairs, replaces, or regenerates a stored row — only the
+// explicit rebuild publication does.
+func (u *Updater) loadStoredPrior(db *gorm.DB, season int64) (*fbsprior.Prior, error) {
 	var row database.FBSSeasonPrior
-	if err := u.db.Where("season = ?", season).First(&row).Error; err != nil {
+	// Use a savepoint within the scheduled publication transaction: on
+	// PostgreSQL a failed SELECT otherwise poisons the baseline write too.
+	if err := db.Transaction(func(query *gorm.DB) error {
+		return query.Where("season = ?", season).First(&row).Error
+	}); err != nil {
 		return nil, err
 	}
 	data := []byte(row.Artifact)
@@ -183,25 +217,31 @@ func (u *Updater) reconstructPrior(season int64) (*fbsprior.Prior, error) {
 		return nil, err
 	}
 	var prior *fbsprior.Prior
+	var inputErr error
 	err = priorSnapshot(u.db, func(tx *gorm.DB) error {
-		in, err := loadFBSFreezeInput(tx, season, anchor)
-		if err != nil {
-			return err
-		}
-		if err := verifyNoTargetOrFutureGames(in, season, anchor); err != nil {
-			return err
-		}
-		strength, err := freezeStrength(in)
-		if err != nil {
-			return err
-		}
-		prior, err = fbsprior.NewReconstructed(season, in.Field, strength.Z, strength.MissingHistory, in.InputSHA256)
-		return err
+		prior, inputErr = reconstructFromSnapshot(tx, season, anchor)
+		return inputErr
 	})
+	if err != nil && inputErr == nil {
+		// Begin/commit/read-transaction errors are not evidence of bad data.
+		return nil, fmt.Errorf("%w: snapshot for season %d: %w", errFBSPriorRead, season, err)
+	}
+	return prior, err
+}
+
+func reconstructFromSnapshot(tx *gorm.DB, season int64, anchor time.Time) (*fbsprior.Prior, error) {
+	in, err := loadFBSFreezeInput(tx, season, anchor)
 	if err != nil {
 		return nil, err
 	}
-	return prior, nil
+	if err := verifyNoTargetOrFutureGames(in, season, anchor); err != nil {
+		return nil, err
+	}
+	strength, err := freezeStrength(in)
+	if err != nil {
+		return nil, err
+	}
+	return fbsprior.NewReconstructed(season, in.Field, strength.Z, strength.MissingHistory, in.InputSHA256)
 }
 
 // verifyNoTargetOrFutureGames enforces, on the loaded reconstruction input,
@@ -246,7 +286,7 @@ func (u *Updater) earliestRegularKickoff(run *priorRun, season int64) (time.Time
 		return entry.at, entry.err
 	}
 	var game database.Game
-	err := u.db.
+	err := runDB(u, run).
 		Where("sport = ? and season = ? and postseason = 0", sport.Football, season).
 		Order("start_time asc").
 		Limit(1).
@@ -262,4 +302,168 @@ func (u *Updater) earliestRegularKickoff(run *priorRun, season int64) (time.Time
 	}
 	run.earliest[season] = earliestKickoff{at: game.StartTime}
 	return game.StartTime, nil
+}
+
+// ---------------------------------------------------------------------------
+// Publication of rebuilt priors (inline rebuild only)
+// ---------------------------------------------------------------------------
+
+// fbsPriorPublicationLockKey is the fixed PostgreSQL advisory-lock key that
+// serializes the explicit rebuild's publication write phase with the
+// opted-in scheduled read/calc/write, so a scheduled run can never read the
+// old prior and commit after a corrected rebuild publication. The key is an
+// arbitrary constant reserved for this feature.
+const fbsPriorPublicationLockKey = int64(0x46627350) // "FbsP"
+
+// publicationTransaction runs fn inside the one transaction that serializes
+// the manual rebuild's publication write phase and the opted-in scheduled
+// read/calc/write: a single PostgreSQL advisory xact lock, or the SQLite
+// write lock acquired up front (a deferred transaction that only upgraded
+// after reading could fail and then overwrite). The rebuild takes the lock
+// only over its writes — its reads happen before the transaction opens —
+// and nothing takes it when the feature is off. A lock or serialization
+// failure aborts the transaction; nothing is half-published.
+func publicationTransaction(db *gorm.DB, fn func(tx *gorm.DB) error) error {
+	var opts *sql.TxOptions
+	if db.Name() == postgresDialect {
+		// Acquire the advisory lock before the ranking/lookup statements get
+		// their snapshots, even if the server default is repeatable read.
+		opts = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		switch tx.Name() {
+		case postgresDialect:
+			if err := tx.Exec("SET LOCAL lock_timeout = '10s'").Error; err != nil {
+				return fmt.Errorf("fbs prior publication: bounding lock wait: %w", err)
+			}
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)",
+				fbsPriorPublicationLockKey).Error; err != nil {
+				return fmt.Errorf("fbs prior publication: acquiring the publication lock: %w", err)
+			}
+		case "sqlite":
+			if err := tx.Exec("UPDATE team_week_results SET team_id = team_id WHERE 1 = 0").Error; err != nil {
+				return fmt.Errorf("fbs prior publication: acquiring the write lock: %w", err)
+			}
+		default:
+			return fmt.Errorf("fbs prior publication: unsupported dialect %q", tx.Name())
+		}
+		return fn(tx)
+	}, opts)
+}
+
+// rebuildPriorSeasons resolves the seasons whose priors the explicit rebuild
+// publication stages: every season with persisted ranking windows whose
+// fixed August 10 Eastern anchor has been reached, plus the current Eastern
+// season when its football metadata exists even before its first game.
+// Future years and seasons whose anchor is not yet reached are never staged.
+// Each staged season gets exactly one reconstruction attempt (memoized on
+// the run): it either yields a publishable prior or invalidates the
+// season's stale persisted prior.
+func (u *Updater) rebuildPriorSeasons(run *priorRun, years []yearInfo) ([]int64, error) {
+	seen := make(map[int64]bool, len(years)+1)
+	seasons := make([]int64, 0, len(years)+1)
+	add := func(season int64) {
+		if season <= 0 || seen[season] {
+			return
+		}
+		anchor, err := fbsprior.AnchorInstantFor(season)
+		if err != nil {
+			return // impossible for a positive season; skip defensively
+		}
+		if run.now.Before(anchor) {
+			return // the fixed anchor is not reached yet
+		}
+		seen[season] = true
+		seasons = append(seasons, season)
+	}
+	for _, year := range years {
+		// Never stage a future year.
+		if year.Year <= run.currentSeason {
+			add(year.Year)
+		}
+	}
+	if !seen[run.currentSeason] {
+		exists, err := u.seasonsExist(run.currentSeason)
+		if err != nil {
+			return nil, fmt.Errorf("fbs early-season prior: checking season %d metadata: %w",
+				run.currentSeason, err)
+		}
+		if exists {
+			add(run.currentSeason)
+		}
+	}
+	return seasons, nil
+}
+
+// publishRebuiltRankings publishes the rebuilt priors and the rebuilt
+// rankings in one publication-serialized transaction, so the explicit
+// rebuild is never half-applied. If the prior table is unavailable or any
+// write fails, the whole publication — priors and rankings alike — rolls
+// back.
+func (u *Updater) publishRebuiltRankings(
+	run *priorRun,
+	seasons []int64,
+	rankings []database.TeamWeekResult,
+) error {
+	err := publicationTransaction(u.db, func(tx *gorm.DB) error {
+		if err := publishRebuiltPriors(tx, run, seasons); err != nil {
+			return err
+		}
+		return upsertTeamWeekResults(tx, rankings)
+	})
+	if err != nil {
+		return fmt.Errorf("fbs early-season prior: publishing the rebuilt priors and rankings: %w", err)
+	}
+	for _, season := range seasons {
+		if prior := run.priors[season]; prior != nil {
+			u.logger.Infof(
+				"fbs early-season prior: published the rebuilt prior for season %d (rebuilt %s, source %q, "+
+					"anchor %s, expiry %s, field %d, missing history %d, input sha256 %s)",
+				season, run.now.UTC().Format(time.RFC3339), fbsprior.RebuildSource,
+				prior.AnchorInstant.Format(time.RFC3339), prior.CalendarExpiry.Format(time.RFC3339),
+				len(prior.Field), len(prior.MissingHistory), prior.InputSHA256)
+		} else {
+			u.logger.Infof(
+				"fbs early-season prior: no prior remains published for season %d "+
+					"(reconstruction failed; the season stays on baseline)", season)
+		}
+	}
+	return nil
+}
+
+// publishRebuiltPriors stages the per-season publication decisions inside
+// the publication transaction: a successfully reconstructed season replaces
+// its persisted prior — including the current season's existing row, which
+// the explicit rebuild is allowed to replace midseason — and a season whose
+// reconstruction was attempted but could not yield a usable prior has its
+// stale persisted prior invalidated, that season's row only, never a broad
+// delete. Any failure aborts the whole publication.
+func publishRebuiltPriors(tx *gorm.DB, run *priorRun, seasons []int64) error {
+	for _, season := range seasons {
+		if prior := run.priors[season]; prior != nil {
+			data, published, err := fbsprior.BuildRebuilt(season, run.now, prior)
+			if err != nil {
+				return fmt.Errorf("fbs early-season prior: rebuilding the season %d artifact: %w", season, err)
+			}
+			row := database.FBSSeasonPrior{
+				Season:   season,
+				Artifact: string(data),
+				Checksum: published.SHA256,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "season"}},
+				UpdateAll: true,
+			}).Create(&row).Error; err != nil {
+				return fmt.Errorf("fbs early-season prior: publishing the rebuilt season %d prior: %w", season, err)
+			}
+			continue
+		}
+		if !run.failed[season] {
+			return fmt.Errorf("fbs early-season prior: season %d was never attempted; refusing to invalidate", season)
+		}
+		if err := tx.Where("season = ?", season).Delete(&database.FBSSeasonPrior{}).Error; err != nil {
+			return fmt.Errorf("fbs early-season prior: invalidating the stale season %d prior: %w", season, err)
+		}
+	}
+	return nil
 }

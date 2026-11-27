@@ -68,7 +68,8 @@ With the flag enabled, the updater itself creates and persists the prior:
   against game writes. Repeat attempts, races, and restarts
   never replace an existing row — a corrupt row is likewise never repaired
   or regenerated; rankings then report the validation failure and stay on
-  baseline.
+  baseline. The automatic freeze is immutable; the only writer that may
+  replace or delete a row is the explicit rebuild command below.
 - **Capture record.** The real observed freeze date (August 10–16) and
   capture instant are recorded inside the artifact separately from the
   anchor, so retry dates are visible in the stored artifact.
@@ -87,19 +88,63 @@ Two paths use the opt-in prior; everything else stays at baseline.
   and leave the computed baseline unchanged; a stored row is never repaired,
   replaced, or synthesized.
 - **Inline rebuild** (`updater ncaaf ranking --all --fbs-early-season-prior`).
-  The rebuild never reads, validates, reuses, creates, or updates
-  `fbs_season_priors` — it works identically with a valid row, a corrupt
-  row, no row, or the table dropped entirely. Instead it **reconstructs one
-  prior in memory per eligible season** (completed previous seasons *and*
-  the current Eastern season) using exactly the scheduled freeze method:
-  the same fixed August 10 Eastern anchor, the same bounded two-donor-season
-  input window, the same field validation and SRS strength algorithm. It
-  never calls ESPN/AP, never fabricates persisted capture metadata, and
-  never writes a prior row.
+  This is the authoritative rebuild path. It **reconstructs one prior freshly
+  in memory per season in scope** (completed previous seasons *and* the
+  current Eastern season) using exactly the scheduled freeze method: the same
+  fixed August 10 Eastern anchor, the same bounded two-donor-season input
+  window, the same field validation and SRS strength algorithm. Stored prior
+  values are never used as inputs — not even a valid row — so manual
+  corrections to team or game data flow into the recomputed prior. It never
+  calls ESPN/AP and never fabricates persisted capture metadata, and it
+  publishes what it recomputed (see below).
 - Basketball, one-shot `ncaaf ranking` without `--all`, plain
   `ranking --all`, and backfill recomputation never touch the prior. They
   write baseline rows and **can overwrite earlier blended rankings**.
   `ncaaf games --year` updates only games, not rankings.
+
+### Rebuild publication (authoritative, midseason allowed)
+
+Because a rerun of all rankings after some update would be wrong with stale
+priors, the explicit rebuild also **publishes** what it recomputed:
+
+- **Scope.** One fresh reconstruction attempt per season whose fixed
+  August 10 Eastern anchor has already been reached — every season with
+  persisted ranking windows, plus the current Eastern season when its
+  football metadata exists even before its first game. Future years and a
+  season whose anchor is not yet reached are never staged.
+- **Replacement.** A successfully reconstructed season's prior is stored
+  over the existing row — including the current season's row, midseason
+  allowed — as a `ncaaf-season-prior/2` artifact.
+- **Invalidation.** When a reconstruction is attempted but cannot yield a
+  usable prior, the rebuild warns, publishes the exact baseline for the
+  affected windows, and invalidates that season's stale persisted prior in
+  the same transaction: only that season's row is deleted, never a broad
+  delete, and the schema is unchanged. A database read or serialization
+  failure aborts the rebuild instead of invalidating a season.
+- **Atomicity.** The prior writes and the rebuilt ranking upserts commit in
+  one transaction. If the prior table is unavailable or any ranking write
+  fails, the whole publication rolls back — the season is never
+  half-rebuilt.
+- **Serialization.** The publication write phase and the opted-in scheduled
+  read/calc/write share one PostgreSQL advisory xact lock (the SQLite write
+  lock is acquired up front, since a deferred transaction that upgraded only
+  after reading could otherwise overwrite). A scheduled run therefore can
+  never read the old prior and commit after a corrected rebuild publication:
+  it either commits before the rebuild or reads the corrected prior. The
+  rebuild holds the lock only over its writes, never across its ranking
+  reads, and nothing takes the lock with the feature off. The automatic
+  freeze keeps its own table locks, and its conflict-do-nothing insert can
+  never overwrite a manual result. Run the manual rebuild after your data
+  corrections commit; don't overlap it with another manual rebuild.
+- **Timestamps.** The rebuilt artifact records the start time of the rebuild
+  (`rebuilt_at`) and source (`source`) in schema `ncaaf-season-prior/2`; the
+  fixed anchor and day-56 expiry, the exact-byte checksum, and the
+  field/coverage payload contract are unchanged. No August preseason capture
+  is fabricated for a later rebuild. Automatic preseason artifacts
+  (`ncaaf-season-prior/1`) remain fully readable. The scheduler checks its
+  clock against that rebuild time, but inside the rebuild itself the
+  timestamp is never an eligibility gate for historical snapshots (the
+  in-memory reconstruction has no capture timestamp at all).
 
 ### Inline rebuild clocks and caveats
 
@@ -149,7 +194,8 @@ mount, pin, or rotate, and no yearly runbook step.
 - The stored artifact carries its own provenance: a deterministic
   fingerprint of the sorted frozen field and retained ranker inputs
   (`input_sha256`), separate from the checksum of the exact stored bytes
-  verified on every read.
+  verified on every read. A rebuilt artifact additionally records the real
+  rebuild instant and source (`rebuilt_at`, `source`).
 - Rankings are persisted per (team, year, week, phase, sport). Disabling the
   prior does not retroactively restore blended rows; the next scheduled
   update for the same keys overwrites them. Historical backfills and plain
@@ -160,5 +206,7 @@ mount, pin, or rotate, and no yearly runbook step.
   stored data, running it (or `--all` alone) can overwrite rows that the
   scheduler blended earlier with different (possibly baseline) values.
 - The `fbs_season_priors` table is additive and never destructively
-  migrated; `stats-web` has no dependency on it, and the inline rebuild
-  works with the table dropped.
+  migrated; `stats-web` has no dependency on it. With the flag off the table
+  is never read or written and the rebuild works with it dropped; with the
+  flag on the rebuild publishes into it, so an unavailable table aborts the
+  whole publication (rollback, nothing half-rebuilt).

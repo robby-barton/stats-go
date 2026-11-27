@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -63,6 +64,8 @@ func esPriorRowCount(t *testing.T, db *gorm.DB) int64 {
 
 // esBlendedCount counts FBS rows of a season whose FinalRaw differs from the
 // given baseline beyond the ranker's pre-existing noise.
+//
+//nolint:unparam // keyed by season for call-site clarity
 func esBlendedCount(baseline, got map[rowKey]database.TeamWeekResult, year int64) int {
 	blended := 0
 	for key, gotRow := range got {
@@ -174,7 +177,8 @@ func TestInlineRebuild_ScheduledVsRecomputedAgreement(t *testing.T) {
 		t.Fatal("scheduled run stayed entirely on baseline")
 	}
 
-	// The inline rebuild must not touch the stored table.
+	// The inline rebuild replaces the frozen row with its freshly computed
+	// rebuilt artifact.
 	artifactBefore := storedPriorRow(t, u.db, 2023).Artifact
 	if err := u.db.Where("1 = 1").Delete(&database.TeamWeekResult{}).Error; err != nil {
 		t.Fatalf("clear rows: %v", err)
@@ -209,12 +213,32 @@ func TestInlineRebuild_ScheduledVsRecomputedAgreement(t *testing.T) {
 		}
 	}
 
-	// No prior table writes, and the stored row is byte-identical.
+	// The failed 2021/2022 attempts staged nothing, and the authoritative
+	// rebuild replaced the frozen 2023 row with a valid rebuilt artifact.
 	if got := esPriorRowCount(t, u.db); got != 1 {
 		t.Errorf("fbs_season_priors rows = %d, want 1", got)
 	}
-	if got := storedPriorRow(t, u.db, 2023).Artifact; got != artifactBefore {
-		t.Error("the stored prior artifact changed during the rebuild")
+	published := storedPriorRow(t, u.db, 2023)
+	if published.Artifact == artifactBefore {
+		t.Error("the rebuild did not replace the frozen artifact")
+	}
+	rebuilt, err := fbsprior.Parse([]byte(published.Artifact))
+	if err != nil {
+		t.Fatalf("published artifact does not parse: %v", err)
+	}
+	if published.Checksum != sha256Sum([]byte(published.Artifact)) {
+		t.Error("published checksum does not match the stored bytes")
+	}
+	if !rebuilt.RebuiltAt.Equal(esObservedClock()) {
+		t.Errorf("rebuilt at = %s, want the observed rebuild clock", rebuilt.RebuiltAt)
+	}
+	if rebuilt.FreezeDate != "" || !rebuilt.CapturedAt.Equal(esObservedClock()) {
+		t.Errorf("rebuilt capture metadata = %q/%s, want no fabricated August capture and the rebuild instant",
+			rebuilt.FreezeDate, rebuilt.CapturedAt)
+	}
+	if rebuilt.Anchor != "2023-08-10" ||
+		!rebuilt.CalendarExpiry.Equal(time.Date(2023, 10, 5, 4, 0, 0, 0, time.UTC)) {
+		t.Errorf("rebuilt anchor/expiry = %s/%s", rebuilt.Anchor, rebuilt.CalendarExpiry)
 	}
 
 	// The rebuild reconstructed the 2023 prior in memory (the current
@@ -224,11 +248,13 @@ func TestInlineRebuild_ScheduledVsRecomputedAgreement(t *testing.T) {
 	}
 }
 
-// TestInlineRebuild_IgnoresStoredRow verifies the rebuild is independent of
-// the stored table: a deliberately corrupt row is neither read nor repaired,
-// the rebuild still blends, and the same rows are produced with the prior
-// table dropped entirely.
-func TestInlineRebuild_IgnoresStoredRow(t *testing.T) {
+// TestInlineRebuild_ReplacesStoredRowsWithoutReusingThem verifies the
+// rebuild never uses stored prior values as inputs — a different but valid
+// saved set of scores changes nothing — and that, as the authoritative
+// rebuild, it replaces both a valid and a corrupt stored row with the
+// freshly computed rebuilt artifact. With the prior store unavailable the
+// whole publication aborts and the rebuilt rankings roll back.
+func TestInlineRebuild_ReplacesStoredRowsWithoutReusingThem(t *testing.T) {
 	u := newTestUpdater(t)
 	esRebuildFixture(t, u)
 	stubNow(t, esObservedClock())
@@ -239,17 +265,28 @@ func TestInlineRebuild_IgnoresStoredRow(t *testing.T) {
 	baseline := storedRows(t, u.db)
 
 	// Deliberately different but valid stored strengths. A rebuild that
-	// used them would disagree with the no-table run below.
+	// used them would disagree with the recomputed run below.
 	seedEspPrior(t, u.db, 2023, func(out *fbsprior.FreezeOutput) {
 		out.ZStrength = map[int64]float64{1: -5, 2: 4, 3: -3, 4: 2}
 	})
-	valid := storedPriorRow(t, u.db, 2023).Artifact
 	if err := u.UpdateAllRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateAllRankingsWithPrior (different stored strengths): %v", err)
 	}
 	withValid := storedRows(t, u.db)
-	if got := storedPriorRow(t, u.db, 2023).Artifact; got != valid {
-		t.Fatal("the rebuild changed the frozen artifact")
+	if esBlendedCount(baseline, withValid, 2023) == 0 {
+		t.Fatal("rebuild stayed entirely on baseline")
+	}
+	published := storedPriorRow(t, u.db, 2023)
+	validPrior, err := fbsprior.Parse([]byte(published.Artifact))
+	if err != nil {
+		t.Fatalf("published artifact does not parse: %v", err)
+	}
+	if published.Checksum != sha256Sum([]byte(published.Artifact)) {
+		t.Error("published checksum does not match the stored bytes")
+	}
+	if validPrior.FreezeDate != "" || validPrior.RebuiltAt.IsZero() {
+		t.Errorf("published artifact = freeze %q rebuilt %s, want a rebuilt artifact",
+			validPrior.FreezeDate, validPrior.RebuiltAt)
 	}
 
 	// Make the existing row corrupt without changing ranking inputs.
@@ -263,32 +300,76 @@ func TestInlineRebuild_IgnoresStoredRow(t *testing.T) {
 	}
 	withCorrupt := storedRows(t, u.db)
 	esAssertSameRows(t, withValid, withCorrupt, "different valid stored prior vs corrupt prior")
-	if esBlendedCount(baseline, withCorrupt, 2023) == 0 {
-		t.Fatal("rebuild stayed entirely on baseline with a corrupt stored row")
+	// The corrupt row was replaced in place by the authoritative rebuild.
+	repaired := storedPriorRow(t, u.db, 2023)
+	if _, err := fbsprior.Parse([]byte(repaired.Artifact)); err != nil {
+		t.Fatalf("corrupt row was not replaced with a valid artifact: %v", err)
 	}
-	// The corrupt row was left untouched.
-	if got := esPriorRowCount(t, u.db); got != 1 {
-		t.Errorf("fbs_season_priors rows = %d, want 1", got)
+	if repaired.Checksum != sha256Sum([]byte(repaired.Artifact)) {
+		t.Error("repaired checksum does not match the stored bytes")
 	}
 
-	// Drop the prior table entirely: the rebuild still works and produces
-	// the same rows.
+	// Without the prior store the whole publication aborts and the rebuilt
+	// rankings roll back: nothing is half-rebuilt.
 	if err := u.db.Migrator().DropTable(&database.FBSSeasonPrior{}); err != nil {
 		t.Fatalf("drop fbs_season_priors: %v", err)
 	}
-	if err := u.db.Where("1 = 1").Delete(&database.TeamWeekResult{}).Error; err != nil {
-		t.Fatalf("clear rows: %v", err)
+	if err := u.UpdateAllRankingsWithPrior(); err == nil {
+		t.Fatal("rebuild succeeded without the prior store")
 	}
-	if err := u.UpdateAllRankingsWithPrior(); err != nil {
-		t.Fatalf("UpdateAllRankingsWithPrior (table dropped): %v", err)
-	}
-	esAssertSameRows(t, withCorrupt, storedRows(t, u.db), "corrupt row vs dropped table")
+	esAssertSameRows(t, withCorrupt, storedRows(t, u.db), "store-unavailable rollback")
 }
 
-// TestInlineRebuild_CurrentSeasonWithoutStoredRow verifies the rebuild
-// reconstructs the current Eastern season's prior in memory when the
-// scheduler has no stored row, and writes nothing to the prior table.
-func TestInlineRebuild_CurrentSeasonWithoutStoredRow(t *testing.T) {
+// TestInlineRebuild_RefreshesCorrectedDonorResults verifies the rebuild
+// recomputes the prior from the current stored donor data and publishes the
+// refreshed artifact over the one frozen from the pre-correction data.
+func TestInlineRebuild_RefreshesCorrectedDonorResults(t *testing.T) {
+	u := newTestUpdater(t)
+	seedTeamsAndSeasons(t, u.db)
+	seedDonorSeasons(t, u.db)
+	seedDonorGames(t, u.db)
+	stubNow(t, freezeClock())
+	if err := u.freezeFBSPrior(u.db.WithContext(t.Context()), 2023, freezeClock()); err != nil {
+		t.Fatalf("freezeFBSPrior: %v", err)
+	}
+	frozen := storedPriorRow(t, u.db, 2023)
+	frozenPrior, err := fbsprior.Parse([]byte(frozen.Artifact))
+	if err != nil {
+		t.Fatalf("frozen artifact does not parse: %v", err)
+	}
+
+	// Correct a donor result: team 4's 2022 loss becomes a win.
+	if err := u.db.Model(&database.Game{}).Where("game_id = ?", int64(402204)).
+		Updates(map[string]any{"home_score": 6, "away_score": 34}).Error; err != nil {
+		t.Fatalf("correct donor result: %v", err)
+	}
+
+	seedGames(t, u.db)
+	esUniqueStartTimes(t, u.db)
+	stubNow(t, esObservedClock())
+
+	if err := u.UpdateAllRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateAllRankingsWithPrior: %v", err)
+	}
+	published := storedPriorRow(t, u.db, 2023)
+	if published.Artifact == frozen.Artifact {
+		t.Fatal("the rebuild did not refresh the prior from the corrected donor results")
+	}
+	refreshed, err := fbsprior.Parse([]byte(published.Artifact))
+	if err != nil {
+		t.Fatalf("published artifact does not parse: %v", err)
+	}
+	if refreshed.ZStrength[4] <= frozenPrior.ZStrength[4] {
+		t.Errorf("refreshed team 4 strength = %v, want above the frozen %v (its corrected win was folded in)",
+			refreshed.ZStrength[4], frozenPrior.ZStrength[4])
+	}
+}
+
+// TestInlineRebuild_PublishesCurrentSeasonAndSchedulerSeesIt verifies the
+// rebuild publishes the freshly computed current-season prior midseason —
+// no stored row needed — and that the scheduler reads the published prior on
+// its next run and blends the same numbers.
+func TestInlineRebuild_PublishesCurrentSeasonAndSchedulerSeesIt(t *testing.T) {
 	logger, logs := esAllLevelLogger(t)
 	u := newTestUpdaterWithLogger(t, logger)
 	esRebuildFixture(t, u)
@@ -306,12 +387,212 @@ func TestInlineRebuild_CurrentSeasonWithoutStoredRow(t *testing.T) {
 	if esBlendedCount(baseline, got, 2023) == 0 {
 		t.Fatal("rebuild stayed entirely on baseline without a stored row")
 	}
+	if got := esPriorRowCount(t, u.db); got != 1 {
+		t.Errorf("fbs_season_priors rows = %d, want 1 (the published 2023 prior)", got)
+	}
+	published := storedPriorRow(t, u.db, 2023)
+	rebuilt, err := fbsprior.Parse([]byte(published.Artifact))
+	if err != nil {
+		t.Fatalf("published artifact does not parse: %v", err)
+	}
+	if rebuilt.RebuiltAt.IsZero() || esReconstructedLogCount(logs, 2023) == 0 {
+		t.Error("the rebuild did not reconstruct and publish the 2023 prior")
+	}
+
+	// Scheduler visibility: the next scheduled run reads the published
+	// prior and blends the same numbers the rebuild computed.
+	if err := u.db.Where("1 = 1").Delete(&database.TeamWeekResult{}).Error; err != nil {
+		t.Fatalf("clear rows: %v", err)
+	}
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
+	}
+	scheduled := storedRows(t, u.db)
+	if esBlendedCount(baseline, scheduled, 2023) == 0 {
+		t.Fatal("the scheduler did not see the published rebuilt prior")
+	}
+	for key, want := range scheduled {
+		gotRow, ok := got[key]
+		if !ok {
+			t.Fatalf("rebuild row %v missing for the scheduler comparison", key)
+		}
+		if math.Abs(gotRow.FinalRaw-want.FinalRaw) > esRowTol {
+			t.Errorf("scheduled vs rebuild row %v FinalRaw = %v, want %v", key, gotRow.FinalRaw, want.FinalRaw)
+		}
+	}
+}
+
+// TestInlineRebuild_PublishesCurrentSeasonPregame verifies the rebuild
+// publishes the current Eastern season's prior even before its first game —
+// its football metadata exists — and that the scheduler can blend it once
+// the season's games are persisted.
+func TestInlineRebuild_PublishesCurrentSeasonPregame(t *testing.T) {
+	u := newTestUpdater(t)
+	seedTeamsAndSeasons(t, u.db)
+	seedDonorSeasons(t, u.db)
+	seedDonorGames(t, u.db)
+	// Pregame: after the fixed August 10 anchor, before the first game.
+	pregame := time.Date(2023, 8, 20, 12, 0, 0, 0, time.UTC)
+	stubNow(t, pregame)
+
+	if err := u.UpdateAllRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateAllRankingsWithPrior (pregame): %v", err)
+	}
+	if got := esPriorRowCount(t, u.db); got != 1 {
+		t.Fatalf("fbs_season_priors rows = %d, want 1 (the published 2023 prior)", got)
+	}
+	published := storedPriorRow(t, u.db, 2023)
+	rebuilt, err := fbsprior.Parse([]byte(published.Artifact))
+	if err != nil {
+		t.Fatalf("published artifact does not parse: %v", err)
+	}
+	if !rebuilt.RebuiltAt.Equal(pregame) {
+		t.Errorf("rebuilt at = %s, want the pregame rebuild clock", rebuilt.RebuiltAt)
+	}
+
+	// Once the season's games exist, the scheduler reads the published
+	// prior and blends.
+	seedGames(t, u.db)
+	esUniqueStartTimes(t, u.db)
+	stubNow(t, esObservedClock())
+	if err := u.UpdateRecentRankings(); err != nil {
+		t.Fatalf("UpdateRecentRankings: %v", err)
+	}
+	baseline := storedRows(t, u.db)
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
+	}
+	if esBlendedCount(baseline, storedRows(t, u.db), 2023) == 0 {
+		t.Fatal("the scheduler did not blend the pregame-published prior")
+	}
+}
+
+// TestInlineRebuild_InvalidatesStalePriorWhenReconstructionFails verifies
+// that a reconstruction attempted but unable to yield a usable prior warns,
+// publishes the exact baseline for the affected windows, and invalidates
+// that season's stale persisted prior in the same publication — after which
+// the scheduler stays on baseline too.
+func TestInlineRebuild_InvalidatesStalePriorWhenReconstructionFails(t *testing.T) {
+	logger, logs := esAllLevelLogger(t)
+	u := newTestUpdaterWithLogger(t, logger)
+	esRebuildFixture(t, u)
+	stubNow(t, esObservedClock())
+
+	// Break the 2023 reconstruction input: no usable retained games in the
+	// season-2 donor window.
+	if err := u.db.Where("season = 2021 and sport = 'ncaaf'").Delete(&database.Game{}).Error; err != nil {
+		t.Fatalf("break donor season: %v", err)
+	}
+
+	if err := u.UpdateRecentRankings(); err != nil {
+		t.Fatalf("UpdateRecentRankings: %v", err)
+	}
+	baseline := storedRows(t, u.db)
+
+	seedEspPrior(t, u.db, 2023, nil)
+	if err := u.UpdateAllRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateAllRankingsWithPrior: %v", err)
+	}
+	// The affected 2023 windows (including the latest slot in the rebuild's
+	// rows) stayed at the exact baseline.
+	rebuildRows := storedRows(t, u.db)
+	for key, want := range baseline {
+		gotRow, ok := rebuildRows[key]
+		if !ok {
+			t.Fatalf("rebuild row %v missing", key)
+		}
+		if math.Abs(gotRow.FinalRaw-want.FinalRaw) > esRowTol {
+			t.Errorf("rebuild row %v FinalRaw = %v, want baseline %v", key, gotRow.FinalRaw, want.FinalRaw)
+		}
+	}
 	if got := esPriorRowCount(t, u.db); got != 0 {
-		t.Errorf("fbs_season_priors rows = %d, want 0 (no table writes)", got)
+		t.Errorf("fbs_season_priors rows = %d, want 0 (the stale prior was invalidated)", got)
 	}
-	if esReconstructedLogCount(logs, 2023) == 0 {
-		t.Error("the rebuild did not reconstruct the 2023 prior in memory")
+	warned := false
+	for _, entry := range esSeasonLogs(logs, 2023) {
+		if strings.Contains(entry.Message, "reconstructing the prior") {
+			warned = true
+		}
 	}
+	if !warned {
+		t.Error("the failed reconstruction did not warn for season 2023")
+	}
+
+	// The scheduler sees the invalidated state: no row, exact baseline.
+	if err := u.db.Where("1 = 1").Delete(&database.TeamWeekResult{}).Error; err != nil {
+		t.Fatalf("clear rows: %v", err)
+	}
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
+	}
+	expectBaseline(t, baseline, storedRows(t, u.db))
+}
+
+// TestInlineRebuild_PublicationRollsBackOnWriteFailure verifies the whole
+// publication is atomic: a ranking write failure rolls the prior publication
+// back, and an unavailable prior store aborts before anything is written.
+func TestInlineRebuild_PublicationRollsBackOnWriteFailure(t *testing.T) {
+	t.Run("ranking write failure rolls the prior publication back", func(t *testing.T) {
+		u := newTestUpdater(t)
+		esRebuildFixture(t, u)
+		stubNow(t, esObservedClock())
+		seedEspPrior(t, u.db, 2023, nil)
+		stale := storedPriorRow(t, u.db, 2023)
+
+		// Fail after the lock and prior upserts, not at lock acquisition.
+		if err := u.db.Exec(`CREATE TRIGGER reject_rebuilt_rankings BEFORE INSERT ON team_week_results
+			BEGIN SELECT RAISE(ABORT, 'fixture ranking write failure'); END`).Error; err != nil {
+			t.Fatalf("install write failure: %v", err)
+		}
+		err := u.UpdateAllRankingsWithPrior()
+		if err == nil || !strings.Contains(err.Error(), "fixture ranking write failure") {
+			t.Fatalf("rebuild did not return the ranking write failure: %v", err)
+		}
+		// The stale prior survived: the prior publication rolled back with
+		// the failed ranking write.
+		if got := storedPriorRow(t, u.db, 2023); got.Artifact != stale.Artifact || got.Checksum != stale.Checksum {
+			t.Error("the prior publication was not rolled back with the ranking write")
+		}
+	})
+
+	t.Run("unavailable prior store aborts the whole publication", func(t *testing.T) {
+		u := newTestUpdater(t)
+		esRebuildFixture(t, u)
+		stubNow(t, esObservedClock())
+		if err := u.UpdateRecentRankings(); err != nil {
+			t.Fatalf("UpdateRecentRankings: %v", err)
+		}
+		before := storedRows(t, u.db)
+
+		if err := u.db.Migrator().DropTable(&database.FBSSeasonPrior{}); err != nil {
+			t.Fatalf("drop fbs_season_priors: %v", err)
+		}
+		if err := u.UpdateAllRankingsWithPrior(); err == nil {
+			t.Fatal("rebuild succeeded without the prior store")
+		}
+		esAssertSameRows(t, before, storedRows(t, u.db), "store-unavailable rollback")
+		if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+			t.Fatalf("scheduled baseline without the prior table: %v", err)
+		}
+		esAssertSameRows(t, before, storedRows(t, u.db), "scheduled baseline without prior store")
+	})
+
+	t.Run("input database failure is not grounds to invalidate an existing prior", func(t *testing.T) {
+		u := newTestUpdater(t)
+		esRebuildFixture(t, u)
+		stubNow(t, esObservedClock())
+		seedEspPrior(t, u.db, 2023, nil)
+		stale := storedPriorRow(t, u.db, 2023)
+		if err := u.db.Migrator().DropTable(&database.TeamName{}); err != nil {
+			t.Fatalf("drop team_names: %v", err)
+		}
+		if err := u.UpdateAllRankingsWithPrior(); !errors.Is(err, errFBSPriorRead) {
+			t.Fatalf("expected the donor input database error, got %v", err)
+		}
+		if got := storedPriorRow(t, u.db, 2023); got != stale {
+			t.Fatal("an input database error should not invalidate a prior")
+		}
+	})
 }
 
 // TestInlineRebuild_HistoricalWeeks verifies the rebuild's window semantics:

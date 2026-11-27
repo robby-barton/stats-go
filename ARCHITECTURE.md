@@ -108,8 +108,9 @@ The sport is derived from the ESPN client's `SportInfo()` method.
 
 ### FBS Early-Season Prior (opt-in, default off)
 
-`internal/updater/fbsprior` holds the `ncaaf-season-prior/1` stored-artifact
-contract (Build/Parse with an exact-byte checksum, the fixed August 10
+`internal/updater/fbsprior` holds the `ncaaf-season-prior/1` automatic-freeze
+artifact contract plus the `ncaaf-season-prior/2` rebuild artifact (Build/
+Parse with an exact-byte checksum, the fixed August 10
 midnight Eastern anchor, and the derived day-56 expiry) and the researched
 blend math (rho 0.9, 4-game expiry including FBS-FCS games, SD floor 0.05).
 With the sole `--fbs-early-season-prior` flag, the updater itself computes
@@ -126,15 +127,28 @@ missing or invalid rows fall back to the exact baseline with a warning.
 The same flag also opts the one-shot football ranking command into the same
 policy: `updater ncaaf ranking --all --fbs-early-season-prior`
 (`UpdateAllRankingsWithPrior`) rebuilds every ranking window through the
-same baseline loader and score calculation and reconstructs one prior in
-memory per eligible season (completed previous seasons and the current
-Eastern season) with exactly the scheduled freeze method — same anchor,
+same baseline loader and score calculation and reconstructs one prior
+freshly in memory per season in scope (completed previous seasons and the
+current Eastern season, the latter even before its first game when its
+metadata exists) with exactly the scheduled freeze method — same anchor,
 same bounded two-donor-season input, same strength math — inside one
 consistent snapshot transaction, with a defensive recheck that no
-target-season or future game leaks into the donor window. The rebuild never
-reads, validates, or writes `fbs_season_priors` (it works with the table
-dropped), never calls ESPN/AP, and never fabricates persisted capture
-metadata. Its current/latest week-0 slot uses the actual observation clock;
+target-season or future game leaks into the donor window. Stored prior
+values are never used as inputs. As the authoritative explicit rerun, the
+rebuild then publishes the rebuilt priors atomically with its ranking
+upserts: seasons whose anchor is already reached are replaced (existing
+current-season rows included, midseason allowed) with `ncaaf-season-prior/2`
+artifacts recording the real rebuild instant and source, and a season whose
+reconstruction fails has its stale persisted prior invalidated (that
+season's row only); any prior or ranking write failure rolls the whole
+publication back. The publication write phase and the opted-in scheduled
+read/calc/write share one publication-serialized transaction (a PostgreSQL
+advisory xact lock; the SQLite write lock acquired up front), so a scheduled
+run can never read the old prior and commit after a corrected publication;
+the rebuild holds the lock only over its writes, and nothing takes it with
+the feature off. The rebuild never calls ESPN/AP and never fabricates
+persisted capture metadata (automatic `ncaaf-season-prior/1` artifacts stay
+readable). Its current/latest week-0 slot uses the actual observation clock;
 explicit historical weeks and past-season final snapshots use their resolved
 historical ranking cutoffs, so historical weeks are recomputed at their
 cutoffs rather than replayed at the exact times the scheduler originally

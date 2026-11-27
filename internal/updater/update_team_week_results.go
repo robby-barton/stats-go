@@ -52,16 +52,22 @@ func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
 
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	return u.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.
-			Clauses(clause.OnConflict{
-				UpdateAll: true, // upsert
-			}).
-			CreateInBatches(rankings, 1000).Error; err != nil {
-			return err
-		}
-
-		return nil
+		return upsertTeamWeekResults(tx, rankings)
 	})
+}
+
+// upsertTeamWeekResults upserts one batch of ranking rows on the given
+// handle: the updater's database, or the publication-serialized transaction
+// shared with the rebuilt-prior publication.
+func upsertTeamWeekResults(tx *gorm.DB, rankings []database.TeamWeekResult) error {
+	if len(rankings) == 0 {
+		return nil
+	}
+	return tx.
+		Clauses(clause.OnConflict{
+			UpdateAll: true, // upsert
+		}).
+		CreateInBatches(rankings, 1000).Error
 }
 
 func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool, sport sport.Sport) []database.TeamWeekResult {
@@ -101,7 +107,7 @@ func (u *Updater) rankingForWeek(year int64, week int64, run *priorRun) ([]datab
 
 	newRanker := func(fcs bool) (*ranking.Ranker, ranking.Input, load.Window, error) {
 		opts := load.Options{
-			DB:    u.db,
+			DB:    runDB(u, run),
 			Sport: sportDB,
 			Year:  year,
 			Week:  week,
@@ -199,13 +205,26 @@ func (u *Updater) UpdateRecentRankings() error {
 // early-season blend can apply to the latest regular-season FBS window using
 // the stored same-season prior read fresh from fbs_season_priors. With no
 // stored row (or an unreadable one) it publishes the exact baseline.
+//
+// The whole read/calc/write runs inside one publication-serialized
+// transaction (the shared advisory xact lock on PostgreSQL, the up-front
+// write lock on SQLite), so an opted-in scheduled run can never read the old
+// prior and commit after a corrected rebuild publication. With the feature
+// off nothing takes the lock.
 func (u *Updater) UpdateRecentRankingsWithPrior() error {
-	weekRankings, err := u.rankingForWeek(0, 0, newPriorRun(nowFunc(), false))
-	if err != nil {
-		return err
+	if u.espn.SportInfo() != espn.CollegeFootball {
+		// Basketball never blends: plain baseline upsert, no prior locking.
+		return u.UpdateRecentRankings()
 	}
-
-	return u.insertRankingsToDB(weekRankings)
+	return publicationTransaction(u.db, func(tx *gorm.DB) error {
+		run := newPriorRun(nowFunc(), false)
+		run.tx = tx
+		weekRankings, err := u.rankingForWeek(0, 0, run)
+		if err != nil {
+			return err
+		}
+		return upsertTeamWeekResults(tx, weekRankings)
+	})
 }
 
 // applyPriorWindow is the one shared application path for the opt-in FBS
@@ -302,24 +321,53 @@ func (u *Updater) UpdateAllRankings() error {
 // ranking window exactly like UpdateAllRankings — the baseline loader and
 // score calculation run for every row — and additionally applies the
 // scheduled FBS early-season policy to eligible regular-season windows.
-// It always reconstructs the prior in memory once per eligible season,
-// including the current season, without reading or writing stored priors.
+// It always reconstructs the prior freshly in memory once per season in
+// scope, including the current Eastern season, never using stored values as
+// inputs; as the authoritative explicit rebuild it then publishes the
+// rebuilt priors — replacing existing rows, including the current season's,
+// midseason allowed — atomically with the rebuilt ranking upserts, and
+// invalidates the stale persisted prior of any season whose reconstruction
+// could not yield a usable prior. Any prior or ranking write failure rolls
+// the whole publication back.
 func (u *Updater) UpdateAllRankingsWithPrior() error {
 	if u.espn.SportInfo() != espn.CollegeFootball {
 		return errors.New("fbs early-season prior: football updater required")
 	}
-	return u.updateAllRankings(newPriorRun(nowFunc(), true))
+	run := newPriorRun(nowFunc(), true)
+	run.publish = true
+	return u.updateAllRankings(run)
 }
 
 // updateAllRankings iterates every persisted season's explicit regular weeks
 // plus each season's week-0 slot, upserting the computed rows in one
-// transaction. run selects the opt-in prior path (nil is the exact baseline).
+// transaction. run selects the opt-in prior path (nil is the exact baseline);
+// a publishing run stages one fresh reconstruction per season in scope
+// before the ranking loop and then publishes the rebuilt priors atomically
+// with the ranking upserts.
 func (u *Updater) updateAllRankings(run *priorRun) error {
 	var teamWeekResults []database.TeamWeekResult
 
 	yearInfo, err := u.getYearInfo()
 	if err != nil {
 		return err
+	}
+
+	// The rebuild publication stages one fresh reconstruction attempt per
+	// season in scope before any lock is taken: the ranking math below
+	// consumes only these in-memory priors, and the locked write phase stays
+	// minimal.
+	var seasons []int64
+	if run != nil && run.publish {
+		seasons, err = u.rebuildPriorSeasons(run, yearInfo)
+		if err != nil {
+			return err
+		}
+		for _, season := range seasons {
+			u.priorForSeason(run, season)
+			if run.readErr != nil {
+				return run.readErr
+			}
+		}
 	}
 
 	for _, year := range yearInfo {
@@ -348,5 +396,8 @@ func (u *Updater) updateAllRankings(run *priorRun) error {
 		teamWeekResults = append(teamWeekResults, weekRankings...)
 	}
 
+	if run != nil && run.publish {
+		return u.publishRebuiltRankings(run, seasons, teamWeekResults)
+	}
 	return u.insertRankingsToDB(teamWeekResults)
 }

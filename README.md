@@ -114,15 +114,18 @@ updater schedule --fbs-early-season-prior
 
 The same flag also opts the one-shot football ranking command into the same
 policy: `updater ncaaf ranking --all --fbs-early-season-prior` rebuilds all
-rankings while reconstructing one prior in memory per eligible season
-(including the current season) with exactly the scheduled freeze method — it
-never reads or writes `fbs_season_priors`, so it works with a valid row, a
-corrupt row, no row, or the table dropped. Because it recomputes from
-current stored data, its numbers can differ from any hypothetical
-historical snapshot when team metadata or game data has been revised; and
-`ranking --all` (with or without the flag) can overwrite rows the scheduler
-blended earlier. Plain `ncaaf ranking` and backfill recomputation stay at
-the exact baseline.
+rankings while reconstructing one prior freshly in memory per season in scope
+(including the current season) with exactly the scheduled freeze method —
+stored prior values are never used as inputs. Because the rebuild is the
+authoritative rerun, it then publishes the freshly computed priors over the
+stored rows (replacing existing rows, current season included, midseason
+allowed) atomically with the rebuilt ranking upserts, and invalidates the
+stale prior of any season it cannot reconstruct; any write failure rolls the
+whole publication back. Because it recomputes from current stored data, its
+numbers can differ from any hypothetical historical snapshot when team
+metadata or game data has been revised; and `ranking --all` (with or without
+the flag) can overwrite rows the scheduler blended earlier. Plain
+`ncaaf ranking` and backfill recomputation stay at the exact baseline.
 
 See [docs/fbs-early-season-prior.md](docs/fbs-early-season-prior.md) for the
 automatic freeze policy, the stored-artifact contract, baseline fallback,

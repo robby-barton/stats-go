@@ -93,9 +93,10 @@ func (u *Updater) RunFBSPriorFreezeTask(ctx context.Context, now time.Time) erro
 }
 
 // fbsPriorRowExists reports whether any row — valid or not — is stored for
-// the season. A stored row is immutable: even a corrupt one is never
-// recomputed or replaced, and rankings report the validation failure while
-// staying on baseline.
+// the season. The automatic freeze never replaces a stored row — even a
+// corrupt one is never recomputed or replaced here; rankings report the
+// validation failure while staying on baseline. Only the explicit rebuild
+// publication may replace or delete a stored row.
 func fbsPriorRowExists(db *gorm.DB, season int64) (bool, error) {
 	var count int64
 	err := db.Model(&database.FBSSeasonPrior{}).
@@ -234,6 +235,9 @@ func freezeTransaction(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 // Bounded freeze input
 // ---------------------------------------------------------------------------
 
+// A datastore error cannot establish that existing inputs are unusable.
+var errFBSPriorRead = errors.New("fbs prior input database read failed")
+
 type fbsMetaRow struct {
 	TeamID int64
 	Name   string
@@ -327,7 +331,7 @@ func loadFBSField(tx *gorm.DB, year int64, label string) ([]fbsprior.FieldRow, e
 		Limit(fbsPriorMaxFieldRows + 1).
 		Scan(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("loading %s FBS metadata for %d: %w", label, year, err)
+		return nil, fmt.Errorf("%w: loading %s FBS metadata for %d: %w", errFBSPriorRead, label, year, err)
 	}
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("no %s FBS metadata for %d", label, year)
@@ -373,7 +377,7 @@ func loadRetainedGames(
 		Limit(fbsPriorMaxGameRows + 1).
 		Find(&rows).Error
 	if err != nil {
-		return nil, [2]int{}, fmt.Errorf("loading retained games for %d: %w", season, err)
+		return nil, [2]int{}, fmt.Errorf("%w: loading retained games for %d: %w", errFBSPriorRead, season, err)
 	}
 	if len(rows) > fbsPriorMaxGameRows {
 		return nil, [2]int{}, fmt.Errorf("retained games for %d exceed the %d-row bound", season, fbsPriorMaxGameRows)

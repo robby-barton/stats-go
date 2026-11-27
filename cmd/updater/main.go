@@ -525,8 +525,8 @@ func sportCommand(
 		// It is football-only and only meaningful with --all: plain ranking
 		// runs and backfill recomputation stay at the exact baseline.
 		rankingCmd.Flags().BoolVar(&rankingPrior, "fbs-early-season-prior", false,
-			"blend the reconstructed FBS early-season prior into early-season rankings "+
-				"while rebuilding all rankings (requires --all; default off)")
+			"blend the freshly recomputed FBS early-season prior into early-season rankings "+
+				"and republish the rebuilt priors while rebuilding all rankings (requires --all; default off)")
 	}
 
 	teamsCmd := &cobra.Command{

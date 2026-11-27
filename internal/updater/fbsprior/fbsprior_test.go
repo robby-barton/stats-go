@@ -286,6 +286,165 @@ func TestParse_KeySeasonMismatch(t *testing.T) {
 // Anchor policy
 // ---------------------------------------------------------------------------
 
+// TestBuildRebuilt_RoundTrip builds a rebuilt artifact through the
+// production rebuild-side entry point and verifies the fixed anchor/expiry,
+// the real rebuild instant (also exposed as the publication gate's capture
+// instant), the absence of fabricated preseason capture metadata, and the
+// exact-byte digest. An automatic preseason artifact remains readable, with
+// a zero rebuild instant.
+func TestBuildRebuilt_RoundTrip(t *testing.T) {
+	rebuiltAt := time.Date(2026, 9, 12, 15, 0, 0, 0, time.UTC)
+	data, published, err := BuildRebuilt(2026, rebuiltAt, &Prior{
+		Season: 2026,
+		Field: []FieldRow{
+			{TeamID: 2, TeamName: "Beta"},
+			{TeamID: 1, TeamName: "Alpha"},
+		},
+		ZStrength:   map[int64]float64{1: 1.0, 2: -1.0},
+		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("BuildRebuilt: %v", err)
+	}
+
+	wantAnchor := time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC)
+	wantExpiry := time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC)
+	if published.Season != 2026 || published.Anchor != "2026-08-10" {
+		t.Errorf("season/anchor = %d/%s", published.Season, published.Anchor)
+	}
+	if !published.AnchorInstant.Equal(wantAnchor) || !published.CalendarExpiry.Equal(wantExpiry) {
+		t.Errorf("anchor/expiry = %s/%s", published.AnchorInstant, published.CalendarExpiry)
+	}
+	if len(published.Field) != 2 || published.Field[0].TeamID != 1 || published.Field[0].TeamName != "Alpha" {
+		t.Errorf("field = %v, want sorted Alpha/Beta rows", published.Field)
+	}
+	if published.FreezeDate != "" || !published.AsOf.IsZero() {
+		t.Errorf("fabricated capture metadata = %q/%s, want none", published.FreezeDate, published.AsOf)
+	}
+	if !published.RebuiltAt.Equal(rebuiltAt) || !published.CapturedAt.Equal(rebuiltAt) {
+		t.Errorf("rebuilt/captured = %s/%s, want the real rebuild instant twice",
+			published.RebuiltAt, published.CapturedAt)
+	}
+	sum := sha256.Sum256(data)
+	if published.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("digest %q does not match the built bytes", published.SHA256)
+	}
+
+	// The exact bytes reparse to the same verified prior.
+	again, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse (rebuilt bytes): %v", err)
+	}
+	if again.SHA256 != published.SHA256 {
+		t.Error("reparsing the rebuilt bytes yielded a different digest")
+	}
+
+	// An automatic preseason artifact stays fully readable, with a zero
+	// rebuild instant.
+	v1, frozen, err := Build(FreezeOutput{
+		Season:     2026,
+		FreezeDate: "2026-08-12",
+		AsOf:       time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		CapturedAt: time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC),
+		Field: []FieldRow{
+			{TeamID: 1, TeamName: "Alpha"},
+			{TeamID: 2, TeamName: "Beta"},
+		},
+		ZStrength:   map[int64]float64{1: 1.0, 2: -1.0},
+		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("Build (automatic): %v", err)
+	}
+	if frozen.RebuiltAt != (time.Time{}) || frozen.FreezeDate != "2026-08-12" {
+		t.Errorf("automatic artifact = rebuilt %s freeze %q, want no rebuild instant and the freeze date",
+			frozen.RebuiltAt, frozen.FreezeDate)
+	}
+	if _, err := Parse(v1); err != nil {
+		t.Fatalf("Parse (automatic bytes): %v", err)
+	}
+}
+
+// TestParse_RebuiltArtifactRejections covers the rebuilt-artifact contract:
+// the fixed anchor and expiry, the mandatory real rebuild instant and
+// source, the refusal to fabricate preseason capture metadata, and the
+// field/payload consistency checks shared with the automatic artifact.
+func TestParse_RebuiltArtifactRejections(t *testing.T) {
+	rebuiltAt := time.Date(2026, 9, 12, 15, 0, 0, 0, time.UTC)
+	base := func() artifact {
+		file := validArtifact()
+		file.Schema = RebuildSchema
+		file.FreezeDate = ""
+		file.AsOf = time.Time{}
+		file.CapturedAt = time.Time{}
+		file.RebuiltAt = &rebuiltAt
+		file.Source = RebuildSource
+		return file
+	}
+	if _, err := Parse(encodeArtifact(t, base())); err != nil {
+		t.Fatalf("valid rebuilt artifact rejected: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		mutate   func(file *artifact)
+		contains string
+	}{
+		{
+			name: "fabricated preseason capture metadata",
+			mutate: func(file *artifact) {
+				file.FreezeDate = "2026-08-12"
+				file.AsOf = time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+				file.CapturedAt = time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC)
+			},
+			contains: "must not carry preseason capture metadata",
+		},
+		{
+			name:     "missing rebuild instant",
+			mutate:   func(file *artifact) { file.RebuiltAt = nil },
+			contains: "rebuilt timestamp is missing",
+		},
+		{
+			name:     "missing rebuild source",
+			mutate:   func(file *artifact) { file.Source = "" },
+			contains: "rebuild source is missing",
+		},
+		{
+			name: "moving the anchor",
+			mutate: func(file *artifact) {
+				file.AnchorInstant = file.AnchorInstant.Add(time.Hour)
+			},
+			contains: "anchor/expiry is not the fixed",
+		},
+		{
+			name: "rebuild instant before the anchor",
+			mutate: func(file *artifact) {
+				before := file.AnchorInstant.Add(-time.Hour)
+				file.RebuiltAt = &before
+			},
+			contains: "predates the preseason anchor",
+		},
+		{
+			name:     "unsupported schema",
+			mutate:   func(file *artifact) { file.Schema = "ncaaf-season-prior/9" },
+			contains: "unsupported schema",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := base()
+			tt.mutate(&file)
+			_, err := Parse(encodeArtifact(t, file))
+			if err == nil {
+				t.Fatal("invalid rebuilt artifact accepted")
+			}
+			if !strings.Contains(err.Error(), tt.contains) {
+				t.Errorf("error = %v, want it to contain %q", err, tt.contains)
+			}
+		})
+	}
+}
+
 func TestAnchorInstantFor(t *testing.T) {
 	anchor, err := AnchorInstantFor(2026)
 	if err != nil {
