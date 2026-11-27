@@ -50,7 +50,7 @@ type TeamWeekResult struct {
 	Postseason int64       `json:"postseason" gorm:"column:postseason;primaryKey"`
 	Sport      sport.Sport `json:"sport" gorm:"column:sport;primaryKey;default:ncaaf"`
 	FinalRank  int64       `json:"final_rank" gorm:"column:final_rank"`
-	FinalRaw   float64     `json:"final_raw" gorm:"column:final_raw"`
+	FinalRaw   float64     `json:"final_raw" gorm:"column:final_raw;type:double precision"`
 	Wins       int64       `json:"wins" gorm:"column:wins"`
 	Losses     int64       `json:"losses" gorm:"column:losses"`
 	Ties       int64       `json:"ties" gorm:"column:ties"`
