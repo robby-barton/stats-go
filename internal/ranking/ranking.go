@@ -124,6 +124,11 @@ func YearsBack(s sport.Sport) int64 {
 	return sportConfig(s).YearsBack
 }
 
+// RequiredGames reports the existing SRS division-game quota for a sport.
+func RequiredGames(s sport.Sport) int {
+	return sportConfig(s).RequiredGames
+}
+
 type Team struct {
 	Name       string
 	Conf       string

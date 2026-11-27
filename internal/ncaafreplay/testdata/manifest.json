@@ -1,0 +1,6 @@
+{
+  "schema": "ncaaf-replay-manifest/1",
+  "windows": [
+    { "year": 2023, "week": 2, "cutoff": "2023-09-12T04:00:00Z" }
+  ]
+}

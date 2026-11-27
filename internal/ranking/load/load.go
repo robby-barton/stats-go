@@ -186,6 +186,20 @@ func resolve(opts Options) (ranking.Input, Window, error) {
 // loadTeams loads every team for the sport/year (team_names ⋈ team_seasons),
 // including the division flag so the ranking can select FBS or FCS.
 func loadTeams(db *gorm.DB, sp sport.Sport, year int64) ([]ranking.TeamInfo, error) {
+	return loadTeamRows(teamQuery(db, sp, year))
+}
+
+// teamQuery returns the shared production team predicate: the sport/year
+// team_names ⋈ team_seasons join. Replay loading reuses this exact query so
+// explicit-cutoff snapshots cannot drift from production resolution.
+func teamQuery(db *gorm.DB, sp sport.Sport, year int64) *gorm.DB {
+	return db.Model(&database.TeamSeason{}).
+		Select("team_names.team_id as team_id, team_names.name as name, team_seasons.conf as conf, team_seasons.fbs as fbs").
+		Joins("join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
+		Where("team_seasons.year = ? and team_seasons.sport = ?", year, sp)
+}
+
+func loadTeamRows(query *gorm.DB) ([]ranking.TeamInfo, error) {
 	var rows []struct {
 		TeamID int64
 		Name   string
@@ -193,11 +207,7 @@ func loadTeams(db *gorm.DB, sp sport.Sport, year int64) ([]ranking.TeamInfo, err
 		FBS    int64
 	}
 
-	if err := db.Model(&database.TeamSeason{}).
-		Select("team_names.team_id as team_id, team_names.name as name, team_seasons.conf as conf, team_seasons.fbs as fbs").
-		Joins("join team_names on team_seasons.team_id = team_names.team_id and team_seasons.sport = team_names.sport").
-		Where("team_seasons.year = ? and team_seasons.sport = ?", year, sp).
-		Scan(&rows).Error; err != nil {
+	if err := query.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
@@ -218,11 +228,34 @@ func loadTeams(db *gorm.DB, sp sport.Sport, year int64) ([]ranking.TeamInfo, err
 // start time, ordered by start time descending (the srs game selection
 // depends on this order).
 func loadGames(db *gorm.DB, sp sport.Sport, year int64, startTime time.Time) ([]ranking.Game, error) {
+	return loadGameRows(baseGameQuery(db, sp, year, startTime))
+}
+
+// baseGameQuery returns the shared production base-game predicate: the
+// sport's season window up to an inclusive start time, ordered by start time
+// descending. There is deliberately no upper season bound; replay validation
+// rejects future-season rows instead of adding a production predicate.
+func baseGameQuery(db *gorm.DB, sp sport.Sport, year int64, startTime time.Time) *gorm.DB {
+	return db.Where("sport = ? and season >= ? and start_time <= ?", sp, year-ranking.YearsBack(sp), startTime).
+		Order("start_time desc")
+}
+
+// olderGameQuery returns the shared production backfill predicate: prior-season
+// games for a team against any of its opponents, most recent first, bounded by
+// limit. There is deliberately no historical-year floor.
+func olderGameQuery(db *gorm.DB, sp sport.Sport, teamID int64, opponents []int64,
+	beforeSeason int64, limit int,
+) *gorm.DB {
+	return db.Where(
+		"sport = ? and season < ? and ((home_id = ? and away_id in (?)) or "+
+			"(away_id = ? and home_id in (?)))",
+		sp, beforeSeason, teamID, opponents, teamID, opponents,
+	).Limit(limit).Order("start_time desc")
+}
+
+func loadGameRows(query *gorm.DB) ([]ranking.Game, error) {
 	var rows []database.Game
-	if err := db.
-		Where("sport = ? and season >= ? and start_time <= ?", sp, year-ranking.YearsBack(sp), startTime).
-		Order("start_time desc").
-		Find(&rows).Error; err != nil {
+	if err := query.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
@@ -246,35 +279,6 @@ func loadGames(db *gorm.DB, sp sport.Sport, year int64, startTime time.Time) ([]
 // input's pre-window game backfill (the "James Madison problem" search).
 func backfillFunc(db *gorm.DB, sp sport.Sport) ranking.BackfillFunc {
 	return func(teamID int64, opponents []int64, beforeSeason int64, limit int) ([]ranking.Game, error) {
-		var rows []database.Game
-		if err := db.
-			Where(
-				"sport = ? and season < ? and ((home_id = ? and away_id in (?)) or "+
-					"(away_id = ? and home_id in (?)))",
-				sp,
-				beforeSeason,
-				teamID,
-				opponents,
-				teamID,
-				opponents,
-			).Limit(limit).Order("start_time desc").
-			Find(&rows).Error; err != nil {
-			return nil, err
-		}
-
-		games := make([]ranking.Game, 0, len(rows))
-		for _, row := range rows {
-			games = append(games, ranking.Game{
-				GameID:    row.GameID,
-				Season:    row.Season,
-				Week:      row.Week,
-				StartTime: row.StartTime,
-				HomeID:    row.HomeID,
-				HomeScore: row.HomeScore,
-				AwayID:    row.AwayID,
-				AwayScore: row.AwayScore,
-			})
-		}
-		return games, nil
+		return loadGameRows(olderGameQuery(db, sp, teamID, opponents, beforeSeason, limit))
 	}
 }

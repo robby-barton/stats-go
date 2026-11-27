@@ -31,7 +31,7 @@ func SetupConfig() (*Config, error) {
 		godotenv.Load(".env")
 	}
 
-	params, err := dbParamsFromEnv()
+	params, err := DBParamsFromEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +43,10 @@ func SetupConfig() (*Config, error) {
 	}, nil
 }
 
-// dbParamsFromEnv builds DBParams from PG_* environment variables. It returns
-// nil (use SQLite) when none are set, and an error on partial/malformed configs.
-func dbParamsFromEnv() (*database.DBParams, error) {
+// DBParamsFromEnv reads explicit PG_* environment variables without loading
+// .env. It returns nil when none are set, and an error on partial or malformed
+// configuration. Callers decide whether an absent configuration allows SQLite.
+func DBParamsFromEnv() (*database.DBParams, error) {
 	host := os.Getenv("PG_HOST")
 	portStr := os.Getenv("PG_PORT")
 	user := os.Getenv("PG_USER")
