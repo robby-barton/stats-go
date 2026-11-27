@@ -19,6 +19,7 @@ import (
 const (
 	canonicalArmyTempleID int64 = 323220349
 	duplicateArmyTempleID int64 = 400368353
+	scheduleHome                = "home"
 	scheduleAway                = "away"
 
 	// knownEventLogMessage is the structured warning key for a protected import.
@@ -109,7 +110,7 @@ func armyTempleScheduleSourceDetail(g espn.Game) string {
 	if home.HomeAway == scheduleAway {
 		home, away = away, home
 	}
-	if home.HomeAway != "home" || away.HomeAway != scheduleAway ||
+	if home.HomeAway != scheduleHome || away.HomeAway != scheduleAway ||
 		home.ID != 349 || home.Team.ID != 349 || home.Score != 32 ||
 		away.ID != 218 || away.Team.ID != 218 || away.Score != 63 {
 		return "source schedule identity mismatch"
