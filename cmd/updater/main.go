@@ -245,6 +245,10 @@ func (ss sportSchedule) registerJobs(
 				log.Errorf("%s: failed to fetch %d games (marked for retry): %v",
 					ss.Name, len(result.Failed), result.FailedIDs())
 			}
+			if len(result.Skipped) > 0 {
+				log.Warnf("%s: protected %d games from reimport (not fetched, no retry): %v",
+					ss.Name, len(result.Skipped), result.SkippedIDs())
+			}
 			if len(result.Processed) > 0 {
 				update <- true
 			}
@@ -493,6 +497,10 @@ func sportCommand(
 				log.Errorf("Failed to fetch %d games (marked for retry): %v",
 					len(result.Failed), result.FailedIDs())
 			}
+			if len(result.Skipped) > 0 {
+				log.Warnf("Protected %d games from reimport (not fetched, no retry): %v",
+					len(result.Skipped), result.SkippedIDs())
+			}
 			return nil
 		},
 	}
@@ -595,6 +603,10 @@ Example:
 				if len(result.Failed) > 0 {
 					log.Errorf("  games: %d failed (marked for retry): %v",
 						len(result.Failed), result.FailedIDs())
+				}
+				if len(result.Skipped) > 0 {
+					log.Warnf("  games: %d protected from reimport (no retry): %v",
+						len(result.Skipped), result.SkippedIDs())
 				}
 			}
 
