@@ -272,12 +272,43 @@ func puntStatsToDB(in []game.PuntStats) []database.PuntStats {
 	return out
 }
 
+const gameIDColumn = "game_id"
+
+// gameConflictGuard is the write-side predicate that keeps a game_id from
+// crossing sports. games.game_id is globally unique and the dependent stat
+// tables key on it, so a conflicting upsert must never rewrite an incumbent
+// row that belongs to another sport. The WHERE clause is evaluated against
+// the conflicting row inside the INSERT ... ON CONFLICT statement itself,
+// making the check atomic with the write: a zero affected-row count proves
+// the only conflicting row was another sport's and nothing was written, with
+// no window for a concurrent insert to slip between a preflight read and the
+// upsert.
+func gameConflictGuard(sp sport.Sport) clause.Where {
+	return clause.Where{Exprs: []clause.Expression{
+		gorm.Expr("games.sport = ?", string(sp)),
+	}}
+}
+
+// crossSportCollision builds the refusal error for a game_id already stored
+// under a different sport, best-effort naming the incumbent sport. The guard
+// clause (not this read) is what actually prevented the write.
+func crossSportCollision(tx *gorm.DB, gameID int64, incoming sport.Sport) error {
+	var incumbent database.Game
+	if err := tx.Select("sport").Where("game_id = ?", gameID).First(&incumbent).Error; err == nil {
+		return fmt.Errorf("game %d already stored as sport %q; refusing cross-sport game_id collision from %q",
+			gameID, incumbent.Sport, incoming)
+	}
+	return fmt.Errorf("game %d already stored under a different sport; refusing cross-sport game_id collision from %q",
+		gameID, incoming)
+}
+
 func (u *Updater) insertGameInfo(parsed *game.ParsedGameInfo) error {
 	if parsed == nil {
 		return errors.New("game nil")
 	}
 
-	dbGameInfo := gameInfoToDB(parsed.Info, u.sportDB())
+	sp := u.sportDB()
+	dbGameInfo := gameInfoToDB(parsed.Info, sp)
 	if rule, protected := u.duplicateRule(dbGameInfo.GameID); protected {
 		sourceDetail := ""
 		if !rule.matchesHeader(dbGameInfo) {
@@ -290,29 +321,43 @@ func (u *Updater) insertGameInfo(parsed *game.ParsedGameInfo) error {
 	// before the stats rows that reference it. Adding a stats table is one
 	// entry here; conflictColumns overrides the inferred conflict target when
 	// a table's unique key needs explicit columns.
-	specs := []upsertSpec{
-		{value: &dbGameInfo},
-		{value: teamStatsToDB(parsed.TeamStats)},
-		{value: passingStatsToDB(parsed.PassingStats)},
-		{value: rushingStatsToDB(parsed.RushingStats)},
-		{value: receivingStatsToDB(parsed.ReceivingStats)},
-		{value: fumbleStatsToDB(parsed.FumbleStats)},
-		{value: defensiveStatsToDB(parsed.DefensiveStats)},
-		{value: interceptionStatsToDB(parsed.InterceptionStats)},
-		{
-			value: returnStatsToDB(parsed.ReturnStats),
-			conflictColumns: []clause.Column{
-				{Name: "player_id"},
-				{Name: "team_id"},
-				{Name: "game_id"},
-				{Name: "punt_kick"},
-			},
-		},
-		{value: kickStatsToDB(parsed.KickStats)},
-		{value: puntStatsToDB(parsed.PuntStats)},
-	}
-
 	return u.db.Transaction(func(tx *gorm.DB) error {
+		// The game row is written first with a sport-guarded conflict clause:
+		// a same-sport conflict updates the incumbent (score correction, retry
+		// reset), while a cross-sport collision affects zero rows and the
+		// refusal aborts the transaction, so no dependent stat rows are written.
+		res := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: gameIDColumn}},
+			UpdateAll: true,
+			Where:     gameConflictGuard(sp),
+		}).Create(&dbGameInfo)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return crossSportCollision(tx, dbGameInfo.GameID, sp)
+		}
+
+		specs := []upsertSpec{
+			{value: teamStatsToDB(parsed.TeamStats)},
+			{value: passingStatsToDB(parsed.PassingStats)},
+			{value: rushingStatsToDB(parsed.RushingStats)},
+			{value: receivingStatsToDB(parsed.ReceivingStats)},
+			{value: fumbleStatsToDB(parsed.FumbleStats)},
+			{value: defensiveStatsToDB(parsed.DefensiveStats)},
+			{value: interceptionStatsToDB(parsed.InterceptionStats)},
+			{
+				value: returnStatsToDB(parsed.ReturnStats),
+				conflictColumns: []clause.Column{
+					{Name: "player_id"},
+					{Name: "team_id"},
+					{Name: gameIDColumn},
+					{Name: "punt_kick"},
+				},
+			},
+			{value: kickStatsToDB(parsed.KickStats)},
+			{value: puntStatsToDB(parsed.PuntStats)},
+		}
 		return upsertAll(tx, specs)
 	})
 }
@@ -400,7 +445,10 @@ func (r *GameUpdateResult) SkippedIDs() []int64 {
 // so the game is re-fetched on the next update cycle. If the game already has
 // a row, only the retry flag is updated; otherwise a minimal row is seeded
 // from the schedule entry. A successful later fetch clears the flag because
-// insertGameInfo upserts the full row (retry defaults to 0).
+// insertGameInfo upserts the full row (retry defaults to 0). The conflict
+// clause carries the same write-side sport guard as insertGameInfo so a
+// game_id owned by another sport is never flagged; the zero affected-row
+// count is reported as a cross-sport collision.
 func (u *Updater) markGameRetry(g espn.Game) error {
 	if rule, protected := u.duplicateRule(g.ID); protected {
 		return u.protectedDuplicate(rule, rule.scheduleSourceDetail(g)).refusal()
@@ -420,10 +468,18 @@ func (u *Updater) markGameRetry(g espn.Game) error {
 		retry.AwayScore = away.Score
 	}
 
-	return u.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "game_id"}},
+	res := u.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: gameIDColumn}},
 		DoUpdates: clause.Assignments(map[string]any{"retry": 1}),
-	}).Create(retry).Error
+		Where:     gameConflictGuard(u.sportDB()),
+	}).Create(retry)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return crossSportCollision(u.db, g.ID, u.sportDB())
+	}
+	return nil
 }
 
 func (u *Updater) processGames(ctx context.Context, games []espn.Game) (*GameUpdateResult, error) {
