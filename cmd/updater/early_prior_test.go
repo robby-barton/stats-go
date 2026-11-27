@@ -94,11 +94,15 @@ func TestRankingCommand_PriorFlagScope(t *testing.T) {
 	}{
 		{name: "ncaaf", sport: espn.CollegeFootball, wantFlag: true},
 		{name: "ncaam", sport: espn.CollegeBasketball, wantFlag: false},
+		{name: "ncaaw", sport: espn.CollegeWomensBasketball, wantFlag: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd, err := sportCommand(zap.NewNop().Sugar(), db, tc.sport)
 			if err != nil {
 				t.Fatalf("sportCommand: %v", err)
+			}
+			if cmd.Name() != tc.name {
+				t.Fatalf("command name = %q, want %q", cmd.Name(), tc.name)
 			}
 			rankingCmd, _, err := cmd.Find([]string{"ranking"})
 			if err != nil {
@@ -113,7 +117,7 @@ func TestRankingCommand_PriorFlagScope(t *testing.T) {
 					t.Errorf("fbs-early-season-prior default = %q, want false", flag.DefValue)
 				}
 			} else if flag != nil {
-				t.Error("flag fbs-early-season-prior must not be registered on ncaam ranking")
+				t.Errorf("flag fbs-early-season-prior must not be registered on %s ranking", tc.name)
 			}
 		})
 	}

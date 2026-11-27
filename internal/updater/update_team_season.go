@@ -77,9 +77,10 @@ func (u *Updater) updateTeamSeasonsForYear(ctx context.Context, year int64, forc
 		return 0, err
 	}
 
-	if u.espn.SportInfo() == espn.CollegeBasketball {
-		// Basketball: all D1 teams are top-division (FBS=1). Conference names
-		// come from the conference API but there's no FBS/FCS split.
+	if u.espn.SportInfo().IsBasketball() {
+		// Basketball (men's and women's): all D1 teams are top-division
+		// (FBS=1). Conference names come from the conference API but there's
+		// no FBS/FCS split.
 		d1Confs := confResult.Conferences[espn.D1Basketball]
 
 		for team, conf := range teamConfs {

@@ -100,7 +100,7 @@ type sportParams struct {
 // is validated by NewRanker, so the default branch only covers football.
 func sportConfig(s sport.Sport) sportParams {
 	switch s {
-	case sport.Basketball:
+	case sport.Basketball, sport.WomensBasketball:
 		return sportParams{
 			RequiredGames: 25, YearsBack: 1, MOVCaps: []int64{1, 20},
 			RecordWeight: 0.25, SRSWeight: 0.60, SOSWeight: 0.15,

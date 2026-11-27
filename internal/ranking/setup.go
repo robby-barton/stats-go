@@ -1,9 +1,5 @@
 package ranking
 
-import (
-	"github.com/robby-barton/stats-go/internal/sport"
-)
-
 // setup derives the ranker's window state from the input and builds the
 // initial team list for the division being ranked. The input itself is never
 // mutated.
@@ -29,10 +25,10 @@ func (r *Ranker) setup() TeamList {
 }
 
 // divisionTeams filters the input's team set down to the division being
-// ranked. FCS ranking only applies to football; basketball has no division
-// split, so every team is FBS.
+// ranked. FCS ranking only applies to football; both basketball sports have
+// no division split, so every team is FBS.
 func (r *Ranker) divisionTeams() []TeamInfo {
-	includeFBS := !r.in.Fcs || r.in.Sport == sport.Basketball
+	includeFBS := !r.in.Fcs || r.in.Sport.IsBasketball()
 
 	var teams []TeamInfo
 	for _, team := range r.in.Teams {

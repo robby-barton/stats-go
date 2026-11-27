@@ -2,8 +2,8 @@
 
 ## System Overview
 
-stats-go is a set of Go services for ranking college sports teams (football and
-basketball). Data flows in one direction: ESPN API -> parsing -> database ->
+stats-go is a set of Go services for ranking college sports teams (football,
+men's basketball, and women's basketball). Data flows in one direction: ESPN API -> parsing -> database ->
 ranking algorithm -> database. The `stats-web` site consumes the rankings by
 querying the database directly at build time; there is no HTTP API in this
 repo.
@@ -46,18 +46,25 @@ repo.
 
 ## Multi-Sport Support
 
-The system supports college football and basketball through a `Sport` type in the
-ESPN package (`espn.CollegeFootball`, `espn.CollegeBasketball`). Each sport has:
+The system supports college football and basketball (men's and women's)
+through a `Sport` type in the ESPN package (`espn.CollegeFootball`,
+`espn.CollegeBasketball`, `espn.CollegeWomensBasketball`). Each sport has:
 
 - **ESPN client configuration:** Different API URLs, group IDs, season types
-- **Database separation:** Shared tables use a `sport` column (`"ncaaf"` or `"ncaam"`)
-- **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV caps
-- **Division structure:** Football has FBS/FCS; basketball has D1 only
+  — the two basketball sports share one client behavior and one division
+  group (D1, group 50) on dedicated URL paths
+- **Database separation:** Shared tables use a `sport` column (`"ncaaf"`,
+  `"ncaam"`, `"ncaaw"`)
+- **Ranking constants:** Sport-dependent `requiredGames`, `yearsBack`, and MOV
+  caps — women's basketball reuses the men's basketball parameters unchanged
+- **Division structure:** Football has FBS/FCS; both basketball sports are
+  D-I only, with no FCS ranking path and no division filter
 
 The `Updater` and `Ranker` structs each carry a typed sport identifier
 (`sport.Sport`, converted to the ESPN slug via `espn.Sport`). The CLI exposes
-sport subcommands (`ncaaf`, `ncaam`). The `schedule` command runs both sports
-in a single process with sport-appropriate cron schedules.
+sport subcommands (`ncaaf`, `ncaam`, `ncaaw`). The `schedule` command runs
+football and men's basketball in a single process with sport-appropriate cron
+schedules; women's basketball is one-shot only until its scheduled jobs land.
 
 ## Package Dependency Rules
 
@@ -84,8 +91,10 @@ sport        → (leaf: no internal dependencies)
 ```
 
 The `internal/sport` package owns the persistence identifiers
-(`sport.Football` = `"ncaaf"`, `sport.Basketball` = `"ncaam"`) shared by the
-database models, ranking, updater, and CLI wiring. ESPN-specific slugs and
+(`sport.Football` = `"ncaaf"`, `sport.Basketball` = `"ncaam"`,
+`sport.WomensBasketball` = `"ncaaw"`) shared by the database models, ranking,
+updater, and CLI wiring; `Sport.IsBasketball()` covers both basketball sports
+so the single-division ranking and season paths share one branch. ESPN-specific slugs and
 URLs stay inside `espn`, which converts to the persistence ID at its edge via
 `Sport.DBSport()`.
 
