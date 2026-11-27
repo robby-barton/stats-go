@@ -543,3 +543,99 @@ func TestInput_EmptyDB(t *testing.T) {
 		t.Error("Backfill = nil, want a database-backed implementation")
 	}
 }
+
+func TestInputWindow_MatchesInputAndExposesWindow(t *testing.T) {
+	db := setupTestDB(t)
+	seedTestData(t, db)
+
+	in, window, err := InputWindow(Options{DB: db, Sport: sport.Football, Year: 2023})
+	if err != nil {
+		t.Fatalf("InputWindow: %v", err)
+	}
+	baseline, err := Input(Options{DB: db, Sport: sport.Football, Year: 2023})
+	if err != nil {
+		t.Fatalf("Input: %v", err)
+	}
+
+	// The narrow return path must not change the loaded input.
+	if in.Year != baseline.Year || in.Week != baseline.Week || in.Sport != baseline.Sport ||
+		in.Fcs != baseline.Fcs || in.Postseason != baseline.Postseason ||
+		!in.StartTime.Equal(baseline.StartTime) || len(in.Teams) != len(baseline.Teams) ||
+		len(in.Games) != len(baseline.Games) {
+		t.Errorf("InputWindow input diverged from Input: %+v vs %+v", in, baseline)
+	}
+
+	// The latest fixture game is 1010 (week 5).
+	wantKickoff := time.Date(2023, 10, 3, 20, 0, 0, 0, time.UTC)
+	if !window.Found {
+		t.Fatal("window.Found = false, want true")
+	}
+	if window.Season != 2023 || window.Week != 5 || window.Postseason != 0 {
+		t.Errorf("window = season %d week %d phase %d, want 2023/5/0",
+			window.Season, window.Week, window.Postseason)
+	}
+	if !window.Kickoff.Equal(wantKickoff) {
+		t.Errorf("window.Kickoff = %s, want %s", window.Kickoff, wantKickoff)
+	}
+	if !window.StartTime.Equal(in.StartTime) || window.ResolvedWeek != in.Week {
+		t.Errorf("window start/resolved week = %s/%d, want %s/%d",
+			window.StartTime, window.ResolvedWeek, in.StartTime, in.Week)
+	}
+}
+
+func TestInputWindow_Phases(t *testing.T) {
+	tests := []struct {
+		name         string
+		postseason   int64
+		wantInputPS  bool
+		wantWindowPS int64
+	}{
+		{"preseason stored -1", -1, false, -1},
+		{"postseason stored 1", 1, true, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			seedTestData(t, db)
+
+			game := database.Game{
+				GameID: 2001, Season: 2023, Week: 6, Postseason: tt.postseason,
+				HomeID: 1, AwayID: 2, HomeScore: 30, AwayScore: 20, Sport: "ncaaf",
+				StartTime: time.Date(2024, 1, 1, 20, 0, 0, 0, time.UTC),
+			}
+			if err := db.Create(&game).Error; err != nil {
+				t.Fatalf("create phase game: %v", err)
+			}
+
+			in, window, err := InputWindow(Options{DB: db, Sport: sport.Football, Year: 2023})
+			if err != nil {
+				t.Fatalf("InputWindow: %v", err)
+			}
+			if in.Postseason != tt.wantInputPS {
+				t.Errorf("input postseason = %t, want %t", in.Postseason, tt.wantInputPS)
+			}
+			if window.Postseason != tt.wantWindowPS {
+				t.Errorf("window phase = %d, want %d", window.Postseason, tt.wantWindowPS)
+			}
+			if !window.Found || window.Season != 2023 {
+				t.Errorf("window = found %t season %d, want true/2023", window.Found, window.Season)
+			}
+		})
+	}
+}
+
+func TestInputWindow_EmptyDB(t *testing.T) {
+	db := setupTestDB(t)
+
+	in, window, err := InputWindow(Options{DB: db, Sport: sport.Football})
+	if err != nil {
+		// Clean error is acceptable, mirroring Input.
+		return
+	}
+	if window.Found {
+		t.Error("window.Found = true on an empty database, want false")
+	}
+	if len(in.Teams) != 0 || len(in.Games) != 0 {
+		t.Errorf("empty DB yielded teams=%d games=%d, want 0/0", len(in.Teams), len(in.Games))
+	}
+}

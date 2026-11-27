@@ -46,15 +46,47 @@ type Options struct {
 	Fcs bool
 }
 
+// Window describes the persisted game row that resolved the ranking window.
+// It exposes values Input already resolves, through a narrow return path, so
+// callers can gate on the actual loaded window without issuing another query.
+type Window struct {
+	// Found reports whether any persisted game resolved the window.
+	Found bool
+	// Season, Week, and Postseason are the cutoff row's raw column values.
+	// Postseason is the raw phase: 0 regular season, >0 postseason, and -1
+	// for a stored preseason game.
+	Season     int64
+	Week       int64
+	Postseason int64
+	// Kickoff is the cutoff row's raw start_time.
+	Kickoff time.Time
+	// StartTime is the resolved window start (Input.StartTime).
+	StartTime time.Time
+	// ResolvedWeek is the resolved Input.Week.
+	ResolvedWeek int64
+}
+
 // Input resolves the ranking window and loads the teams and games the
 // ranking pipeline computes over, replicating the window semantics of the
 // former Ranker.setGlobals.
 func Input(opts Options) (ranking.Input, error) {
+	in, _, err := resolve(opts)
+	return in, err
+}
+
+// InputWindow behaves exactly like Input and additionally reports the
+// persisted cutoff row that resolved the window. It issues no query beyond
+// the ones Input already runs.
+func InputWindow(opts Options) (ranking.Input, Window, error) {
+	return resolve(opts)
+}
+
+func resolve(opts Options) (ranking.Input, Window, error) {
 	if opts.DB == nil {
-		return ranking.Input{}, errors.New("load: nil DB")
+		return ranking.Input{}, Window{}, errors.New("load: nil DB")
 	}
 	if err := opts.Sport.Validate(); err != nil {
-		return ranking.Input{}, err
+		return ranking.Input{}, Window{}, err
 	}
 
 	in := ranking.Input{
@@ -69,7 +101,7 @@ func Input(opts Options) (ranking.Input, error) {
 		if err := opts.DB.Model(database.TeamSeason{}).
 			Where("sport = ?", opts.Sport).
 			Select("max(year) as year").Pluck("year", &year).Error; err != nil {
-			return ranking.Input{}, err
+			return ranking.Input{}, Window{}, err
 		}
 	}
 	in.Year = year
@@ -82,7 +114,7 @@ func Input(opts Options) (ranking.Input, error) {
 			Order("start_time asc").
 			Limit(1).
 			Find(&game).Error; err != nil {
-			return ranking.Input{}, err
+			return ranking.Input{}, Window{}, err
 		}
 		if game != (database.Game{}) {
 			// The boundary date is a local-timezone concept: derive the
@@ -104,7 +136,7 @@ func Input(opts Options) (ranking.Input, error) {
 			Order("start_time desc").
 			Limit(1).
 			Find(&game).Error; err != nil {
-			return ranking.Input{}, err
+			return ranking.Input{}, Window{}, err
 		}
 	}
 
@@ -124,21 +156,31 @@ func Input(opts Options) (ranking.Input, error) {
 		in.StartTime = game.StartTime
 	}
 
+	window := Window{
+		Found:        game != (database.Game{}),
+		Season:       game.Season,
+		Week:         game.Week,
+		Postseason:   game.Postseason,
+		Kickoff:      game.StartTime,
+		StartTime:    in.StartTime,
+		ResolvedWeek: in.Week,
+	}
+
 	teams, err := loadTeams(opts.DB, opts.Sport, year)
 	if err != nil {
-		return ranking.Input{}, err
+		return ranking.Input{}, Window{}, err
 	}
 	in.Teams = teams
 
 	games, err := loadGames(opts.DB, opts.Sport, year, in.StartTime)
 	if err != nil {
-		return ranking.Input{}, err
+		return ranking.Input{}, Window{}, err
 	}
 	in.Games = games
 
 	in.Backfill = backfillFunc(opts.DB, opts.Sport)
 
-	return in, nil
+	return in, window, nil
 }
 
 // loadTeams loads every team for the sport/year (team_names ⋈ team_seasons),

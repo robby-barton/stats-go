@@ -59,6 +59,7 @@ func MigrateSchema(db *gorm.DB) error {
 		&TeamName{},
 		&TeamSeason{},
 		&TeamWeekResult{},
+		&FBSSeasonPrior{},
 		&Game{},
 		&TeamGameStats{},
 		&PassingStats{},

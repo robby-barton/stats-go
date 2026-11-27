@@ -89,12 +89,48 @@ make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year rang
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
-| `schedule` | | | Run as scheduled service (both sports) |
+| `schedule` | | `--fbs-early-season-prior` | Run as scheduled service (both sports); the sole prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md) |
 | `ncaaf` / `ncaam` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
-| | `ranking` | `--all` | Update rankings (current season by default) |
+| | `ranking` | `--all`, `--fbs-early-season-prior` | Update rankings (current season by default; the prior flag requires `--all` and is football-only) |
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |
 | | `backfill` | `--from`, `--to` | Backfill seasons, games, and rankings for a year range |
+
+### FBS early-season prior (opt-in, default off)
+
+By default the updater publishes exact baseline rankings. With the sole
+`--fbs-early-season-prior` flag, the `schedule` command automatically
+freezes one validated FBS preseason prior per season (stored immutably in
+the `fbs_season_priors` table, checksum-verified on every read) during the
+bounded August 10–16 Eastern window — including automatic retries after the
+annual football season initialization — and blends it into early-season
+scheduled football rankings only. The anchor is always midnight Eastern on
+August 10 of the season year (the fixed policy anchor), with a full bypass
+56 Eastern calendar days later.
+
+```sh
+updater schedule --fbs-early-season-prior
+```
+
+The same flag also opts the one-shot football ranking command into the same
+policy: `updater ncaaf ranking --all --fbs-early-season-prior` rebuilds all
+rankings while reconstructing one prior freshly in memory per season in scope
+(including the current season) with exactly the scheduled freeze method —
+stored prior values are never used as inputs. Because the rebuild is the
+authoritative rerun, it then publishes the freshly computed priors over the
+stored rows (replacing existing rows, current season included, midseason
+allowed) atomically with the rebuilt ranking upserts, and invalidates the
+stale prior of any season it cannot reconstruct; any write failure rolls the
+whole publication back. Because it recomputes from current stored data, its
+numbers can differ from any hypothetical historical snapshot when team
+metadata or game data has been revised; and `ranking --all` (with or without
+the flag) can overwrite rows the scheduler blended earlier. Plain
+`ncaaf ranking` and backfill recomputation stay at the exact baseline.
+
+See [docs/fbs-early-season-prior.md](docs/fbs-early-season-prior.md) for the
+automatic freeze policy, the stored-artifact contract, baseline fallback,
+and how to disable it. Without the flag no prior job is registered, the
+stored table is never read or written, and nothing changes.
 
 ## Development
 
