@@ -1,6 +1,9 @@
 package updater
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -89,14 +92,17 @@ func teamListToTeamWeekResult(teamList ranking.TeamList, fbs bool, sport sport.S
 	return retTWR
 }
 
-func (u *Updater) rankingForWeek(year int64, week int64, prior *fbsprior.Prior) ([]database.TeamWeekResult, error) {
+// rankingForWeek computes one ranking window. priorEnabled selects the
+// scheduled football blend path: the FBS load resolves the window explicitly
+// and the stored prior (if any) is read fresh for every run.
+func (u *Updater) rankingForWeek(year int64, week int64, priorEnabled bool) ([]database.TeamWeekResult, error) {
 	sportDB := u.sportDB()
 	var teamWeekResults []database.TeamWeekResult
 
 	// Sample the observed snapshot clock once, before the enabled FBS input
 	// load, so the blend's window and expiry decisions cannot move mid-run.
 	var now time.Time
-	if u.priorEligible(prior, sportDB) {
+	if u.priorEligible(priorEnabled, sportDB) {
 		now = nowFunc()
 	}
 
@@ -113,7 +119,7 @@ func (u *Updater) rankingForWeek(year int64, week int64, prior *fbsprior.Prior) 
 			window load.Window
 			err    error
 		)
-		if u.priorEligible(prior, sportDB) && !fcs {
+		if u.priorEligible(priorEnabled, sportDB) && !fcs {
 			in, window, err = load.InputWindow(opts)
 		} else {
 			in, err = load.Input(opts)
@@ -147,10 +153,14 @@ func (u *Updater) rankingForWeek(year int64, week int64, prior *fbsprior.Prior) 
 			return nil, err
 		}
 
-		// Opt-in early-season blend: on any problem this warns (or skips
-		// silently for normal skips) and leaves every FBS row at baseline.
-		if u.priorEligible(prior, sportDB) {
-			u.applyEarlySeasonPrior(fbsRanking, fbsIn, fbsWindow, prior, now)
+		// Opt-in early-season blend: the stored prior is read per run, so a
+		// row created after startup is usable without a restart. On any
+		// problem this warns (or skips silently for normal skips) and leaves
+		// every FBS row at baseline.
+		if u.priorEligible(priorEnabled, sportDB) {
+			if prior := u.storedPriorForWindow(fbsIn, fbsWindow, now); prior != nil {
+				u.applyEarlySeasonPrior(fbsRanking, fbsIn, fbsWindow, prior, now)
+			}
 		}
 
 		teamWeekResults = append(teamWeekResults, teamListToTeamWeekResult(fbsRanking, true, sportDB)...)
@@ -172,7 +182,7 @@ func (u *Updater) rankingForWeek(year int64, week int64, prior *fbsprior.Prior) 
 // UpdateRecentRankings computes and upserts the latest rankings for the
 // updater's sport, entirely at baseline.
 func (u *Updater) UpdateRecentRankings() error {
-	weekRankings, err := u.rankingForWeek(0, 0, nil)
+	weekRankings, err := u.rankingForWeek(0, 0, false)
 	if err != nil {
 		return err
 	}
@@ -181,12 +191,13 @@ func (u *Updater) UpdateRecentRankings() error {
 }
 
 // UpdateRecentRankingsWithPrior is the scheduler-only football entry point.
-// It behaves exactly like UpdateRecentRankings except that a non-nil
-// validated prior enables the opt-in FBS early-season blend for the latest
-// regular-season FBS window. A nil prior is identical to
-// UpdateRecentRankings; every other ranking path stays at baseline.
-func (u *Updater) UpdateRecentRankingsWithPrior(prior *fbsprior.Prior) error {
-	weekRankings, err := u.rankingForWeek(0, 0, prior)
+// It behaves exactly like UpdateRecentRankings except that the opt-in FBS
+// early-season blend can apply to the latest regular-season FBS window using
+// the stored same-season prior read fresh from fbs_season_priors. With no
+// stored row (or an unreadable one) it publishes the exact baseline; every
+// other ranking path stays at baseline unconditionally.
+func (u *Updater) UpdateRecentRankingsWithPrior() error {
+	weekRankings, err := u.rankingForWeek(0, 0, true)
 	if err != nil {
 		return err
 	}
@@ -194,11 +205,66 @@ func (u *Updater) UpdateRecentRankingsWithPrior(prior *fbsprior.Prior) error {
 	return u.insertRankingsToDB(weekRankings)
 }
 
-// priorEligible reports whether the opt-in blend can apply at all: a loaded
-// prior on the scheduled football ranking path only. Basketball and every
-// other sport are unaffected by construction.
-func (u *Updater) priorEligible(prior *fbsprior.Prior, sportDB sport.Sport) bool {
-	return prior != nil && sportDB == sport.Football
+// priorEligible reports whether the opt-in blend can apply at all: enabled
+// on the scheduled football ranking path only. Basketball and every other
+// sport are unaffected by construction.
+func (u *Updater) priorEligible(priorEnabled bool, sportDB sport.Sport) bool {
+	return priorEnabled && sportDB == sport.Football
+}
+
+// storedPriorForWindow reads the stored prior for the resolved latest FBS
+// window, validating the exact stored bytes against the stored checksum.
+// It returns nil for the normal silent skips (no persisted window, a
+// non-regular stored phase, a window from another season than the loaded
+// one, or the fixed day-56 calendar expiry). An absent, unreadable, or
+// invalid row warns once per run and stays on baseline; an existing row
+// is never repaired or replaced.
+func (u *Updater) storedPriorForWindow(
+	in ranking.Input,
+	window load.Window,
+	now time.Time,
+) *fbsprior.Prior {
+	if !window.Found || window.Postseason != 0 || window.Season != in.Year {
+		return nil
+	}
+	expiry, err := fbsprior.CalendarExpiryForSeason(window.Season)
+	if err != nil {
+		return nil
+	}
+	if !now.Before(expiry) {
+		return nil
+	}
+
+	var row database.FBSSeasonPrior
+	if err := u.db.Where("season = ?", window.Season).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			u.logger.Warnf("fbs early-season prior: no frozen prior for season %d; staying on baseline rankings", window.Season)
+			return nil
+		}
+		u.logger.Warnf("fbs early-season prior: reading the stored prior: %v; staying on baseline rankings", err)
+		return nil
+	}
+
+	data := []byte(row.Artifact)
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != row.Checksum {
+		u.logger.Warnf("fbs early-season prior: stored prior for season %d fails its checksum; staying on baseline rankings",
+			window.Season)
+		return nil
+	}
+	prior, err := fbsprior.Parse(data)
+	if err != nil {
+		u.logger.Warnf("fbs early-season prior: stored prior for season %d is invalid: %v; staying on baseline rankings",
+			window.Season, err)
+		return nil
+	}
+	if prior.Season != window.Season {
+		u.logger.Warnf(
+			"fbs early-season prior: stored prior keyed by season %d contains season %d; staying on baseline rankings",
+			window.Season, prior.Season)
+		return nil
+	}
+	return prior
 }
 
 // applyEarlySeasonPrior blends the frozen preseason prior into the baseline
@@ -214,19 +280,14 @@ func (u *Updater) applyEarlySeasonPrior(
 	prior *fbsprior.Prior,
 	now time.Time,
 ) {
-	// Normal skips: baseline, no warning.
-	if !window.Found || window.Season != in.Year || window.Postseason != 0 {
-		return
-	}
-
 	stayBaseline := func(format string, args ...any) {
 		u.logger.Warnf("fbs early-season prior: "+format+"; staying on baseline rankings", args...)
 	}
 
 	// The eligible window's clocks must be consistent with the prior.
-	if window.Kickoff.Before(prior.Cutoff) {
+	if window.Kickoff.Before(prior.AnchorInstant) {
 		stayBaseline("latest game kickoff %s predates the preseason anchor %s",
-			window.Kickoff.UTC().Format(time.RFC3339), prior.Cutoff.Format(time.RFC3339))
+			window.Kickoff.UTC().Format(time.RFC3339), prior.AnchorInstant.Format(time.RFC3339))
 		return
 	}
 	if window.Kickoff.After(now) {
@@ -292,7 +353,7 @@ func (u *Updater) UpdateAllRankings() error {
 		}
 		for _, week := range weeks {
 			u.logger.Infof("%d/%d", year.Year, week)
-			weekRankings, err := u.rankingForWeek(year.Year, week, nil)
+			weekRankings, err := u.rankingForWeek(year.Year, week, false)
 			if err != nil {
 				return err
 			}
@@ -304,7 +365,7 @@ func (u *Updater) UpdateAllRankings() error {
 		} else {
 			u.logger.Infof("%d/%d", year.Year, year.Weeks+1)
 		}
-		weekRankings, err := u.rankingForWeek(year.Year, 0, nil)
+		weekRankings, err := u.rankingForWeek(year.Year, 0, false)
 		if err != nil {
 			return err
 		}

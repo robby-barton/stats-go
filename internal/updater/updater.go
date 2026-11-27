@@ -3,6 +3,7 @@ package updater
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -19,6 +20,11 @@ type Updater struct {
 	db     *gorm.DB
 	logger *zap.SugaredLogger
 	espn   espn.SportClient
+
+	// priorFreezeMu serializes in-process FBS prior freeze attempts so a
+	// retry job and a season-init trigger can never run concurrently on
+	// the same updater. It is untouched on every other path.
+	priorFreezeMu sync.Mutex
 }
 
 // NewUpdater validates its inputs and returns an Updater. It returns an
@@ -44,4 +50,10 @@ func NewUpdater(db *gorm.DB, log *zap.SugaredLogger, client espn.SportClient) (*
 // sportDB returns the persistence identifier for the updater's sport.
 func (u *Updater) sportDB() sport.Sport {
 	return u.espn.SportInfo().DBSport()
+}
+
+// Sport exposes the updater's persistence sport so command wiring can gate
+// football-only features without reaching into the ESPN client.
+func (u *Updater) Sport() sport.Sport {
+	return u.sportDB()
 }

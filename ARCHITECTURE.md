@@ -66,7 +66,7 @@ same level or from `cmd/`.
 
 ```
 cmd/ranker   → config, database, ranking, ranking/load, sport
-cmd/updater  → config, database, logger, updater, espn, updater/fbsprior
+cmd/updater  → config, database, logger, updater, espn
 cmd/migrate  → database
 
 updater      → database, espn, game, ranking, ranking/load, sport, team, updater/fbsprior
@@ -108,19 +108,27 @@ The sport is derived from the ESPN client's `SportInfo()` method.
 
 ### FBS Early-Season Prior (opt-in, default off)
 
-`internal/updater/fbsprior` holds the pinned `ncaaf-shadow-prior/1` artifact
-contract and the researched blend math (rho 0.9, 4-game expiry including
-FBS-FCS games, 56-Eastern-day calendar expiry, SD floor 0.05). It is
-football-scheduler-only: `schedule --fbs-early-season-prior` (+ path and
-SHA-256 pin) loads the artifact once at startup and passes it to the
-scheduled football ranking worker via `UpdateRecentRankingsWithPrior`;
-everything else (basketball, one-shot commands, `UpdateAllRankings`,
-historical backfills) stays exact baseline. When the flag is off the file is
-never read. On any invalid artifact, wrong season, field divergence,
-inconsistent window clocks, or blend failure the updater warns and publishes
-the exact baseline instead of blocking; the fixed day-56 expiry is a silent
-bypass. The blend only substitutes `FinalRaw`/`FinalRank` on the staged FBS
-rows after success. See docs/fbs-early-season-prior.md for operation.
+`internal/updater/fbsprior` holds the `ncaaf-season-prior/1` stored-artifact
+contract (Build/Parse with an exact-byte checksum, the fixed August 10
+midnight Eastern anchor, and the derived day-56 expiry) and the researched
+blend math (rho 0.9, 4-game expiry including FBS-FCS games, SD floor 0.05).
+With the sole `--fbs-early-season-prior` flag, the updater itself computes
+and persists the prior: the freeze task in `internal/updater` (triggered
+after annual season initialization, by a daily August 10–16 Eastern retry
+job, and at startup) loads a bounded two-season donor input, refuses
+incomplete or unusable data, and inserts one immutable
+`database.FBSSeasonPrior` row per season with conflict-do-nothing inside a
+transaction serialized against game writes (table locks on PostgreSQL,
+immediate write lock on SQLite). The scheduled football ranking worker
+(`UpdateRecentRankingsWithPrior`) resolves the latest regular-season FBS
+window and reads the same-season row on eligible runs before expiry;
+missing or invalid rows fall back to the exact baseline with a warning. Everything else
+(basketball, one-shot commands, `UpdateAllRankings`, historical backfills)
+stays exact baseline, and with the flag off the scheduler neither registers
+a freeze job nor reads or writes stored prior rows. The blend only substitutes
+`FinalRaw`/`FinalRank` on the staged FBS rows after success. See
+docs/fbs-early-season-prior.md for the policy and one-time
+enable/disable.
 
 ### Ranker Struct
 

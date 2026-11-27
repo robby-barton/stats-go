@@ -1,12 +1,7 @@
 package updater
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"math"
-	"os"
-	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -23,6 +18,12 @@ import (
 // ---------------------------------------------------------------------------
 // Clock stub
 // ---------------------------------------------------------------------------
+
+// esObservedClock is inside the eligible window: after the latest fixture
+// kickoff (2023-09-09) and before the day-56 expiry (2023-10-05).
+func esObservedClock() time.Time {
+	return time.Date(2023, 9, 12, 0, 0, 0, 0, time.UTC)
+}
 
 // stubNow pins the observed snapshot clock for the duration of the test.
 func stubNow(t *testing.T, at time.Time) {
@@ -52,7 +53,7 @@ func esUniqueStartTimes(t *testing.T, db *gorm.DB) {
 }
 
 // ---------------------------------------------------------------------------
-// Prior artifact fixture
+// Stored prior row fixture
 // ---------------------------------------------------------------------------
 
 // esPriorField returns the fixture FBS field rows matching team_names.
@@ -71,65 +72,52 @@ func esPriorZStrength() map[int64]float64 {
 	return map[int64]float64{1: 1.2, 2: -0.8, 3: 0.4, 4: -0.9}
 }
 
-// esObservedClock returns an observed clock inside the eligible window:
-// after the latest fixture kickoff (2023-09-09) and before the day-56 expiry
-// (2023-10-23).
-func esObservedClock() time.Time {
-	return time.Date(2023, 9, 12, 0, 0, 0, 0, time.UTC)
-}
-
-// writeEspPrior writes a valid ncaaf-shadow-prior/1 artifact for season 2023
-// (freeze date 2023-08-28, EDT anchor 04:00Z, day-56 expiry 2023-10-23) and
-// returns the file path.
-func writeEspPrior(t *testing.T, mutate func(map[string]any)) string {
-	t.Helper()
-
-	cutoff := time.Date(2023, 8, 28, 4, 0, 0, 0, time.UTC)
-	file := map[string]any{
-		"schema":          fbsprior.Schema,
-		"season":          2023,
-		"freeze_date":     "2023-08-28",
-		"cutoff":          cutoff.Format(time.RFC3339Nano),
-		"calendar_expiry": cutoff.AddDate(0, 0, 56).UTC().Format(time.RFC3339Nano),
-		"as_of":           time.Date(2023, 8, 28, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"captured_at":     time.Date(2023, 8, 28, 13, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
-		"field":           esPriorField(),
-		"prior": map[string]any{
-			"z_strength":      esPriorZStrength(),
-			"missing_history": []int64{},
-			"degenerate":      false,
-			"field_size":      len(esPriorField()),
-		},
-		"input_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-		"limitations":  []string{"metadata only"},
+// esPriorSeasonFixture builds a valid freeze output for season 2023 inside
+// the August 10-16 Eastern window (anchor 2023-08-10T04:00Z, expiry
+// 2023-10-05T04:00Z).
+func esPriorSeasonFixture(mutate func(*fbsprior.FreezeOutput)) fbsprior.FreezeOutput {
+	out := fbsprior.FreezeOutput{
+		Season:      2023,
+		FreezeDate:  "2023-08-12",
+		AsOf:        time.Date(2023, 8, 12, 12, 0, 0, 0, time.UTC),
+		CapturedAt:  time.Date(2023, 8, 12, 13, 0, 0, 0, time.UTC),
+		Field:       esPriorField(),
+		ZStrength:   esPriorZStrength(),
+		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
 	if mutate != nil {
-		mutate(file)
+		mutate(&out)
 	}
-	data, err := json.Marshal(file)
-	if err != nil {
-		t.Fatalf("marshal prior: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "prior.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("write prior: %v", err)
-	}
-	return path
+	return out
 }
 
-// loadEspPrior parses the fixture with the production loader.
-func loadEspPrior(t *testing.T, path string) *fbsprior.Prior {
+// seedEspPrior encodes a freeze output through the production builder and
+// stores the resulting immutable row; it returns the parsed prior.
+func seedEspPrior(t *testing.T, db *gorm.DB, season int64, mutate func(*fbsprior.FreezeOutput)) *fbsprior.Prior {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	data, prior, err := fbsprior.Build(esPriorSeasonFixture(mutate))
 	if err != nil {
-		t.Fatalf("read prior fixture: %v", err)
+		t.Fatalf("build prior fixture: %v", err)
 	}
-	sum := sha256.Sum256(data)
-	prior, err := fbsprior.Load(path, hex.EncodeToString(sum[:]))
-	if err != nil {
-		t.Fatalf("Load prior fixture: %v", err)
+	if err := db.Create(&database.FBSSeasonPrior{
+		Season:   season,
+		Artifact: string(data),
+		Checksum: prior.SHA256,
+	}).Error; err != nil {
+		t.Fatalf("seed stored prior: %v", err)
 	}
 	return prior
+}
+
+// seedEspPriorRaw stores a raw (possibly invalid) payload with the given
+// checksum for direct corruption tests.
+func seedEspPriorRaw(t *testing.T, db *gorm.DB, season int64, artifact, checksum string) {
+	t.Helper()
+	if err := db.Create(&database.FBSSeasonPrior{
+		Season: season, Artifact: artifact, Checksum: checksum,
+	}).Error; err != nil {
+		t.Fatalf("seed raw stored prior: %v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +185,7 @@ func expectBaseline(t *testing.T, baseline, got map[rowKey]database.TeamWeekResu
 // ---------------------------------------------------------------------------
 
 // esObservedClock is inside the eligible window: after the latest fixture
-// kickoff (2023-09-09) and before the day-56 expiry (2023-10-23).
+// kickoff (2023-09-09) and before the day-56 expiry (2023-10-05).
 // TestEarlySeasonPrior_AppliesBlend seeds an extra zero-game FBS team and an
 // FBS-FCS game, then verifies the stored blended rows against the researched
 // formula computed from the baseline run, and that FCS rows and the
@@ -237,20 +225,15 @@ func TestEarlySeasonPrior_AppliesBlend(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	path := writeEspPrior(t, func(file map[string]any) {
-		field := append([]fbsprior.FieldRow(nil), esPriorField()...)
-		field = append(field, fbsprior.FieldRow{TeamID: 7, TeamName: "Eta"})
-		file["field"] = field
-		file["prior"] = map[string]any{
-			"z_strength":      map[int64]float64{1: 1.2, 2: -0.8, 3: 0.4, 4: -0.9, 7: 0.0},
-			"missing_history": []int64{7},
-			"degenerate":      false,
-			"field_size":      len(field),
-		}
+	zStrength := map[int64]float64{1: 1.2, 2: -0.8, 3: 0.4, 4: -0.9, 7: 0.0}
+	seedEspPrior(t, u.db, 2023, func(out *fbsprior.FreezeOutput) {
+		out.Field = append(append([]fbsprior.FieldRow(nil), esPriorField()...),
+			fbsprior.FieldRow{TeamID: 7, TeamName: "Eta"})
+		out.ZStrength = zStrength
+		out.MissingHistory = []int64{7}
 	})
-	prior := loadEspPrior(t, path)
 
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	got := storedRows(t, u.db)
@@ -287,7 +270,7 @@ func TestEarlySeasonPrior_AppliesBlend(t *testing.T) {
 		}
 		z := (base.FinalRaw - mean) / sd
 		expectedRows[id] = &expected{
-			raw: mean + sd*((1-lambda)*z+lambda*(fbsprior.Rho*esPriorZStrength()[id])),
+			raw: mean + sd*((1-lambda)*z+lambda*(fbsprior.Rho*zStrength[id])),
 		}
 	}
 	// Competition ranks over the blended scores, ascending team ID ties.
@@ -349,7 +332,7 @@ func TestEarlySeasonPrior_AppliesBlend(t *testing.T) {
 }
 
 // TestEarlySeasonPrior_DisabledMatchesBaseline runs the scheduler path with
-// no prior and verifies byte-identical stored rows.
+// no stored prior and verifies byte-identical stored rows.
 func TestEarlySeasonPrior_DisabledMatchesBaseline(t *testing.T) {
 	u := newTestUpdater(t)
 	seedTeamsAndSeasons(t, u.db)
@@ -362,16 +345,57 @@ func TestEarlySeasonPrior_DisabledMatchesBaseline(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	// A nil prior must behave exactly like the one-shot path.
-	if err := u.UpdateRecentRankingsWithPrior(nil); err != nil {
-		t.Fatalf("UpdateRecentRankingsWithPrior(nil): %v", err)
+	// No stored row must behave exactly like the one-shot path.
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
 }
 
-// TestEarlySeasonPrior_WrongSeasonWarnsAndStaysBaseline checks that a prior
-// frozen for a different season warns and never touches the stored rows.
-func TestEarlySeasonPrior_WrongSeasonWarnsAndStaysBaseline(t *testing.T) {
+// TestEarlySeasonPrior_RowCreatedAfterStartupIsUsable verifies the stored
+// prior is read fresh on every run: a row frozen after the (simulated)
+// startup applies on the next run without any restart.
+func TestEarlySeasonPrior_RowCreatedAfterStartupIsUsable(t *testing.T) {
+	u := newTestUpdater(t)
+	seedTeamsAndSeasons(t, u.db)
+	seedGames(t, u.db)
+	esUniqueStartTimes(t, u.db)
+	stubNow(t, esObservedClock())
+
+	if err := u.UpdateRecentRankings(); err != nil {
+		t.Fatalf("baseline: %v", err)
+	}
+	baseline := storedRows(t, u.db)
+
+	// First enabled run before the freeze: baseline, silently.
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("pre-freeze run: %v", err)
+	}
+	expectBaseline(t, baseline, storedRows(t, u.db))
+	// The freeze task stores the row (real production builder over the
+	// blend fixture so the frozen field matches the loaded one). The row
+	// appears after the first enabled run, with no restart in between.
+	seedEspPrior(t, u.db, 2023, nil)
+
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("post-freeze run: %v", err)
+	}
+	got := storedRows(t, u.db)
+	changed := 0
+	for key, row := range got {
+		if row.FinalRaw-baseline[key].FinalRaw > esRowTol {
+			changed++
+		}
+	}
+	if changed == 0 {
+		t.Fatal("post-freeze run stayed entirely on baseline")
+	}
+}
+
+// TestEarlySeasonPrior_WrongSeasonKeyedRowWarnsAndStaysBaseline checks that
+// a row keyed by the loaded season that contains another season's payload
+// warns and never touches the stored rows.
+func TestEarlySeasonPrior_WrongSeasonKeyedRowWarnsAndStaysBaseline(t *testing.T) {
 	logger, logs := esObservedLogger(t)
 	u := newTestUpdaterWithLogger(t, logger)
 	seedTeamsAndSeasons(t, u.db)
@@ -384,22 +408,20 @@ func TestEarlySeasonPrior_WrongSeasonWarnsAndStaysBaseline(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	path := writeEspPrior(t, func(file map[string]any) {
-		file["season"] = 2022
-		file["freeze_date"] = "2022-08-29"
-		file["cutoff"] = time.Date(2022, 8, 29, 4, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["calendar_expiry"] = time.Date(2022, 10, 24, 4, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["as_of"] = time.Date(2022, 8, 29, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["captured_at"] = time.Date(2022, 8, 29, 13, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	// Build a valid 2022 payload but store it under the 2023 key.
+	seedEspPrior(t, u.db, 2023, func(out *fbsprior.FreezeOutput) {
+		out.Season = 2022
+		out.FreezeDate = "2022-08-11"
+		out.AsOf = time.Date(2022, 8, 11, 12, 0, 0, 0, time.UTC)
+		out.CapturedAt = time.Date(2022, 8, 11, 13, 0, 0, 0, time.UTC)
 	})
-	prior := loadEspPrior(t, path)
 
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
 	if esWarnCount(logs) == 0 {
-		t.Error("wrong-season fallback logged no warning")
+		t.Error("wrong-season payload logged no warning")
 	}
 }
 
@@ -418,22 +440,86 @@ func TestEarlySeasonPrior_FieldDivergenceWarnsAndStaysBaseline(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	path := writeEspPrior(t, func(file map[string]any) {
-		file["field"] = []fbsprior.FieldRow{
+	seedEspPrior(t, u.db, 2023, func(out *fbsprior.FreezeOutput) {
+		out.Field = []fbsprior.FieldRow{
 			{TeamID: 1, TeamName: "Alpha"},
 			{TeamID: 2, TeamName: "Beta"},
 			{TeamID: 3, TeamName: "Gamma"},
 			{TeamID: 4, TeamName: "Renamed"}, // name divergence
 		}
 	})
-	prior := loadEspPrior(t, path)
 
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
 	if esWarnCount(logs) == 0 {
 		t.Error("field-divergence fallback logged no warning")
+	}
+}
+
+// TestEarlySeasonPrior_CorruptRowWarnsAndStaysBaseline verifies a present
+// but unreadable stored row: warn once, publish the exact baseline, and
+// never repair or replace the stored row.
+func TestEarlySeasonPrior_CorruptRowWarnsAndStaysBaseline(t *testing.T) {
+	logger, logs := esObservedLogger(t)
+	u := newTestUpdaterWithLogger(t, logger)
+	seedTeamsAndSeasons(t, u.db)
+	seedGames(t, u.db)
+	esUniqueStartTimes(t, u.db)
+	stubNow(t, esObservedClock())
+
+	if err := u.UpdateRecentRankings(); err != nil {
+		t.Fatalf("UpdateRecentRankings: %v", err)
+	}
+	baseline := storedRows(t, u.db)
+
+	seedEspPriorRaw(t, u.db, 2023, "{not json", "0000")
+
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
+	}
+	expectBaseline(t, baseline, storedRows(t, u.db))
+	if esWarnCount(logs) == 0 {
+		t.Error("corrupt stored row logged no warning")
+	}
+	var count int64
+	if err := u.db.Model(&database.FBSSeasonPrior{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Error("the corrupt row was not left untouched")
+	}
+}
+
+// TestEarlySeasonPrior_ChecksumMismatchWarnsAndStaysBaseline verifies the
+// exact-byte checksum contract on read.
+func TestEarlySeasonPrior_ChecksumMismatchWarnsAndStaysBaseline(t *testing.T) {
+	logger, logs := esObservedLogger(t)
+	u := newTestUpdaterWithLogger(t, logger)
+	seedTeamsAndSeasons(t, u.db)
+	seedGames(t, u.db)
+	esUniqueStartTimes(t, u.db)
+	stubNow(t, esObservedClock())
+
+	if err := u.UpdateRecentRankings(); err != nil {
+		t.Fatalf("UpdateRecentRankings: %v", err)
+	}
+	baseline := storedRows(t, u.db)
+
+	// Store a valid artifact with a wrong checksum.
+	data, _, err := fbsprior.Build(esPriorSeasonFixture(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedEspPriorRaw(t, u.db, 2023, string(data), "ffff")
+
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
+		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
+	}
+	expectBaseline(t, baseline, storedRows(t, u.db))
+	if esWarnCount(logs) == 0 {
+		t.Error("checksum mismatch logged no warning")
 	}
 }
 
@@ -452,10 +538,9 @@ func TestEarlySeasonPrior_FutureKickoffWarnsAndStaysBaseline(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	path := writeEspPrior(t, nil)
-	prior := loadEspPrior(t, path)
+	seedEspPrior(t, u.db, 2023, nil)
 
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
@@ -464,49 +549,45 @@ func TestEarlySeasonPrior_FutureKickoffWarnsAndStaysBaseline(t *testing.T) {
 	}
 }
 
-// TestEarlySeasonPrior_KickoffBeforeAnchorWarns covers a prior frozen after
-// the loaded window's latest kickoff.
-func TestEarlySeasonPrior_KickoffBeforeAnchorWarns(t *testing.T) {
+// TestEarlySeasonPrior_CapturePrecedesObservationWarns covers a prior whose
+// capture instant is after the observed clock: baseline with a warning.
+func TestEarlySeasonPrior_CapturePrecedesObservationWarns(t *testing.T) {
 	logger, logs := esObservedLogger(t)
 	u := newTestUpdaterWithLogger(t, logger)
 	seedTeamsAndSeasons(t, u.db)
 	seedGames(t, u.db)
 	esUniqueStartTimes(t, u.db)
-	stubNow(t, esObservedClock())
+	// Observed clock before the fixture capture instant (2023-08-12).
+	stubNow(t, time.Date(2023, 8, 11, 0, 0, 0, 0, time.UTC))
 
 	if err := u.UpdateRecentRankings(); err != nil {
 		t.Fatalf("UpdateRecentRankings: %v", err)
 	}
 	baseline := storedRows(t, u.db)
 
-	// Anchor after the latest fixture kickoff (2023-09-09).
-	path := writeEspPrior(t, func(file map[string]any) {
-		file["freeze_date"] = "2023-09-15"
-		file["cutoff"] = time.Date(2023, 9, 15, 4, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["calendar_expiry"] = time.Date(2023, 11, 10, 5, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["as_of"] = time.Date(2023, 9, 15, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		file["captured_at"] = time.Date(2023, 9, 15, 13, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-	})
-	prior := loadEspPrior(t, path)
+	seedEspPrior(t, u.db, 2023, nil)
 
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
 	if esWarnCount(logs) == 0 {
-		t.Error("kickoff-before-anchor fallback logged no warning")
+		t.Error("capture-after-observation fallback logged no warning")
 	}
 }
 
 // TestEarlySeasonPrior_CalendarExpiryBypassesSilently verifies the safe
 // normal expiry: a kickoff long before day 56 but an observation exactly at
-// (and after) the expiry instant leaves the exact baseline, without warnings.
+// (and after) the expiry instant leaves the exact baseline, without warnings
+// — and without reading the stored row at all.
 func TestEarlySeasonPrior_CalendarExpiryBypassesSilently(t *testing.T) {
-	prior := loadEspPrior(t, writeEspPrior(t, nil))
+	// The fixed day-56 expiry for season 2023 is midnight Eastern on
+	// 2023-10-05 (04:00Z).
+	expiry := time.Date(2023, 10, 5, 4, 0, 0, 0, time.UTC)
 
 	for _, observed := range []time.Time{
-		prior.CalendarExpiry,
-		prior.CalendarExpiry.Add(24 * time.Hour),
+		expiry,
+		expiry.Add(24 * time.Hour),
 	} {
 		t.Run(observed.Format(time.RFC3339), func(t *testing.T) {
 			logger, logs := esObservedLogger(t)
@@ -520,7 +601,8 @@ func TestEarlySeasonPrior_CalendarExpiryBypassesSilently(t *testing.T) {
 			}
 			baseline := storedRows(t, u.db)
 
-			if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+			seedEspPrior(t, u.db, 2023, nil)
+			if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 				t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 			}
 			expectBaseline(t, baseline, storedRows(t, u.db))
@@ -552,8 +634,8 @@ func TestEarlySeasonPrior_PreseasonPhaseSkipsSilently(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	prior := loadEspPrior(t, writeEspPrior(t, nil))
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	seedEspPrior(t, u.db, 2023, nil)
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
@@ -583,8 +665,8 @@ func TestEarlySeasonPrior_PostseasonSkipsSilently(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	prior := loadEspPrior(t, writeEspPrior(t, nil))
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	seedEspPrior(t, u.db, 2023, nil)
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
@@ -613,8 +695,8 @@ func TestEarlySeasonPrior_NoCurrentSeasonSkipsSilently(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	prior := loadEspPrior(t, writeEspPrior(t, nil))
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	seedEspPrior(t, u.db, 2023, nil)
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))
@@ -624,7 +706,7 @@ func TestEarlySeasonPrior_NoCurrentSeasonSkipsSilently(t *testing.T) {
 }
 
 // TestEarlySeasonPrior_BasketballIsolation verifies the basketball scheduled
-// path never blends, even when handed a football prior.
+// path never blends, even when a stored football prior exists.
 func TestEarlySeasonPrior_BasketballIsolation(t *testing.T) {
 	u := newBasketballTestUpdater(t)
 	seedBasketballTeamsAndSeasons(t, u.db)
@@ -635,8 +717,8 @@ func TestEarlySeasonPrior_BasketballIsolation(t *testing.T) {
 	}
 	baseline := storedRows(t, u.db)
 
-	prior := loadEspPrior(t, writeEspPrior(t, nil))
-	if err := u.UpdateRecentRankingsWithPrior(prior); err != nil {
+	seedEspPrior(t, u.db, 2024, nil)
+	if err := u.UpdateRecentRankingsWithPrior(); err != nil {
 		t.Fatalf("UpdateRecentRankingsWithPrior: %v", err)
 	}
 	expectBaseline(t, baseline, storedRows(t, u.db))

@@ -89,7 +89,7 @@ make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year rang
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
-| `schedule` | | `--fbs-early-season-prior`, `--fbs-early-season-prior-path`, `--fbs-early-season-prior-sha256` | Run as scheduled service (both sports); the three prior flags are opt-in (default off) and only affect scheduled football rankings — see [the early-season prior runbook](docs/fbs-early-season-prior.md) |
+| `schedule` | | `--fbs-early-season-prior` | Run as scheduled service (both sports); the sole prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md) |
 | `ncaaf` / `ncaam` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
 | | `ranking` | `--all` | Update rankings (current season by default) |
 | | `teams` | | Update team info from ESPN |
@@ -98,22 +98,24 @@ make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year rang
 
 ### FBS early-season prior (opt-in, default off)
 
-By default the updater publishes exact baseline rankings. The `schedule`
-command can optionally blend a reviewed, pinned local preseason prior
-(`ncaaf-shadow-prior/1`, produced by the research shadow tooling) into
-early-season FBS rankings:
+By default the updater publishes exact baseline rankings. With the sole
+`--fbs-early-season-prior` flag, the `schedule` command automatically
+freezes one validated FBS preseason prior per season (stored immutably in
+the `fbs_season_priors` table, checksum-verified on every read) during the
+bounded August 10–16 Eastern window — including automatic retries after the
+annual football season initialization — and blends it into early-season
+scheduled football rankings only. The anchor is always midnight Eastern on
+August 10 of the season year (the fixed policy anchor), with a full bypass
+56 Eastern calendar days later.
 
 ```sh
-updater schedule \
-  --fbs-early-season-prior \
-  --fbs-early-season-prior-path /etc/stats-go/ncaaf-shadow-prior.json \
-  --fbs-early-season-prior-sha256 <64-hex digest of the artifact bytes>
+updater schedule --fbs-early-season-prior
 ```
 
 See [docs/fbs-early-season-prior.md](docs/fbs-early-season-prior.md) for the
-artifact requirements, mount guidance, expiry/warning behavior, and how to
-disable it. Without the flag the artifact file is never read and nothing
-changes.
+automatic freeze policy, the stored-artifact contract, baseline fallback,
+and how to disable it. Without the flag no prior job is registered, the
+stored table is never read or written, and nothing changes.
 
 ## Development
 

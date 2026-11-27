@@ -37,6 +37,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		&database.TeamSeason{},
 		&database.TeamName{},
 		&database.TeamWeekResult{},
+		&database.FBSSeasonPrior{},
 		&database.TeamGameStats{},
 		&database.PassingStats{},
 		&database.RushingStats{},

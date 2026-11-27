@@ -1,14 +1,16 @@
 // Package fbsprior implements the opt-in FBS early-season prior blend used by
-// the scheduled football updater. It contains the ncaaf-shadow-prior/1
-// artifact contract (a pinned, reviewed preseason prior produced by the
-// research shadow-freeze tool), and the blend math fixed by the 2026
-// retrospective research: rho 0.9, a 4-game (W+L+T, including FBS-FCS games)
-// per-team expiry, a 56-Eastern-calendar-day full bypass measured from the
-// verified preseason anchor, and an SD floor of 0.05.
+// the scheduled football updater. It contains the ncaaf-season-prior/1
+// artifact contract (a versioned, checksum-verified preseason prior that the
+// scheduled updater itself freezes and persists) and the blend math fixed by
+// the 2026 retrospective research: rho 0.9, a 4-game (W+L+T, including
+// FBS-FCS games) per-team expiry, a 56-Eastern-calendar-day full bypass
+// measured from the fixed August 10 midnight Eastern anchor, and an SD floor
+// of 0.05.
 //
 // The package never reads AP inputs, never retrains at runtime, and performs
-// no database I/O. The artifact is a plain local file; its SHA-256 pin
-// establishes byte identity only, not provenance.
+// no database I/O. The artifact is an opaque versioned text payload: Build
+// encodes a validated artifact, Parse verifies the exact stored bytes and
+// enforces the full contract on every read.
 package fbsprior
 
 import (
@@ -17,9 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -29,8 +29,10 @@ import (
 
 // The fixed research policy constants. None of these are operator-tunable.
 const (
-	// Schema is the only supported artifact schema.
-	Schema = "ncaaf-shadow-prior/1"
+	// Schema is the only supported artifact schema. The old
+	// ncaaf-shadow-prior/1 schema (operator-supplied files pinned by a
+	// manual SHA-256 flag) is deliberately rejected.
+	Schema = "ncaaf-season-prior/1"
 	// Rho scales the frozen prior z-score. There is deliberately no
 	// restandardization after blending, so the combined field's variance
 	// shrinks below 1 by design.
@@ -38,14 +40,14 @@ const (
 	// ExpirationGames is the baseline game count (W+L+T, including FBS-FCS
 	// games) at which a team's shrinkage weight reaches zero.
 	ExpirationGames = int64(4)
-	// CalendarDays is the Eastern calendar-day distance from the verified
+	// CalendarDays is the Eastern calendar-day distance from the fixed
 	// preseason anchor to the full-bypass instant.
 	CalendarDays = 56
 	// SDFloor is the lower bound for the standard deviations used as
 	// z-score denominators.
 	SDFloor = 0.05
 	// A season prior is a small FBS field and one value per team. Bound
-	// startup reads so bad configuration cannot allocate arbitrary memory.
+	// reads so bad stored rows cannot allocate arbitrary memory.
 	maxArtifactBytes = 1 << 20
 )
 
@@ -55,24 +57,31 @@ type FieldRow struct {
 	TeamName string `json:"team_name"`
 }
 
-// Prior is a validated, pinned ncaaf-shadow-prior/1 artifact. Construct it
-// only through Load, which enforces the full contract before returning.
+// Prior is a validated ncaaf-season-prior/1 artifact. Construct it only
+// through Build (freeze side) or Parse (read side), which enforce the full
+// contract before returning.
 type Prior struct {
 	// Season is the target season the prior was frozen for.
 	Season int64
-	// FreezeDate is the predeclared preseason Eastern anchor date
-	// (YYYY-MM-DD) the prior was frozen at.
-	FreezeDate string
-	// Cutoff is the preseason anchor: midnight Eastern on FreezeDate,
-	// expressed in UTC.
-	Cutoff time.Time
-	// CalendarExpiry is Cutoff plus CalendarDays Eastern calendar days;
-	// at or after this instant every team bypasses the blend.
+	// Anchor is the fixed preseason Eastern anchor date (YYYY-MM-DD,
+	// always August 10 of Season). The anchor never moves with the actual
+	// freeze date.
+	Anchor string
+	// AnchorInstant is midnight Eastern on Anchor, expressed in UTC.
+	AnchorInstant time.Time
+	// CalendarExpiry is AnchorInstant plus CalendarDays Eastern calendar
+	// days; at or after this instant every team bypasses the blend.
 	CalendarExpiry time.Time
-	// AsOf is the observed-clock instant recorded inside the artifact.
+	// FreezeDate is the observed Eastern capture date (YYYY-MM-DD,
+	// August 10-16 of Season). It is recorded separately from the anchor so
+	// retry dates are visible.
+	FreezeDate string
+	// AsOf is the observed-clock instant at the start of the freezing
+	// attempt, recorded inside the artifact.
 	AsOf time.Time
-	// CapturedAt is the post-capture clock instant recorded inside the
-	// artifact. The blend requires the observed clock to be at or after it.
+	// CapturedAt is the observed-clock instant at capture, recorded inside
+	// the artifact. The blend requires the observed clock to be at or
+	// after it.
 	CapturedAt time.Time
 	// Field is the frozen FBS field: sorted, unique, positive team IDs with
 	// nonempty names. The blend requires an exact ID and name match with
@@ -87,26 +96,27 @@ type Prior struct {
 	// Degenerate reports that no usable strength signal existed; the
 	// frozen prior is all-zero in that case.
 	Degenerate bool
-	// InputSHA256 is the embedded ranker-input fingerprint recorded inside
-	// the artifact. It is metadata, not the external pin.
+	// InputSHA256 is the deterministic fingerprint of the sorted field and
+	// retained ranker inputs recorded inside the artifact. It is provenance
+	// metadata, distinct from the checksum of the exact stored bytes.
 	InputSHA256 string
 	// SHA256 is the verified digest of the exact artifact bytes.
 	SHA256 string
 }
 
-// artifact file layout (mirrors the research shadow-freeze output).
-type artifactFile struct {
+// artifact is the JSON layout of the stored payload.
+type artifact struct {
 	Schema         string        `json:"schema"`
 	Season         int64         `json:"season"`
-	FreezeDate     string        `json:"freeze_date"`
-	Cutoff         time.Time     `json:"cutoff"`
+	Anchor         string        `json:"anchor"`
+	AnchorInstant  time.Time     `json:"anchor_instant"`
 	CalendarExpiry time.Time     `json:"calendar_expiry"`
+	FreezeDate     string        `json:"freeze_date"`
 	AsOf           time.Time     `json:"as_of"`
 	CapturedAt     time.Time     `json:"captured_at"`
 	Field          []FieldRow    `json:"field"`
 	Prior          artifactPrior `json:"prior"`
 	InputSHA256    string        `json:"input_sha256"`
-	Limitations    []string      `json:"limitations"`
 }
 
 type artifactPrior struct {
@@ -116,26 +126,72 @@ type artifactPrior struct {
 	FieldSize      int               `json:"field_size"`
 }
 
-// Load reads the artifact at path, verifies its bytes against the operator's
-// SHA-256 pin, and validates the full ncaaf-shadow-prior/1 contract. It
-// returns an error on any missing file, digest mismatch, malformed payload,
-// invalid clock, or inconsistent field: the caller must warn and stay on the
-// exact baseline rather than block ordinary updater operation.
-func Load(path, sha256Pin string) (*Prior, error) {
-	if !isHex64(sha256Pin) {
-		return nil, errors.New("fbsprior: sha256 pin must be 64 lowercase hex digits")
-	}
-	data, err := readArtifact(path)
+// FreezeOutput is the validated freeze result the updater hands to Build.
+type FreezeOutput struct {
+	Season         int64
+	FreezeDate     string
+	AsOf           time.Time
+	CapturedAt     time.Time
+	Field          []FieldRow
+	ZStrength      map[int64]float64
+	MissingHistory []int64
+	Degenerate     bool
+	InputSHA256    string
+}
+
+// Build assembles the versioned artifact from a computed freeze result,
+// encodes it deterministically, validates the exact encoded bytes, and
+// returns the bytes with the parsed Prior carrying their SHA-256 digest.
+func Build(out FreezeOutput) ([]byte, *Prior, error) {
+	anchor, err := AnchorInstantFor(out.Season)
 	if err != nil {
-		return nil, fmt.Errorf("fbsprior: read prior: %w", err)
+		return nil, nil, err
 	}
-	sum := sha256.Sum256(data)
-	digest := hex.EncodeToString(sum[:])
-	if digest != sha256Pin {
-		return nil, fmt.Errorf("fbsprior: artifact digest %s does not match the pinned sha256", digest)
+	// Encode the field sorted by team ID regardless of the input order so
+	// equivalent freeze results encode to identical bytes.
+	field := make([]FieldRow, len(out.Field))
+	copy(field, out.Field)
+	sort.Slice(field, func(i, j int) bool { return field[i].TeamID < field[j].TeamID })
+	file := artifact{
+		Schema:         Schema,
+		Season:         out.Season,
+		Anchor:         anchor.In(easternZone()).Format(time.DateOnly),
+		AnchorInstant:  anchor,
+		CalendarExpiry: anchor.AddDate(0, 0, CalendarDays),
+		FreezeDate:     out.FreezeDate,
+		AsOf:           out.AsOf.UTC(),
+		CapturedAt:     out.CapturedAt.UTC(),
+		Field:          field,
+		Prior: artifactPrior{
+			ZStrength:      out.ZStrength,
+			MissingHistory: out.MissingHistory,
+			Degenerate:     out.Degenerate,
+			FieldSize:      len(field),
+		},
+		InputSHA256: out.InputSHA256,
+	}
+	data, err := json.Marshal(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fbsprior: encode prior: %w", err)
+	}
+	prior, err := Parse(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fbsprior: built artifact is invalid: %w", err)
+	}
+	return data, prior, nil
+}
+
+// Parse verifies the exact artifact bytes and validates the full
+// ncaaf-season-prior/1 contract. It returns an error on an oversized or
+// malformed payload, an unsupported (including legacy) schema, an invalid
+// clock, or an inconsistent field: the caller must warn and stay on the
+// exact baseline rather than block ordinary updater operation.
+func Parse(data []byte) (*Prior, error) {
+	if len(data) > maxArtifactBytes {
+		return nil, errors.New("fbsprior: prior exceeds the 1 MiB size limit")
 	}
 
-	var file artifactFile
+	var file artifact
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("fbsprior: parse prior: %w", err)
 	}
@@ -143,11 +199,13 @@ func Load(path, sha256Pin string) (*Prior, error) {
 		return nil, fmt.Errorf("fbsprior: invalid prior: %w", err)
 	}
 
+	sum := sha256.Sum256(data)
 	return &Prior{
 		Season:         file.Season,
-		FreezeDate:     file.FreezeDate,
-		Cutoff:         file.Cutoff,
+		Anchor:         file.Anchor,
+		AnchorInstant:  file.AnchorInstant,
 		CalendarExpiry: file.CalendarExpiry,
+		FreezeDate:     file.FreezeDate,
 		AsOf:           file.AsOf,
 		CapturedAt:     file.CapturedAt,
 		Field:          file.Field,
@@ -155,35 +213,8 @@ func Load(path, sha256Pin string) (*Prior, error) {
 		MissingHistory: file.Prior.MissingHistory,
 		Degenerate:     file.Prior.Degenerate,
 		InputSHA256:    file.InputSHA256,
-		SHA256:         digest,
+		SHA256:         hex.EncodeToString(sum[:]),
 	}, nil
-}
-
-func readArtifact(path string) ([]byte, error) {
-	// Check before opening so a configured pipe or device is not read.
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("prior must be a regular file")
-	}
-	if info.Size() > maxArtifactBytes {
-		return nil, errors.New("prior exceeds the 1 MiB size limit")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	data, err := io.ReadAll(io.LimitReader(file, maxArtifactBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxArtifactBytes {
-		return nil, errors.New("prior exceeds the 1 MiB size limit")
-	}
-	return data, nil
 }
 
 // CoversField reports whether the ranking's FBS teams match the prior's
@@ -208,30 +239,47 @@ func (p *Prior) CoversField(teams ranking.TeamList) bool {
 	return true
 }
 
-// validate enforces the full artifact contract: header, verified Eastern
-// clocks, ordered timestamps, input-hash format, field identity, and
-// strength-payload consistency.
-func validate(file artifactFile) error {
+// validate enforces the full artifact contract: header, the fixed August 10
+// midnight Eastern anchor and day-56 expiry, an actual Eastern freeze date
+// inside the August 10-16 window, ordered timestamps, input-hash format,
+// field identity, and strength-payload consistency.
+func validate(file artifact) error {
 	if file.Schema != Schema {
 		return fmt.Errorf("unsupported schema %q", file.Schema)
 	}
-	if file.Season <= 0 || file.FreezeDate == "" {
+	if file.Season <= 0 || file.Anchor == "" || file.FreezeDate == "" {
 		return errors.New("header is incomplete")
 	}
-	anchor, err := easternAnchor(file.FreezeDate)
+	anchorInstant, err := AnchorInstantFor(file.Season)
+	if err != nil {
+		return fmt.Errorf("anchor: %w", err)
+	}
+	anchorDate := anchorInstant.In(easternZone()).Format(time.DateOnly)
+	if file.Anchor != anchorDate || !file.AnchorInstant.Equal(anchorInstant) ||
+		!file.CalendarExpiry.Equal(anchorInstant.AddDate(0, 0, CalendarDays)) {
+		return errors.New("anchor/expiry is not the fixed August 10 midnight Eastern anchor and day-56 boundary")
+	}
+	if file.AnchorInstant.IsZero() || file.CalendarExpiry.IsZero() ||
+		file.AsOf.IsZero() || file.CapturedAt.IsZero() {
+		return errors.New("timestamps are incomplete")
+	}
+
+	// The freeze date is the real observed Eastern capture date: it must be
+	// an August 10-16 date of the season year, but it never moves the
+	// anchor or the expiry.
+	freezeInstant, err := easternMidnight(file.FreezeDate)
 	if err != nil {
 		return fmt.Errorf("freeze date: %w", err)
 	}
-	if !file.Cutoff.Equal(anchor) || !file.CalendarExpiry.Equal(anchor.AddDate(0, 0, CalendarDays)) {
-		return errors.New("cutoff/expiry is not the Eastern anchor and day-56 boundary")
+	if freezeInstant.Month() != AnchorMonth ||
+		freezeInstant.Day() < AnchorDay || freezeInstant.Day() > MaxFreezeDay ||
+		int64(freezeInstant.Year()) != file.Season {
+		return errors.New("freeze date is not an August 10-16 Eastern date of the season year")
 	}
-	if file.Cutoff.IsZero() || file.CalendarExpiry.IsZero() || file.AsOf.IsZero() ||
-		file.CapturedAt.IsZero() {
-		return errors.New("timestamps are incomplete")
-	}
-	if file.Cutoff.After(file.AsOf) || file.AsOf.After(file.CapturedAt) ||
-		file.AsOf.In(anchor.Location()).Format(time.DateOnly) != file.FreezeDate ||
-		int64(anchor.Year()) != file.Season {
+
+	if file.AsOf.Before(file.AnchorInstant) || file.CapturedAt.Before(file.AsOf) ||
+		file.AsOf.In(easternZone()).Format(time.DateOnly) != file.FreezeDate ||
+		file.CapturedAt.In(easternZone()).Format(time.DateOnly) != file.FreezeDate {
 		return errors.New("clock or freeze-date ordering violated")
 	}
 	if !isHex64(file.InputSHA256) {
@@ -243,14 +291,29 @@ func validate(file artifactFile) error {
 	return validatePayload(file)
 }
 
-// easternAnchor parses a YYYY-MM-DD date as midnight Eastern (the verified
-// preseason anchor convention shared with the research tooling).
-func easternAnchor(date string) (time.Time, error) {
+// easternMidnight parses a YYYY-MM-DD date as midnight Eastern (the verified
+// preseason anchor convention shared with the research tooling), normalized
+// to UTC so encoded bytes are deterministic.
+func easternMidnight(date string) (time.Time, error) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
-		return time.Time{}, errors.New("eastern timezone data unavailable")
+		return time.Time{}, err
 	}
-	return time.ParseInLocation(time.DateOnly, date, loc)
+	parsed, err := time.ParseInLocation(time.DateOnly, date, loc)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
+}
+
+// easternZone is used for display only after parsing the Eastern anchor
+// has already confirmed that the time zone is available.
+func easternZone() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 func validateFieldRows(field []FieldRow) error {
@@ -270,7 +333,7 @@ func validateFieldRows(field []FieldRow) error {
 	return nil
 }
 
-func validatePayload(file artifactFile) error {
+func validatePayload(file artifact) error {
 	if file.Prior.FieldSize != len(file.Field) || len(file.Prior.ZStrength) != len(file.Field) {
 		return errors.New("strength map does not cover the frozen field exactly")
 	}

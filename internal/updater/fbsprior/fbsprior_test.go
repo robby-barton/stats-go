@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,20 +12,24 @@ import (
 	"github.com/robby-barton/stats-go/internal/ranking"
 )
 
-// freezeDate2026 is a representative predeclared preseason Eastern anchor:
-// midnight Eastern on 2026-08-24 is 04:00Z (EDT).
-const freezeDate2026 = "2026-08-24"
+// ---------------------------------------------------------------------------
+// Artifact build/parse
+// ---------------------------------------------------------------------------
 
-// validArtifact returns a contract-satisfying artifact for season 2026.
-func validArtifact() artifactFile {
-	return artifactFile{
+// validArtifact returns a contract-satisfying artifact for season 2026:
+// fixed anchor midnight Eastern on 2026-08-10 (04:00Z EDT), day-56 expiry
+// midnight Eastern on 2026-10-05, actual freeze date 2026-08-12.
+func validArtifact() artifact {
+	anchor := time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC)
+	return artifact{
 		Schema:         Schema,
 		Season:         2026,
-		FreezeDate:     freezeDate2026,
-		Cutoff:         time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC),
-		CalendarExpiry: time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC),
-		AsOf:           time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC),
-		CapturedAt:     time.Date(2026, 8, 24, 13, 0, 0, 0, time.UTC),
+		Anchor:         "2026-08-10",
+		AnchorInstant:  anchor,
+		CalendarExpiry: time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC),
+		FreezeDate:     "2026-08-12",
+		AsOf:           time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		CapturedAt:     time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC),
 		Field: []FieldRow{
 			{TeamID: 1, TeamName: "Alpha"},
 			{TeamID: 2, TeamName: "Beta"},
@@ -38,41 +40,47 @@ func validArtifact() artifactFile {
 			FieldSize:      2,
 		},
 		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-		Limitations: []string{"metadata only"},
 	}
 }
 
-// writeArtifact marshals the artifact, writes it to a temp file, and returns
-// the path plus the exact byte digest.
-func writeArtifact(t *testing.T, file artifactFile) (string, string) {
+// encodeArtifact marshals the artifact to the exact stored bytes.
+func encodeArtifact(t *testing.T, file artifact) []byte {
 	t.Helper()
 	data, err := json.Marshal(file)
 	if err != nil {
 		t.Fatalf("marshal artifact: %v", err)
 	}
-	path := filepath.Join(t.TempDir(), "prior.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("write artifact: %v", err)
-	}
-	sum := sha256.Sum256(data)
-	return path, hex.EncodeToString(sum[:])
+	return data
 }
 
-func TestLoad_ValidArtifact(t *testing.T) {
-	path, pin := writeArtifact(t, validArtifact())
-
-	prior, err := Load(path, pin)
+// TestBuildParse_RoundTrip builds through the production freeze-side entry
+// point and verifies every parsed field, the exact expiry instant, and that
+// parsing the same bytes yields the same digest.
+func TestBuildParse_RoundTrip(t *testing.T) {
+	data, prior, err := Build(FreezeOutput{
+		Season:     2026,
+		FreezeDate: "2026-08-12",
+		AsOf:       time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		CapturedAt: time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC),
+		Field: []FieldRow{
+			{TeamID: 2, TeamName: "Beta"},
+			{TeamID: 1, TeamName: "Alpha"},
+		},
+		ZStrength:   map[int64]float64{1: 1.0, 2: -1.0},
+		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("Build: %v", err)
 	}
-	if prior.Season != 2026 || prior.FreezeDate != freezeDate2026 {
-		t.Errorf("season/freeze date = %d/%q, want 2026/%q", prior.Season, prior.FreezeDate, freezeDate2026)
+
+	wantAnchor := time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC)
+	wantExpiry := time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC)
+	if prior.Season != 2026 || prior.Anchor != "2026-08-10" || prior.FreezeDate != "2026-08-12" {
+		t.Errorf("season/anchor/freeze = %d/%s/%s", prior.Season, prior.Anchor, prior.FreezeDate)
 	}
-	wantCutoff := time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)
-	if !prior.Cutoff.Equal(wantCutoff) {
-		t.Errorf("cutoff = %s, want %s", prior.Cutoff, wantCutoff)
+	if !prior.AnchorInstant.Equal(wantAnchor) {
+		t.Errorf("anchor instant = %s, want %s", prior.AnchorInstant, wantAnchor)
 	}
-	wantExpiry := time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC)
 	if !prior.CalendarExpiry.Equal(wantExpiry) {
 		t.Errorf("calendar expiry = %s, want %s", prior.CalendarExpiry, wantExpiry)
 	}
@@ -82,195 +90,308 @@ func TestLoad_ValidArtifact(t *testing.T) {
 	if prior.ZStrength[2] != -1.0 || prior.Degenerate {
 		t.Errorf("prior payload mismatch: %v degenerate=%t", prior.ZStrength, prior.Degenerate)
 	}
-	if prior.SHA256 != pin {
-		t.Errorf("recorded sha256 = %q, want pin %q", prior.SHA256, pin)
+	sum := sha256.Sum256(data)
+	if prior.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("digest %q does not match the built bytes", prior.SHA256)
+	}
+
+	// Field order in the output must not change the stored bytes: Build
+	// sorts the field deterministically.
+	again, _, err := Build(FreezeOutput{
+		Season:     2026,
+		FreezeDate: "2026-08-12",
+		AsOf:       time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		CapturedAt: time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC),
+		Field: []FieldRow{
+			{TeamID: 1, TeamName: "Alpha"},
+			{TeamID: 2, TeamName: "Beta"},
+		},
+		ZStrength:   map[int64]float64{1: 1.0, 2: -1.0},
+		InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("Build (sorted input): %v", err)
+	}
+	if string(again) != string(data) {
+		t.Error("Build is not deterministic across equivalent field orders")
 	}
 }
 
-func TestLoad_RejectsWrongPin(t *testing.T) {
-	path, pin := writeArtifact(t, validArtifact())
-
-	wrong := "ffffffff" + pin[8:]
-	if _, err := Load(path, wrong); err == nil {
-		t.Fatal("Load with wrong pin succeeded, want digest-mismatch error")
-	}
-
-	// Tampered bytes: valid pin over different content must fail.
-	tampered := validArtifact()
-	tampered.Prior.ZStrength[1] = 2.0
-	tamperPath, _ := writeArtifact(t, tampered)
-	if _, err := Load(tamperPath, pin); err == nil {
-		t.Fatal("Load of tampered artifact with original pin succeeded")
-	}
-}
-
-func TestLoad_RejectsBadPinFormat(t *testing.T) {
-	path, _ := writeArtifact(t, validArtifact())
-
-	badPins := []string{"", "abc", "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef"}
-	for _, pin := range badPins {
-		if _, err := Load(path, pin); err == nil {
-			t.Errorf("Load with pin %q succeeded, want error", pin)
+func TestBuild_RejectsInvalidOutput(t *testing.T) {
+	good := func() FreezeOutput {
+		return FreezeOutput{
+			Season:      2026,
+			FreezeDate:  "2026-08-12",
+			AsOf:        time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+			CapturedAt:  time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC),
+			Field:       []FieldRow{{TeamID: 1, TeamName: "Alpha"}, {TeamID: 2, TeamName: "Beta"}},
+			ZStrength:   map[int64]float64{1: 1.0, 2: -1.0},
+			InputSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		}
 	}
+
+	tests := []struct {
+		name   string
+		mutate func(*FreezeOutput)
+	}{
+		{"zero season", func(o *FreezeOutput) { o.Season = 0 }},
+		{"freeze date outside window", func(o *FreezeOutput) { o.FreezeDate = "2026-08-20" }},
+		{"captured before as_of", func(o *FreezeOutput) {
+			o.CapturedAt = time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
+		}},
+		{"empty field", func(o *FreezeOutput) {
+			o.Field = nil
+			o.ZStrength = map[int64]float64{}
+		}},
+		{"nonfinite strength", func(o *FreezeOutput) { o.ZStrength[1] = math.NaN() }},
+		{"bad input hash", func(o *FreezeOutput) { o.InputSHA256 = "xyz" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := good()
+			tt.mutate(&out)
+			if _, _, err := Build(out); err == nil {
+				t.Fatalf("Build succeeded, want error")
+			}
+		})
+	}
 }
 
-func TestLoad_MissingFile(t *testing.T) {
-	if _, err := Load(filepath.Join(t.TempDir(), "absent.json"),
-		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"); err == nil {
-		t.Fatal("Load of missing file succeeded")
+func TestParse_MalformedAndOversized(t *testing.T) {
+	if _, err := Parse([]byte("{not json")); err == nil {
+		t.Fatal("Parse of malformed JSON succeeded")
 	}
-}
-
-func TestLoad_RejectsNonRegularAndOversizedFiles(t *testing.T) {
-	dir := t.TempDir()
-	pin := strings.Repeat("a", 64)
-	if _, err := Load(dir, pin); err == nil || !strings.Contains(err.Error(), "regular file") {
-		t.Fatalf("expected a non-regular file error; got %v", err)
-	}
-	path := filepath.Join(dir, "oversized.json")
-	if err := os.WriteFile(path, make([]byte, maxArtifactBytes+1), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(path, pin); err == nil || !strings.Contains(err.Error(), "size limit") {
+	if _, err := Parse(make([]byte, maxArtifactBytes+1)); err == nil ||
+		!strings.Contains(err.Error(), "size limit") {
 		t.Fatalf("expected a size limit error; got %v", err)
 	}
 }
 
-func TestLoad_MalformedAndInvalidArtifacts(t *testing.T) {
+func TestParse_InvalidArtifacts(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*artifactFile)
+		mutate func(*artifact)
 	}{
-		{"wrong schema", func(f *artifactFile) { f.Schema = "ncaaf-shadow-prior/2" }},
-		{"zero season", func(f *artifactFile) { f.Season = 0 }},
-		{"unparseable freeze date", func(f *artifactFile) { f.FreezeDate = "not-a-date" }},
-		{"cutoff off the anchor", func(f *artifactFile) {
-			f.Cutoff = time.Date(2026, 8, 24, 5, 0, 0, 0, time.UTC)
+		{"legacy schema", func(f *artifact) { f.Schema = "ncaaf-shadow-prior/1" }},
+		{"unknown schema", func(f *artifact) { f.Schema = "ncaaf-season-prior/2" }},
+		{"zero season", func(f *artifact) { f.Season = 0 }},
+		{"anchor not August 10", func(f *artifact) {
+			f.Anchor = "2026-08-24"
+			f.AnchorInstant = time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC)
+			f.CalendarExpiry = time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC)
 		}},
-		{"expiry not day-56", func(f *artifactFile) {
-			f.CalendarExpiry = time.Date(2026, 10, 20, 4, 0, 0, 0, time.UTC)
+		{"anchor instant off the anchor", func(f *artifact) {
+			f.AnchorInstant = time.Date(2026, 8, 10, 5, 0, 0, 0, time.UTC)
 		}},
-		{"as_of off the freeze date", func(f *artifactFile) {
-			f.AsOf = time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+		{"expiry not day-56", func(f *artifact) {
+			f.CalendarExpiry = time.Date(2026, 10, 6, 4, 0, 0, 0, time.UTC)
 		}},
-		{"as_of before cutoff", func(f *artifactFile) {
-			f.AsOf = time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+		{"freeze date the day before the window", func(f *artifact) { f.FreezeDate = "2026-08-09" }},
+		{"freeze date the day after the window", func(f *artifact) { f.FreezeDate = "2026-08-17" }},
+		{"freeze date midseason", func(f *artifact) {
+			f.FreezeDate = "2026-09-15"
+			f.AsOf = time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+			f.CapturedAt = time.Date(2026, 9, 15, 13, 0, 0, 0, time.UTC)
 		}},
-		{"captured before as_of", func(f *artifactFile) {
-			f.CapturedAt = time.Date(2026, 8, 24, 11, 0, 0, 0, time.UTC)
+		{"freeze year mismatch", func(f *artifact) {
+			f.FreezeDate = "2025-08-12"
+			f.AsOf = time.Date(2025, 8, 12, 12, 0, 0, 0, time.UTC)
+			f.CapturedAt = time.Date(2025, 8, 12, 13, 0, 0, 0, time.UTC)
 		}},
-		{"freeze year mismatch", func(f *artifactFile) {
-			f.FreezeDate = "2025-08-25"
-			f.Cutoff = time.Date(2025, 8, 25, 4, 0, 0, 0, time.UTC)
-			f.CalendarExpiry = time.Date(2025, 10, 20, 4, 0, 0, 0, time.UTC)
-			f.AsOf = time.Date(2025, 8, 25, 12, 0, 0, 0, time.UTC)
-			f.CapturedAt = time.Date(2025, 8, 25, 13, 0, 0, 0, time.UTC)
+		{"as_of before the anchor", func(f *artifact) {
+			f.AsOf = time.Date(2026, 8, 10, 3, 0, 0, 0, time.UTC)
 		}},
-		{"input hash not hex64", func(f *artifactFile) { f.InputSHA256 = "xyz" }},
-		{"empty field", func(f *artifactFile) {
+		{"as_of off the freeze date", func(f *artifact) {
+			f.AsOf = time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+		}},
+		{"captured before as_of", func(f *artifact) {
+			f.CapturedAt = time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
+		}},
+		{"captured after the freeze date", func(f *artifact) {
+			f.CapturedAt = time.Date(2026, 8, 17, 4, 0, 0, 0, time.UTC)
+		}},
+		{"zero captured_at", func(f *artifact) { f.CapturedAt = time.Time{} }},
+		{"input hash not hex64", func(f *artifact) { f.InputSHA256 = "xyz" }},
+		{"empty field", func(f *artifact) {
 			f.Field = nil
 			f.Prior.FieldSize = 0
 			f.Prior.ZStrength = map[int64]float64{}
 		}},
-		{"unsorted field", func(f *artifactFile) {
+		{"unsorted field", func(f *artifact) {
 			f.Field = []FieldRow{{TeamID: 2, TeamName: "Beta"}, {TeamID: 1, TeamName: "Alpha"}}
 		}},
-		{"duplicate field team", func(f *artifactFile) {
+		{"duplicate field team", func(f *artifact) {
 			f.Field = []FieldRow{{TeamID: 1, TeamName: "Alpha"}, {TeamID: 1, TeamName: "Alpha"}}
 		}},
-		{"missing team name", func(f *artifactFile) {
+		{"missing team name", func(f *artifact) {
 			f.Field = []FieldRow{{TeamID: 1, TeamName: ""}, {TeamID: 2, TeamName: "Beta"}}
 		}},
-		{"field size mismatch", func(f *artifactFile) { f.Prior.FieldSize = 3 }},
-		{"strength covers unknown team", func(f *artifactFile) {
-			f.Prior.ZStrength[99] = 0.5
-		}},
-		{"strength missing a team", func(f *artifactFile) {
-			delete(f.Prior.ZStrength, 2)
-		}},
-		{"unsorted missing history", func(f *artifactFile) {
-			f.Prior.MissingHistory = []int64{2, 1}
-		}},
-		{"missing history outside field", func(f *artifactFile) {
-			f.Prior.MissingHistory = []int64{7}
-		}},
-		{"degenerate with nonzero strength", func(f *artifactFile) {
-			f.Prior.Degenerate = true
-		}},
+		{"field size mismatch", func(f *artifact) { f.Prior.FieldSize = 3 }},
+		{"strength covers unknown team", func(f *artifact) { f.Prior.ZStrength[99] = 0.5 }},
+		{"strength missing a team", func(f *artifact) { delete(f.Prior.ZStrength, 2) }},
+		{"unsorted missing history", func(f *artifact) { f.Prior.MissingHistory = []int64{2, 1} }},
+		{"missing history outside field", func(f *artifact) { f.Prior.MissingHistory = []int64{7} }},
+		{"degenerate with nonzero strength", func(f *artifact) { f.Prior.Degenerate = true }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			file := validArtifact()
 			tt.mutate(&file)
-			path, pin := writeArtifact(t, file)
-			if _, err := Load(path, pin); err == nil {
-				t.Fatalf("Load succeeded, want error")
+			if _, err := Parse(encodeArtifact(t, file)); err == nil {
+				t.Fatalf("Parse succeeded, want error")
 			}
 		})
 	}
 }
 
-func TestLoad_MalformedJSON(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "prior.json")
-	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
-		t.Fatalf("write artifact: %v", err)
+// TestParse_FreezeWindowBounds checks the exact Eastern window edges: the
+// first and last permitted freeze dates parse; their neighbors do not.
+func TestParse_FreezeWindowBounds(t *testing.T) {
+	accepted := []string{"2026-08-10", "2026-08-16"}
+	rejected := []string{"2026-08-09", "2026-08-17"}
+
+	for _, date := range accepted {
+		file := validArtifact()
+		file.FreezeDate = date
+		file.AsOf = time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
+		file.CapturedAt = time.Date(2026, 8, 16, 13, 0, 0, 0, time.UTC)
+		if date == "2026-08-10" {
+			file.AsOf = time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+			file.CapturedAt = time.Date(2026, 8, 10, 13, 0, 0, 0, time.UTC)
+		}
+		if _, err := Parse(encodeArtifact(t, file)); err != nil {
+			t.Errorf("freeze date %s rejected: %v", date, err)
+		}
 	}
-	if _, err := Load(path, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"); err == nil {
-		t.Fatal("Load of malformed JSON succeeded")
+	for _, date := range rejected {
+		file := validArtifact()
+		file.FreezeDate = date
+		if _, err := Parse(encodeArtifact(t, file)); err == nil {
+			t.Errorf("freeze date %s accepted", date)
+		}
 	}
 }
 
-// TestLoad_DSTDifferingAnchorExpiry checks that the day-56 expiry is computed
-// with Eastern AddDate semantics: an anchor in EDT yields a 04:00Z expiry,
-// while an anchor late enough in the season to cross the fall daylight-saving
-// transition yields a 05:00Z expiry (midnight Eastern on the expiry date).
-func TestLoad_DSTCrossingExpiry(t *testing.T) {
-	ny, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		t.Fatalf("load Eastern zone: %v", err)
+// TestParse_KeySeasonMismatch verifies a payload whose season contradicts
+// the anchor year is rejected, whatever key it is stored under.
+func TestParse_KeySeasonMismatch(t *testing.T) {
+	file := validArtifact()
+	file.Season = 2025
+	if _, err := Parse(encodeArtifact(t, file)); err == nil {
+		t.Fatal("season/anchor-year mismatch accepted")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Anchor policy
+// ---------------------------------------------------------------------------
+
+func TestAnchorInstantFor(t *testing.T) {
+	anchor, err := AnchorInstantFor(2026)
+	if err != nil {
+		t.Fatalf("AnchorInstantFor: %v", err)
+	}
+	// Midnight Eastern on 2026-08-10 is 04:00Z (EDT).
+	if !anchor.Equal(time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC)) {
+		t.Errorf("anchor = %s, want 2026-08-10T04:00:00Z", anchor)
+	}
+	if _, err := AnchorInstantFor(0); err == nil {
+		t.Error("season 0 accepted")
+	}
+}
+
+// TestCalendarExpiryForSeason checks the exact October 5 midnight Eastern
+// expiry derived from the fixed August 10 anchor.
+func TestCalendarExpiryForSeason(t *testing.T) {
+	expiry, err := CalendarExpiryForSeason(2026)
+	if err != nil {
+		t.Fatalf("CalendarExpiryForSeason: %v", err)
+	}
+	if !expiry.Equal(time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC)) {
+		t.Errorf("expiry = %s, want 2026-10-05T04:00:00Z", expiry)
+	}
+}
+
+// TestSeasonWindow checks the Eastern window resolution across clock zones:
+// the target season is the Eastern calendar year and the window is the
+// inclusive August 10-16 Eastern date range.
+func TestSeasonWindow(t *testing.T) {
 	tests := []struct {
-		name       string
-		freezeDate string
+		name     string
+		now      time.Time
+		season   int64
+		freeze   string
+		inWindow bool
 	}{
-		{name: "EDT anchor", freezeDate: "2026-08-24"},
-		{name: "crossing the fall transition", freezeDate: "2026-10-25"},
+		{
+			name:     "aug 10 eastern midnight",
+			now:      time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC),
+			season:   2026,
+			freeze:   "2026-08-10",
+			inWindow: true,
+		},
+		{
+			name:     "aug 16 late evening",
+			now:      time.Date(2026, 8, 17, 3, 59, 0, 0, time.UTC), // Aug 16 23:59 EDT
+			season:   2026,
+			freeze:   "2026-08-16",
+			inWindow: true,
+		},
+		{
+			name:     "aug 9 eastern evening",
+			now:      time.Date(2026, 8, 10, 3, 59, 0, 0, time.UTC), // Aug 9 23:59 EDT
+			season:   2026,
+			freeze:   "2026-08-09",
+			inWindow: false,
+		},
+		{
+			name:     "aug 17 eastern midnight",
+			now:      time.Date(2026, 8, 17, 4, 0, 0, 0, time.UTC),
+			season:   2026,
+			freeze:   "2026-08-17",
+			inWindow: false,
+		},
+		{
+			name:     "midseason",
+			now:      time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC),
+			season:   2026,
+			freeze:   "2026-10-05",
+			inWindow: false,
+		},
+		{
+			name:     "preseason of the prior year",
+			now:      time.Date(2025, 8, 12, 12, 0, 0, 0, time.UTC),
+			season:   2025,
+			freeze:   "2025-08-12",
+			inWindow: true,
+		},
+		{
+			name:     "non-eastern instant maps to the eastern date",
+			now:      time.Date(2026, 8, 10, 23, 30, 0, 0, time.UTC), // 19:30 EDT
+			season:   2026,
+			freeze:   "2026-08-10",
+			inWindow: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			file := validArtifact()
-			file.FreezeDate = tt.freezeDate
-			anchor, err := time.ParseInLocation(time.DateOnly, tt.freezeDate, ny)
-			if err != nil {
-				t.Fatalf("parse anchor: %v", err)
-			}
-			file.Cutoff = anchor
-			file.CalendarExpiry = anchor.AddDate(0, 0, CalendarDays)
-			// as_of must remain on the freeze date in Eastern time.
-			file.AsOf = file.Cutoff.Add(8 * time.Hour)
-			file.CapturedAt = file.AsOf.Add(time.Hour)
-			path, pin := writeArtifact(t, file)
-
-			prior, err := Load(path, pin)
-			if err != nil {
-				t.Fatalf("Load: %v", err)
-			}
-			if !prior.CalendarExpiry.Equal(file.CalendarExpiry) {
-				t.Errorf("expiry = %s, want %s", prior.CalendarExpiry, file.CalendarExpiry)
-			}
-			// Midnight Eastern must land at 04:00Z in EDT and 05:00Z in EST,
-			// proving AddDate crossed the transition on wall-clock days.
-			wantOffset := 4
-			if tt.freezeDate == "2026-10-25" {
-				// 56 Eastern days later falls after the fall transition.
-				if prior.CalendarExpiry.UTC().Hour() != 5 {
-					t.Errorf("expiry hour = %d, want 5 (EST)", prior.CalendarExpiry.UTC().Hour())
-				}
-			} else if prior.CalendarExpiry.UTC().Hour() != wantOffset {
-				t.Errorf("expiry hour = %d, want 4 (EDT)", prior.CalendarExpiry.UTC().Hour())
+			season, freezeDate, inWindow := SeasonWindow(tt.now)
+			if season != tt.season || freezeDate != tt.freeze || inWindow != tt.inWindow {
+				t.Errorf("SeasonWindow = (%d, %q, %t), want (%d, %q, %t)",
+					season, freezeDate, inWindow, tt.season, tt.freeze, tt.inWindow)
 			}
 		})
+	}
+}
+
+func TestValidateSeasonWindow(t *testing.T) {
+	if err := ValidateSeasonWindow(2026, "2026-08-16"); err != nil {
+		t.Errorf("2026-08-16 rejected: %v", err)
+	}
+	for _, date := range []string{"2026-08-09", "2026-08-17", "2025-08-12", "not-a-date"} {
+		if err := ValidateSeasonWindow(2026, date); err == nil {
+			t.Errorf("freeze date %q accepted", date)
+		}
 	}
 }
 
@@ -303,8 +424,9 @@ func blendTeams(t *testing.T, rows ...[8]any) ranking.TeamList {
 func blendPrior() *Prior {
 	return &Prior{
 		Season:         2026,
-		Cutoff:         time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC),
-		CalendarExpiry: time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC),
+		Anchor:         "2026-08-10",
+		AnchorInstant:  time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC),
+		CalendarExpiry: time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC),
 		Field: []FieldRow{
 			{TeamID: 1, TeamName: "Alpha"},
 			{TeamID: 2, TeamName: "Beta"},
@@ -381,8 +503,9 @@ func TestApply_TiesUseCompetitionRanks(t *testing.T) {
 	)
 	prior := &Prior{
 		Season:         2026,
-		Cutoff:         time.Date(2026, 8, 24, 4, 0, 0, 0, time.UTC),
-		CalendarExpiry: time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC),
+		Anchor:         "2026-08-10",
+		AnchorInstant:  time.Date(2026, 8, 10, 4, 0, 0, 0, time.UTC),
+		CalendarExpiry: time.Date(2026, 10, 5, 4, 0, 0, 0, time.UTC),
 		Field: []FieldRow{
 			{TeamID: 1, TeamName: "Alpha"},
 			{TeamID: 2, TeamName: "Beta"},
@@ -556,7 +679,7 @@ func TestApply_NilBaselineEntryRejected(t *testing.T) {
 	if prior.CoversField(teams) {
 		t.Fatal("field unexpectedly covers nil baseline teams")
 	}
-	if adjusted, err := Apply(teams, prior, prior.Cutoff); err == nil || adjusted != nil {
+	if adjusted, err := Apply(teams, prior, prior.AnchorInstant); err == nil || adjusted != nil {
 		t.Fatalf("expected baseline validation error, got adjusted=%v err=%v", adjusted, err)
 	}
 }

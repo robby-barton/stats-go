@@ -21,7 +21,6 @@ import (
 	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
-	"github.com/robby-barton/stats-go/internal/updater/fbsprior"
 )
 
 func main() {
@@ -186,7 +185,7 @@ func (ss sportSchedule) registerJobs(
 	d *deployer,
 	al *alerter,
 	wg *sync.WaitGroup,
-	fbsPrior *fbsprior.Prior,
+	fbsPriorEnabled bool,
 ) {
 	update := make(chan bool, 1)
 
@@ -203,9 +202,12 @@ func (ss sportSchedule) registerJobs(
 						}
 					}()
 
+					// The early-season prior is read fresh from its stored
+					// row on every enabled football run, so a row frozen
+					// after startup is usable without a restart.
 					var updateErr error
-					if fbsPrior != nil {
-						updateErr = u.UpdateRecentRankingsWithPrior(fbsPrior)
+					if fbsPriorEnabled {
+						updateErr = u.UpdateRecentRankingsWithPrior()
 					} else {
 						updateErr = u.UpdateRecentRankings()
 					}
@@ -287,12 +289,46 @@ func (ss sportSchedule) registerJobs(
 		} else {
 			al.success(ss.Name + " new season")
 		}
+		// Successful annual football season initialization is the first
+		// trigger for the opt-in automatic preseason freeze. The task
+		// itself is a no-op outside the August 10-16 Eastern window.
+		if fbsPriorEnabled && err == nil {
+			if err := u.RunFBSPriorFreezeTask(ctx, time.Now()); err != nil {
+				log.Warnf("fbs prior freeze after season init: %v", err)
+			}
+		}
 		if addedSeasons > 0 {
 			update <- true
 		}
 	})); err != nil {
 		panic(err)
 	}
+}
+
+// Retry at 06:07 Eastern each day of the preseason window, regardless
+// of the scheduler's timezone. The task also checks the Eastern date.
+const fbsPriorRetryCron = "CRON_TZ=America/New_York 7 6 10-16 8 *"
+
+// registerFBSPriorRetryJob registers the daily retry job for the automatic
+// preseason freeze. It is only called for the enabled football updater.
+func registerFBSPriorRetryJob(
+	ctx context.Context,
+	s gocron.Scheduler,
+	log *zap.SugaredLogger,
+	u *updater.Updater,
+) error {
+	_, err := s.NewJob(gocron.CronJob(fbsPriorRetryCron, false), gocron.NewTask(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("fbs prior freeze retry panic caught: %s", r)
+			}
+		}()
+
+		if err := u.RunFBSPriorFreezeTask(ctx, time.Now()); err != nil {
+			log.Warnf("fbs prior freeze: %v", err)
+		}
+	}), gocron.WithStartAt(gocron.WithStartImmediately()))
+	return err
 }
 
 func scheduleCommand(
@@ -305,7 +341,7 @@ func scheduleCommand(
 	if db == nil || log == nil {
 		return nil, errors.New("schedule: nil DB or logger")
 	}
-	var fbsPrior fbsPriorFlags
+	var fbsPriorEnabled bool
 	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
@@ -348,27 +384,33 @@ func scheduleCommand(
 			}
 
 			var wg sync.WaitGroup
-			// The early-season prior is football-only: pass it to the ncaaf
-			// worker's scheduler-specific entry point and leave basketball,
-			// one-shot commands, and UpdateAllRankings entirely baseline.
-			prior := loadFbsEarlySeasonPrior(fbsPrior, log)
+			// The early-season prior is football-only: enable it for the ncaaf
+			// worker and freeze task, and leave basketball, one-shot commands,
+			// and UpdateAllRankings entirely baseline. With the flag off no
+			// prior job is registered and the stored table is never touched.
+			var footballUpdater *updater.Updater
 			for _, sp := range sports {
 				u, err := newUpdater(log, db, sp.sport)
 				if err != nil {
 					return err
 				}
-				var spPrior *fbsprior.Prior
+				enabled := fbsPriorEnabled && sp.sport == espn.CollegeFootball
+				sp.schedule.registerJobs(ctx, s, log, u, d, al, &wg, enabled)
 				if sp.sport == espn.CollegeFootball {
-					spPrior = prior
+					footballUpdater = u
 				}
-				sp.schedule.registerJobs(ctx, s, log, u, d, al, &wg, spPrior)
 			}
-
-			s.Start()
+			if fbsPriorEnabled {
+				log.Info("fbs early-season prior enabled: automatic preseason freeze on")
+				if err := registerFBSPriorRetryJob(ctx, s, log, footballUpdater); err != nil {
+					return err
+				}
+			}
 
 			end := make(chan os.Signal, 1)
 			signal.Notify(end, syscall.SIGINT, syscall.SIGTERM)
-
+			defer signal.Stop(end)
+			s.Start()
 			<-end
 			// Cancel the process context before shutting down the scheduler so
 			// in-flight ESPN requests, retries, and rate-limit sleeps are
@@ -385,44 +427,12 @@ func scheduleCommand(
 			return nil
 		},
 	}
-	// Opt-in FBS early-season prior. Default off: with the flag unset the
-	// companion values are ignored and the artifact file is never read.
-	cmd.Flags().BoolVar(&fbsPrior.enabled, "fbs-early-season-prior", false,
-		"blend a pinned local preseason prior into early-season FBS rankings (default off)")
-	cmd.Flags().StringVar(&fbsPrior.path, "fbs-early-season-prior-path", "",
-		"path to an existing ncaaf-shadow-prior/1 artifact (only used with --fbs-early-season-prior)")
-	cmd.Flags().StringVar(&fbsPrior.sha256, "fbs-early-season-prior-sha256", "",
-		"SHA-256 pin of the artifact bytes, 64 lowercase hex digits (only used with --fbs-early-season-prior)")
+	// The sole opt-in FBS early-season prior flag. Default off: with the
+	// flag unset no prior job is registered, no stored prior row is ever
+	// read or written, and every ranking path stays at the exact baseline.
+	cmd.Flags().BoolVar(&fbsPriorEnabled, "fbs-early-season-prior", false,
+		"automatically freeze and blend a stored FBS preseason prior into scheduled football rankings (default off)")
 	return cmd, nil
-}
-
-// fbsPriorFlags holds the schedule command's opt-in early-season prior
-// configuration.
-type fbsPriorFlags struct {
-	enabled bool
-	path    string
-	sha256  string
-}
-
-// loadFbsEarlySeasonPrior resolves the opt-in flags into a validated prior,
-// reading the artifact exactly once at startup. With the flag off it never
-// touches the filesystem and returns nil. With the flag on, any problem —
-// missing or unreadable file, digest mismatch, malformed or incompatible
-// artifact — warns once and returns nil so the scheduler runs entirely on
-// baseline rankings instead of blocking ordinary updater operation.
-func loadFbsEarlySeasonPrior(flags fbsPriorFlags, log *zap.SugaredLogger) *fbsprior.Prior {
-	if !flags.enabled {
-		return nil
-	}
-	prior, err := fbsprior.Load(flags.path, flags.sha256)
-	if err != nil {
-		log.Warnf("fbs early-season prior disabled for this run: %v", err)
-		return nil
-	}
-	log.Infof("fbs early-season prior enabled: season %d anchored %s expires %s (sha256 %s)",
-		prior.Season, prior.Cutoff.Format(time.RFC3339),
-		prior.CalendarExpiry.Format(time.RFC3339), prior.SHA256)
-	return prior
 }
 
 func sportCommand(
