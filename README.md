@@ -1,7 +1,8 @@
 # College Sports Computer Ranking
 
 A Go application that pulls game data from the ESPN API and computes SRS/SOS
-composite rankings for college football and basketball teams.
+composite rankings for college football and basketball teams
+(men's and women's).
 
 ## Overview
 
@@ -13,7 +14,7 @@ The system consists of two CLI tools:
 
 Rankings use a composite algorithm based on Simple Rating System (SRS) and
 Strength of Schedule (SOS). Football supports both FBS and FCS divisions;
-basketball ranks D1 teams.
+basketball (men's and women's) ranks D1 teams only.
 
 ## Getting Started
 
@@ -44,7 +45,7 @@ Set in `.env` (see `.env-sample` for the full list):
 ### Ranker
 
 Generate and print a ranking. The ranker uses sport subcommands (`ncaaf`,
-`ncaam`):
+`ncaam`, `ncaaw`):
 
 ```sh
 make ranker OPTS="ncaaf"                # current football season, all teams
@@ -53,6 +54,7 @@ make ranker OPTS="ncaaf -y 2024 -w 12"  # specific year and week
 make ranker OPTS="ncaaf -f"             # rank FCS instead of FBS
 make ranker OPTS="ncaam"                # current basketball season, D1
 make ranker OPTS="ncaam -t 25"          # top 25 basketball
+make ranker OPTS="ncaaw"                # current women's basketball season, D1
 ```
 
 | Subcommand | Flag | Type | Default | Description |
@@ -66,6 +68,14 @@ make ranker OPTS="ncaam -t 25"          # top 25 basketball
 | | `-w` | int | most recent | Week of the season |
 | | `-t` | int | all | Print only the top N teams |
 | | `-r` | bool | false | Print SRS ratings instead of full ranking |
+| `ncaaw` | `-y` | int | most recent | Year to rank |
+| | `-w` | int | most recent | Week of the season |
+| | `-t` | int | all | Print only the top N teams |
+| | `-r` | bool | false | Print SRS ratings instead of full ranking |
+
+The `ncaaw` command ranks the same single D-I division with the same
+basketball parameters as `ncaam` (25-game SRS quota, one season of lookback,
+25/60/15 record/SRS/SOS weights) on women's ESPN data.
 
 ### Offline NCAAF replay
 
@@ -77,11 +87,14 @@ not publish rankings or fetch game or poll data. See the
 ### Updater
 
 Run one-off operations or start the scheduled service. One-shot commands are
-nested under sport subcommands (`ncaaf`, `ncaam`). The `schedule` command runs
-both sports:
+nested under sport subcommands (`ncaaf`, `ncaam`, `ncaaw`). The `schedule`
+command runs football and men's basketball. Women's basketball is available
+for manual validation only; automatic polling, historical coverage checks,
+and public rankings are still pending. Use ESPN's season-ending year for
+basketball (`2027` means 2026–27):
 
 ```sh
-make updater OPTS="schedule"                      # run scheduled service (both sports)
+make updater OPTS="schedule"                      # schedule football and men's basketball
 make updater OPTS="ncaaf games"                   # update current week's football games
 make updater OPTS="ncaaf games --all"             # update all football games for current year
 make updater OPTS="ncaaf games --single 12345"    # force-update a single game by ID
@@ -92,12 +105,16 @@ make updater OPTS="ncaaf season"                  # update football season info
 make updater OPTS="ncaam games --all"             # update all basketball games
 make updater OPTS="ncaam ranking"                 # update basketball rankings
 make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year range
+make updater OPTS="ncaaw teams"                   # import women's team metadata
+make updater OPTS="ncaaw season --year 2027"       # import 2026–27 D-I team seasons
+make updater OPTS="ncaaw games --year 2027"       # import completed 2026–27 women's games
+make updater OPTS="ncaaw ranking"                 # compute the latest women's ranking
 ```
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
-| `schedule` | | `--fbs-early-season-prior` | Run as scheduled service (both sports); the sole prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md) |
-| `ncaaf` / `ncaam` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
+| `schedule` | | `--fbs-early-season-prior` | Run as scheduled service (football and men's basketball); the sole prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md) |
+| `ncaaf` / `ncaam` / `ncaaw` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
 | | `ranking` | `--all`, `--fbs-early-season-prior` | Update rankings (current season by default; the prior flag requires `--all` and is football-only) |
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |

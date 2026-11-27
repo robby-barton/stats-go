@@ -63,7 +63,7 @@ func NewClientForSport(sport Sport) SportClient {
 // wrapClient wraps a *Client in the appropriate sport-specific struct.
 func wrapClient(c *Client) SportClient {
 	switch c.Sport {
-	case CollegeBasketball:
+	case CollegeBasketball, CollegeWomensBasketball:
 		return &BasketballClient{Client: c}
 	case CollegeFootball:
 		return &FootballClient{Client: c}

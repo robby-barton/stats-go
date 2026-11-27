@@ -43,6 +43,12 @@ formats with `.toFixed(5)`) must be a true float type — `real` or
 returns it as a string" as a breaking frontend change requiring a
 stats-web PR in the same slice.
 
+The `TeamWeekResult` model explicitly maps `final_raw` to `double precision`
+to agree with `db/schema.sql`. `migrate-schema` repairs installations that
+initialized the column as `numeric`; the conversion can lock and rewrite
+`team_week_results` on affected databases. No type conversion is needed where
+the column is already `double precision`.
+
 ## Mixed-Version Deployment
 
 During rollout, the backend (data in Postgres) and frontend (build-time

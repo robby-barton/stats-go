@@ -219,7 +219,7 @@ func TestGenerateAdjRatings_TeamZeroRemoved(t *testing.T) {
 // TestNewRanker_UnknownSport verifies that an invalid sport is rejected at
 // construction time instead of panicking mid-computation.
 func TestNewRanker_UnknownSport(t *testing.T) {
-	if _, err := NewRanker(Input{Sport: sport.Sport("ncaaw")}); err == nil {
+	if _, err := NewRanker(Input{Sport: sport.Sport("ncaax")}); err == nil {
 		t.Error("NewRanker with unknown sport: expected error, got nil")
 	}
 }

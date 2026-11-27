@@ -26,7 +26,10 @@ The 202-challenge behavior on the old cdn host and the per-host User-Agent
 split were both determined empirically 2026-08-29; the site.api range
 findings below were characterized with curl on 2026-08-30 across seasons
 2021-2025, and the basketball-specific facts (groups filter, conferenceId,
-flat calendar, summary shape) were verified live 2026-08-30.
+flat calendar, summary shape) were verified live 2026-08-30. The women's college basketball path was spot-checked against the
+public API (2025-26 calendar, D-I conference IDs from
+`scoreboard/conferences?groups=50`, team metadata, usable summaries);
+it shares every endpoint shape with the men's path.
 
 ## Endpoints
 
@@ -223,6 +226,29 @@ Returns metadata for all college football teams.
 | FCS      | 81       | `espn.FCS` |
 | D-II     | 57       | `espn.DII` |
 | D-III    | 58       | `espn.DIII` |
+
+## Sport URL Paths
+
+Every endpoint is templated on a per-sport path (`SportURLs` in
+`internal/espn/team_info.go`); the endpoint shapes are shared across
+sports, only the URL segment differs:
+
+| Sport (`espn.Sport`) | ESPN path segment | Persistence key | Client |
+|----------|----------|----------|----------|
+| `CollegeFootball` | `football/college-football` | `ncaaf` | `FootballClient` |
+| `CollegeBasketball` | `basketball/mens-college-basketball` | `ncaam` | `BasketballClient` |
+| `CollegeWomensBasketball` | `basketball/womens-college-basketball` | `ncaaw` | `BasketballClient` |
+
+The two basketball sports share one client implementation
+(`BasketballClient`) and one division group (D1Basketball, 50) while keeping
+fully separate URL sets, cached season state, and persistence identities —
+no cross-sport season/URL state is shared. The live women's endpoints
+verified so far: `scoreboard?dates=YYYYMMDD&groups=50` (122 events on
+2026-01-17), `scoreboard/conferences?groups=50` (D-I conference IDs for the
+launch seasons), `teams?limit=1000`, per-team `/teams/{id}` fallback, and
+`summary?event=`. The conference-label endpoint is not historical, so
+unknown historical conference IDs and membership changes for past seasons
+need auditing rather than silent drops.
 
 ## Season Types
 

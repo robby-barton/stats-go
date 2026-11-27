@@ -130,9 +130,9 @@ func (u *Updater) rankingForWeek(year int64, week int64, run *priorRun) ([]datab
 		return ranker, in, window, err
 	}
 
-	if u.espn.SportInfo() == espn.CollegeBasketball {
-		// Basketball: single D1 ranking, no FBS/FCS split. The early-season
-		// prior is football-only and is never passed to this path.
+	if u.espn.SportInfo().IsBasketball() {
+		// Basketball (men's and women's): single D1 ranking, no FBS/FCS split.
+		// The early-season prior is football-only and is never passed here.
 		ranker, _, _, err := newRanker(false)
 		if err != nil {
 			return nil, err

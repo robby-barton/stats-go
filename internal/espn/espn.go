@@ -15,22 +15,35 @@ import (
 type Sport string
 
 const (
-	CollegeFootball   Sport = "college-football"
-	CollegeBasketball Sport = "college-basketball"
+	CollegeFootball Sport = "college-football"
+
+	// Men's and women's college basketball share one client behavior and one
+	// division group (D1Basketball, 50) on dedicated URL paths.
+	CollegeBasketball       Sport = "college-basketball"
+	CollegeWomensBasketball Sport = "womens-college-basketball"
 )
 
-// DBSport returns the persistence identifier ("ncaaf"/"ncaam") for the sport.
-// Returns "" for unknown sports; clients built via NewClientForSport are
-// always one of the known values.
+// DBSport returns the persistence identifier ("ncaaf"/"ncaam"/"ncaaw") for
+// the sport. Returns "" for unknown sports; clients built via
+// NewClientForSport are always one of the known values.
 func (s Sport) DBSport() sport.Sport {
 	switch s {
 	case CollegeBasketball:
 		return sport.Basketball
+	case CollegeWomensBasketball:
+		return sport.WomensBasketball
 	case CollegeFootball:
 		return sport.Football
 	default:
 		return ""
 	}
+}
+
+// IsBasketball reports whether the sport is a basketball flavor. Both
+// basketball sports share one client behavior and division group; the URL
+// paths differ.
+func (s Sport) IsBasketball() bool {
+	return s == CollegeBasketball || s == CollegeWomensBasketball
 }
 
 type Group int64
@@ -50,9 +63,10 @@ const (
 )
 
 // Groups returns the division groups used for schedule fetching for a sport.
+// Men's and women's basketball share D1 group 50 on dedicated URL paths.
 func (s Sport) Groups() []Group {
 	switch s {
-	case CollegeBasketball:
+	case CollegeBasketball, CollegeWomensBasketball:
 		return []Group{D1Basketball}
 	case CollegeFootball:
 		return []Group{FBS, FCS}

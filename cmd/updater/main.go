@@ -65,8 +65,13 @@ func run() int {
 		log.Error(err)
 		return 1
 	}
+	ncaawCmd, err := sportCommand(log, db, espn.CollegeWomensBasketball)
+	if err != nil {
+		log.Error(err)
+		return 1
+	}
 
-	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd)
+	rootCmd.AddCommand(scheduleCmd, ncaafCmd, ncaamCmd, ncaawCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Error(err)
@@ -451,11 +456,15 @@ func sportCommand(
 		return nil, err
 	}
 
-	use := "ncaaf"
-	short := "NCAA football one-shot commands"
-	if sport == espn.CollegeBasketball {
-		use = "ncaam"
+	use := string(sport.DBSport())
+	var short string
+	switch sport {
+	case espn.CollegeFootball:
+		short = "NCAA football one-shot commands"
+	case espn.CollegeBasketball:
 		short = "NCAA men's basketball one-shot commands"
+	case espn.CollegeWomensBasketball:
+		short = "NCAA women's basketball one-shot commands"
 	}
 
 	cmd := &cobra.Command{

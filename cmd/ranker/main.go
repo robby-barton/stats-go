@@ -41,8 +41,9 @@ func run() int {
 
 	ncaafCmd := sportRankCmd(db, "ncaaf", true)
 	ncaamCmd := sportRankCmd(db, "ncaam", false)
+	ncaawCmd := sportRankCmd(db, "ncaaw", false)
 
-	rootCmd.AddCommand(ncaafCmd, ncaamCmd)
+	rootCmd.AddCommand(ncaafCmd, ncaamCmd, ncaawCmd)
 
 	// Cobra prints the error itself (SilenceErrors is not set), so just map
 	// failures to a non-zero exit status for cron/deploy scripts.
@@ -57,11 +58,14 @@ func sportRankCmd(db *gorm.DB, sport string, hasFCS bool) *cobra.Command {
 	var top int
 	var fcs, rating bool
 
-	use := "ncaaf"
-	short := "Calculate NCAA football rankings"
-	if sport == "ncaam" {
-		use = "ncaam"
-		short = "Calculate NCAA men's basketball rankings"
+	var use, short string
+	switch sport {
+	case "ncaam":
+		use, short = "ncaam", "Calculate NCAA men's basketball rankings"
+	case "ncaaw":
+		use, short = "ncaaw", "Calculate NCAA women's basketball rankings"
+	default:
+		use, short = "ncaaf", "Calculate NCAA football rankings"
 	}
 
 	cmd := &cobra.Command{

@@ -107,6 +107,17 @@ func SportURLs(sport Sport) SportURLConfig {
 			Conferences: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
 				"mens-college-basketball/scoreboard/conferences",
 		}
+	case CollegeWomensBasketball:
+		// Dedicated women's path: same endpoint shapes as the men's client,
+		// same D1 group 50 — only the ESPN URL segment differs.
+		return SportURLConfig{
+			GameStats: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
+				"womens-college-basketball/summary?event=%d",
+			TeamInfo:   "https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/teams?limit=1000",
+			Scoreboard: "https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard",
+			Conferences: "https://site.api.espn.com/apis/site/v2/sports/basketball/" +
+				"womens-college-basketball/scoreboard/conferences",
+		}
 	case CollegeFootball:
 		// Box scores come from the site.api summary (cdn.espn.com has been
 		// serving empty-body 202 bot challenges since 2026-08-29; the site.api

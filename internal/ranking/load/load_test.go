@@ -359,7 +359,7 @@ func TestInput_Validation(t *testing.T) {
 	if _, err := Input(Options{DB: nil, Sport: sport.Football}); err == nil {
 		t.Error("Input with nil DB: expected error, got nil")
 	}
-	if _, err := Input(Options{DB: db, Sport: sport.Sport("ncaaw")}); err == nil {
+	if _, err := Input(Options{DB: db, Sport: sport.Sport("ncaax")}); err == nil {
 		t.Error("Input with unknown sport: expected error, got nil")
 	}
 }
