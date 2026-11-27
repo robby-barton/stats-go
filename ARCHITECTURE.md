@@ -66,10 +66,10 @@ same level or from `cmd/`.
 
 ```
 cmd/ranker   → config, database, ranking, ranking/load, sport
-cmd/updater  → config, database, logger, updater, espn
+cmd/updater  → config, database, logger, updater, espn, updater/fbsprior
 cmd/migrate  → database
 
-updater      → database, espn, game, ranking, ranking/load, sport, team
+updater      → database, espn, game, ranking, ranking/load, sport, team, updater/fbsprior
 game         → espn
 team         → espn
 ranking      → sport (no database or espn imports)
@@ -105,6 +105,22 @@ Responsible for: fetching games, updating the DB, and computing rankings.
 Used by `cmd/updater` in both scheduled and on-demand modes.
 Each sport gets its own `Updater` instance with a sport-specific ESPN client.
 The sport is derived from the ESPN client's `SportInfo()` method.
+
+### FBS Early-Season Prior (opt-in, default off)
+
+`internal/updater/fbsprior` holds the pinned `ncaaf-shadow-prior/1` artifact
+contract and the researched blend math (rho 0.9, 4-game expiry including
+FBS-FCS games, 56-Eastern-day calendar expiry, SD floor 0.05). It is
+football-scheduler-only: `schedule --fbs-early-season-prior` (+ path and
+SHA-256 pin) loads the artifact once at startup and passes it to the
+scheduled football ranking worker via `UpdateRecentRankingsWithPrior`;
+everything else (basketball, one-shot commands, `UpdateAllRankings`,
+historical backfills) stays exact baseline. When the flag is off the file is
+never read. On any invalid artifact, wrong season, field divergence,
+inconsistent window clocks, or blend failure the updater warns and publishes
+the exact baseline instead of blocking; the fixed day-56 expiry is a silent
+bypass. The blend only substitutes `FinalRaw`/`FinalRank` on the staged FBS
+rows after success. See docs/fbs-early-season-prior.md for operation.
 
 ### Ranker Struct
 

@@ -89,12 +89,31 @@ make updater OPTS="ncaam backfill --from 2021 --to 2025"  # backfill a year rang
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
-| `schedule` | | | Run as scheduled service (both sports) |
+| `schedule` | | `--fbs-early-season-prior`, `--fbs-early-season-prior-path`, `--fbs-early-season-prior-sha256` | Run as scheduled service (both sports); the three prior flags are opt-in (default off) and only affect scheduled football rankings — see [the early-season prior runbook](docs/fbs-early-season-prior.md) |
 | `ncaaf` / `ncaam` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
 | | `ranking` | `--all` | Update rankings (current season by default) |
 | | `teams` | | Update team info from ESPN |
 | | `season` | | Update season info |
 | | `backfill` | `--from`, `--to` | Backfill seasons, games, and rankings for a year range |
+
+### FBS early-season prior (opt-in, default off)
+
+By default the updater publishes exact baseline rankings. The `schedule`
+command can optionally blend a reviewed, pinned local preseason prior
+(`ncaaf-shadow-prior/1`, produced by the research shadow tooling) into
+early-season FBS rankings:
+
+```sh
+updater schedule \
+  --fbs-early-season-prior \
+  --fbs-early-season-prior-path /etc/stats-go/ncaaf-shadow-prior.json \
+  --fbs-early-season-prior-sha256 <64-hex digest of the artifact bytes>
+```
+
+See [docs/fbs-early-season-prior.md](docs/fbs-early-season-prior.md) for the
+artifact requirements, mount guidance, expiry/warning behavior, and how to
+disable it. Without the flag the artifact file is never read and nothing
+changes.
 
 ## Development
 

@@ -21,6 +21,7 @@ import (
 	"github.com/robby-barton/stats-go/internal/espn"
 	"github.com/robby-barton/stats-go/internal/logger"
 	"github.com/robby-barton/stats-go/internal/updater"
+	"github.com/robby-barton/stats-go/internal/updater/fbsprior"
 )
 
 func main() {
@@ -185,6 +186,7 @@ func (ss sportSchedule) registerJobs(
 	d *deployer,
 	al *alerter,
 	wg *sync.WaitGroup,
+	fbsPrior *fbsprior.Prior,
 ) {
 	update := make(chan bool, 1)
 
@@ -201,9 +203,15 @@ func (ss sportSchedule) registerJobs(
 						}
 					}()
 
-					if err := u.UpdateRecentRankings(); err != nil {
-						log.Error(err)
-						al.failure(ss.Name+" ranking", err)
+					var updateErr error
+					if fbsPrior != nil {
+						updateErr = u.UpdateRecentRankingsWithPrior(fbsPrior)
+					} else {
+						updateErr = u.UpdateRecentRankings()
+					}
+					if updateErr != nil {
+						log.Error(updateErr)
+						al.failure(ss.Name+" ranking", updateErr)
 						return
 					}
 					al.success(ss.Name + " ranking")
@@ -297,6 +305,7 @@ func scheduleCommand(
 	if db == nil || log == nil {
 		return nil, errors.New("schedule: nil DB or logger")
 	}
+	var fbsPrior fbsPriorFlags
 	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
@@ -339,12 +348,20 @@ func scheduleCommand(
 			}
 
 			var wg sync.WaitGroup
+			// The early-season prior is football-only: pass it to the ncaaf
+			// worker's scheduler-specific entry point and leave basketball,
+			// one-shot commands, and UpdateAllRankings entirely baseline.
+			prior := loadFbsEarlySeasonPrior(fbsPrior, log)
 			for _, sp := range sports {
 				u, err := newUpdater(log, db, sp.sport)
 				if err != nil {
 					return err
 				}
-				sp.schedule.registerJobs(ctx, s, log, u, d, al, &wg)
+				var spPrior *fbsprior.Prior
+				if sp.sport == espn.CollegeFootball {
+					spPrior = prior
+				}
+				sp.schedule.registerJobs(ctx, s, log, u, d, al, &wg, spPrior)
 			}
 
 			s.Start()
@@ -368,7 +385,44 @@ func scheduleCommand(
 			return nil
 		},
 	}
+	// Opt-in FBS early-season prior. Default off: with the flag unset the
+	// companion values are ignored and the artifact file is never read.
+	cmd.Flags().BoolVar(&fbsPrior.enabled, "fbs-early-season-prior", false,
+		"blend a pinned local preseason prior into early-season FBS rankings (default off)")
+	cmd.Flags().StringVar(&fbsPrior.path, "fbs-early-season-prior-path", "",
+		"path to an existing ncaaf-shadow-prior/1 artifact (only used with --fbs-early-season-prior)")
+	cmd.Flags().StringVar(&fbsPrior.sha256, "fbs-early-season-prior-sha256", "",
+		"SHA-256 pin of the artifact bytes, 64 lowercase hex digits (only used with --fbs-early-season-prior)")
 	return cmd, nil
+}
+
+// fbsPriorFlags holds the schedule command's opt-in early-season prior
+// configuration.
+type fbsPriorFlags struct {
+	enabled bool
+	path    string
+	sha256  string
+}
+
+// loadFbsEarlySeasonPrior resolves the opt-in flags into a validated prior,
+// reading the artifact exactly once at startup. With the flag off it never
+// touches the filesystem and returns nil. With the flag on, any problem —
+// missing or unreadable file, digest mismatch, malformed or incompatible
+// artifact — warns once and returns nil so the scheduler runs entirely on
+// baseline rankings instead of blocking ordinary updater operation.
+func loadFbsEarlySeasonPrior(flags fbsPriorFlags, log *zap.SugaredLogger) *fbsprior.Prior {
+	if !flags.enabled {
+		return nil
+	}
+	prior, err := fbsprior.Load(flags.path, flags.sha256)
+	if err != nil {
+		log.Warnf("fbs early-season prior disabled for this run: %v", err)
+		return nil
+	}
+	log.Infof("fbs early-season prior enabled: season %d anchored %s expires %s (sha256 %s)",
+		prior.Season, prior.Cutoff.Format(time.RFC3339),
+		prior.CalendarExpiry.Format(time.RFC3339), prior.SHA256)
+	return prior
 }
 
 func sportCommand(

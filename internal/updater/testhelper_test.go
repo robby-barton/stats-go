@@ -474,6 +474,12 @@ func setupTestServer(t *testing.T, scoreOverride map[int64][2]int64) *httptest.S
 // ---------------------------------------------------------------------------
 
 func newTestUpdater(t *testing.T) *Updater {
+	return newTestUpdaterWithLogger(t, zap.NewNop())
+}
+
+// newTestUpdaterWithLogger builds the football test updater with a caller-
+// supplied logger so tests can assert on warnings via a zap observer core.
+func newTestUpdaterWithLogger(t *testing.T, log *zap.Logger) *Updater {
 	t.Helper()
 
 	db := setupTestDB(t)
@@ -493,7 +499,7 @@ func newTestUpdater(t *testing.T) *Updater {
 		ts.URL+"/apis/site/v2/sports/football/college-football/scoreboard/conferences",
 	))
 
-	u, err := NewUpdater(db, zap.NewNop().Sugar(), client)
+	u, err := NewUpdater(db, log.Sugar(), client)
 	if err != nil {
 		t.Fatalf("NewUpdater: %v", err)
 	}
