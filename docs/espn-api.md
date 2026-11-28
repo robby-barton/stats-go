@@ -248,7 +248,22 @@ verified so far: `scoreboard?dates=YYYYMMDD&groups=50` (122 events on
 launch seasons), `teams?limit=1000`, per-team `/teams/{id}` fallback, and
 `summary?event=`. The conference-label endpoint is not historical, so
 unknown historical conference IDs and membership changes for past seasons
-need auditing rather than silent drops.
+need reconciliation before release.
+
+The women's strict backfill treats `scoreboard?dates=YYYY` as season
+validation, **not** as the complete game-day list. The flat calendar omitted
+real slates in 2025–26 (for example, November 8 had 38 finals). Instead, walk
+one Eastern calendar day at a time from November 1 through April 30 or the
+current Eastern date, whichever comes first, with `groups=50`. An empty
+`events` array is legitimate; a missing array, a wrong-season response, or a
+response at the known 200-event cap is not safe to publish from.
+
+Spot checks in November 2026 confirmed that WBB weeks usually change Monday
+Eastern. ESPN assigned both the Sunday November 1 opener (`401920983`) and
+the Monday November 2 slate to Week 1. Use the last stored game of an ESPN
+week to anchor its end, rather than inferring the cutoff from the opener.
+Some postseason summaries, including the 2025–26 championship (`401856590`),
+omit `header.week`; game phase is read from `header.season.type` instead.
 
 ## Season Types
 

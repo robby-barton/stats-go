@@ -582,6 +582,26 @@ func sportCommand(
 	}
 	seasonCmd.Flags().Int64Var(&seasonYear, "year", 0, "update seasons for a specific year (default: current season)")
 
+	var backfillCmd *cobra.Command
+	if sport == espn.CollegeWomensBasketball {
+		backfillCmd = ncaawBackfillCommand(u)
+	} else {
+		backfillCmd = genericBackfillCommand(log, u, use)
+	}
+
+	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, backfillCmd)
+
+	return cmd, nil
+}
+
+// genericBackfillCommand is the original backfill for ncaaf and ncaam: it
+// walks the requested years and republishes every stored season. Women's
+// basketball uses the strict ncaawBackfillCommand instead.
+func genericBackfillCommand(
+	log *zap.SugaredLogger,
+	u *updater.Updater,
+	use string,
+) *cobra.Command {
 	var backfillFrom, backfillTo int64
 	backfillCmd := &cobra.Command{
 		Use:   "backfill",
@@ -635,8 +655,54 @@ Example:
 	if err := backfillCmd.MarkFlagRequired("to"); err != nil {
 		panic(err)
 	}
+	return backfillCmd
+}
 
-	cmd.AddCommand(gamesCmd, rankingCmd, teamsCmd, seasonCmd, backfillCmd)
+// ncaawBackfillCommand is the strict women's basketball backfill. It imports
+// and audits every requested season-ending year against one validated daily
+// ESPN D1 group-50 walk, then publishes rankings only for the verified
+// publication window; any audit failure leaves existing ranking rows
+// untouched. See updater.BackfillNCAAW for the full contract.
+func ncaawBackfillCommand(u *updater.Updater) *cobra.Command {
+	var backfillFrom, backfillTo, publishFrom int64
+	backfillCmd := &cobra.Command{
+		Use:   "backfill",
+		Short: "Strict backfill: import, audit, then publish verified women's seasons",
+		Long: `Imports and audits women's basketball seasons for every year in [from, to],
+then publishes rankings for [publish-from, to] only.
 
-	return cmd, nil
+Each season-ending year is validated against ESPN's year-specific flat
+calendar and walked one ET day at a time on the D1 group-50 scoreboard;
+invalid, empty, or wrong-year calendars, unusable daily responses, summary
+failures, score or opponent mismatches, stale or orphan rows, and
+unclassified likely D-I teams all fail the run before any ranking write.
+
+--publish-from (default: --to) picks the earliest published year. Earlier
+years in the range are imported and audited as lookback input only and stay
+out of team_week_results. Publishing a year requires its prior season inside
+the audited import range (the ranking's one-season lookback), so exposing an
+older year means importing its lookback too.
+
+Examples:
+  updater ncaaw backfill --from 2026 --to 2027
+      imports and audits 2026 and 2027, publishes 2027 only
+  updater ncaaw backfill --from 2025 --to 2026 --publish-from 2026
+      publishes 2026 after validating the 2025 lookback`,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return u.BackfillNCAAW(context.Background(), backfillFrom, backfillTo, publishFrom)
+		},
+	}
+	backfillCmd.Flags().Int64VarP(&backfillFrom, "from", "f", 0,
+		"first season-ending year to import and audit (inclusive)")
+	backfillCmd.Flags().Int64VarP(&backfillTo, "to", "t", 0,
+		"last season-ending year to import, audit, and publish (inclusive)")
+	backfillCmd.Flags().Int64Var(&publishFrom, "publish-from", 0,
+		"earliest season-ending year to publish rankings for (default: --to; earlier years stay lookback-only)")
+	if err := backfillCmd.MarkFlagRequired("from"); err != nil {
+		panic(err)
+	}
+	if err := backfillCmd.MarkFlagRequired("to"); err != nil {
+		panic(err)
+	}
+	return backfillCmd
 }

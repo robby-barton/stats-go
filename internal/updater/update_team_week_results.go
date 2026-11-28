@@ -2,6 +2,8 @@ package updater
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
@@ -40,9 +42,11 @@ func (u *Updater) getYearInfo() ([]yearInfo, error) {
 // logic and produce duplicate entries.
 func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
 	var weeks []int64
-	if err := u.db.Model(database.Game{}).
-		Where("sport = ? and season = ? and postseason = 0", u.sportDB(), year).
-		Distinct("week").
+	q := u.db.Model(database.Game{}).Where("sport = ? and season = ? and postseason = 0", u.sportDB(), year)
+	if u.sportDB() == sport.WomensBasketball {
+		q = q.Where("week > 0 and retry = 0")
+	}
+	if err := q.Distinct("week").
 		Order("week").
 		Pluck("week", &weeks).Error; err != nil {
 		return nil, err
@@ -52,8 +56,46 @@ func (u *Updater) regularSeasonWeeks(year int64) ([]int64, error) {
 
 func (u *Updater) insertRankingsToDB(rankings []database.TeamWeekResult) error {
 	return u.db.Transaction(func(tx *gorm.DB) error {
+		if err := clearStaleWomensFinals(tx, rankings); err != nil {
+			return err
+		}
 		return upsertTeamWeekResults(tx, rankings)
 	})
+}
+
+// clearStaleWomensFinals deletes the stale women's basketball Final rows for
+// every season the batch publishes a Final for, inside the caller's
+// publication transaction. The women's Final is one stable snapshot per
+// season keyed (postseason=1, week=0) — the loader pins that key because the
+// championship summary may omit header.week and earlier postseason rounds may
+// number their weeks differently — but rows persisted by older variants of
+// that contract can still carry other week values. Deleting them before the
+// upsert makes successive postseason publications replace, never accumulate,
+// the season's Final rows. Regular rows (postseason=0) and every other
+// sport's rows are untouched, and seasons with no Final rows in the batch are
+// never affected.
+func clearStaleWomensFinals(tx *gorm.DB, rankings []database.TeamWeekResult) error {
+	seasons := make(map[int64]struct{})
+	for _, r := range rankings {
+		if r.Sport == sport.WomensBasketball && r.Postseason == 1 {
+			seasons[r.Year] = struct{}{}
+		}
+	}
+
+	years := make([]int64, 0, len(seasons))
+	for year := range seasons {
+		years = append(years, year)
+	}
+	slices.Sort(years)
+
+	for _, year := range years {
+		if err := tx.
+			Where("sport = ? and year = ? and postseason = 1", sport.WomensBasketball, year).
+			Delete(&database.TeamWeekResult{}).Error; err != nil {
+			return fmt.Errorf("clearing stale women's Final rows for %d: %w", year, err)
+		}
+	}
+	return nil
 }
 
 // upsertTeamWeekResults upserts one batch of ranking rows on the given
@@ -383,6 +425,11 @@ func (u *Updater) updateAllRankings(run *priorRun) error {
 			}
 			teamWeekResults = append(teamWeekResults, weekRankings...)
 		}
+		// Women's regular snapshots already include the latest ESPN week.
+		// Only append the separate week-0 slot when it resolves to a Final.
+		if u.sportDB() == sport.WomensBasketball && year.Postseason != 1 {
+			continue
+		}
 		// postseason or current week
 		if year.Postseason == 1 {
 			u.logger.Infof("%d/Final", year.Year)
@@ -393,7 +440,9 @@ func (u *Updater) updateAllRankings(run *priorRun) error {
 		if err != nil {
 			return err
 		}
-		teamWeekResults = append(teamWeekResults, weekRankings...)
+		if u.sportDB() != sport.WomensBasketball || (len(weekRankings) > 0 && weekRankings[0].Postseason == 1) {
+			teamWeekResults = append(teamWeekResults, weekRankings...)
+		}
 	}
 
 	if run != nil && run.publish {

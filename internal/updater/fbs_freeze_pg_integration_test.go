@@ -22,11 +22,11 @@ import (
 	"github.com/robby-barton/stats-go/internal/updater/fbsprior"
 )
 
-func openPriorIntegrationDB(t *testing.T) *gorm.DB {
+func openUpdaterIntegrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv("STATS_TEST_PG_DSN")
 	if dsn == "" {
-		t.Skip("STATS_TEST_PG_DSN not set; skipping the PostgreSQL prior test")
+		t.Skip("STATS_TEST_PG_DSN not set; skipping the PostgreSQL updater test")
 	}
 	open := func(dsn string) *gorm.DB {
 		t.Helper()
@@ -78,7 +78,7 @@ func openPriorIntegrationDB(t *testing.T) *gorm.DB {
 //	STATS_TEST_PG_DSN='host=localhost port=55432 user=stats password=stats dbname=stats sslmode=disable' \
 //	  go test -tags=integration -count=1 ./internal/updater/
 func TestIntegration_FreezeOnPostgres(t *testing.T) {
-	db := openPriorIntegrationDB(t)
+	db := openUpdaterIntegrationDB(t)
 
 	// Schema initialization must be idempotent (the migrate-schema
 	// contract): apply twice, including on an already-populated schema
@@ -214,7 +214,7 @@ func TestIntegration_FreezeOnPostgres(t *testing.T) {
 // replacement of the frozen row by the freshly computed rebuilt artifact,
 // and the whole-publication rollback when the prior store is unavailable.
 func TestIntegration_RebuildPublicationOnPostgres(t *testing.T) {
-	db := openPriorIntegrationDB(t)
+	db := openUpdaterIntegrationDB(t)
 	if err := database.MigrateSchema(db); err != nil {
 		t.Fatalf("MigrateSchema: %v", err)
 	}

@@ -92,7 +92,11 @@ func (c *Client) GetSeasonDatesForYear(ctx context.Context, year int64) ([]strin
 	if err := makeRequest(ctx, c, url, &res); err != nil {
 		return nil, err
 	}
-	return res.Leagues[0].Calendar, nil
+	league := res.Leagues[0]
+	if c.Sport == CollegeWomensBasketball && league.Season.Year != year {
+		return nil, fmt.Errorf("scoreboard calendar requested for season %d, got season %d", year, league.Season.Year)
+	}
+	return league.Calendar, nil
 }
 
 // GetGameStats fetches a single game's box score off the site.api summary
