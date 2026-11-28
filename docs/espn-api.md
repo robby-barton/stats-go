@@ -264,6 +264,9 @@ the Monday November 2 slate to Week 1. Use the last stored game of an ESPN
 week to anchor its end, rather than inferring the cutoff from the opener.
 Some postseason summaries, including the 2025–26 championship (`401856590`),
 omit `header.week`; game phase is read from `header.season.type` instead.
+The women's scheduled poll requests today and yesterday in Eastern time.
+Women's season initialization uses the requested season's calendar instead
+of the cached default season, and rejects a dated response for the wrong year.
 
 ## Season Types
 

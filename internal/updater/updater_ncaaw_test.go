@@ -172,7 +172,8 @@ func setupWomensBasketballTestServer(t *testing.T) *httptest.Server {
 			` "shortDisplayName": "W Gamma", "nickname": "Eagles", "isActive": true}}`, id)
 	})
 
-	// site.api scoreboard — mirrors the men's mock's query-dependent shapes.
+	// Match the women's Eastern date requests even on a UTC test host.
+	pollDay := time.Now().In(ncaawETLoc())
 	mux.HandleFunc(base+"/scoreboard", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		dates := r.URL.Query().Get("dates")
@@ -181,7 +182,7 @@ func setupWomensBasketballTestServer(t *testing.T) *httptest.Server {
 			if err := json.NewEncoder(w).Encode(wbFixtureScoreboardResponse()); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-		case dates == time.Now().Format("20060102"):
+		case dates == pollDay.Format("20060102"):
 			resp := espn.SiteScoreboardESPN{
 				Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2027}}},
 				Events: []espn.SiteEvent{
@@ -192,7 +193,7 @@ func setupWomensBasketballTestServer(t *testing.T) *httptest.Server {
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-		case dates == time.Now().AddDate(0, 0, -1).Format("20060102"):
+		case dates == pollDay.AddDate(0, 0, -1).Format("20060102"):
 			resp := espn.SiteScoreboardESPN{
 				Leagues: []espn.SiteScoreboardLeague{{Season: espn.SiteScoreboardLeagueSeason{Year: 2027}}},
 				Events: []espn.SiteEvent{

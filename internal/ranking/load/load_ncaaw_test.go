@@ -1,6 +1,7 @@
 package load
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -423,6 +424,61 @@ func TestWomensLatestWindow(t *testing.T) {
 		}
 		if !in.StartTime.Equal(wbET(2026, time.March, 1, 19, 0)) {
 			t.Errorf("2026 latest cutoff = %s, want 2026's latest game", in.StartTime)
+		}
+	})
+}
+
+// TestWomensEmptySeasonSentinel pins the fail-closed season-start behavior the
+// scheduled women's pipeline depends on: a season with team rows but no
+// rankable games resolves to the ErrNoRankableGames sentinel (so the
+// scheduler can skip without alerting) instead of falling through to a
+// phantom window built from another season, while the men's loader keeps its
+// legacy empty-database fallback and never produces the sentinel.
+func TestWomensEmptySeasonSentinel(t *testing.T) {
+	t.Run("women's season with no games", func(t *testing.T) {
+		db := setupTestDB(t)
+		seedWomensLoadDB(t, db, 2028)
+
+		_, err := Input(Options{DB: db, Sport: sport.WomensBasketball, Year: 2028, Week: 0})
+		if !errors.Is(err, ErrNoRankableGames) {
+			t.Fatalf("Input error = %v, want ErrNoRankableGames", err)
+		}
+	})
+
+	t.Run("women's latest request with only a prior season present", func(t *testing.T) {
+		db := setupTestDB(t)
+		seedWomensLoadDB(t, db, 2027)
+		seedWomensGame(t, db, wbGame(6181, 2027, 1, 0, 21, 22, 70, 60,
+			wbET(2026, time.November, 8, 19, 0)))
+		// A newly initialized 2028 season row must not pull the 2027 window
+		// forward: the latest request is scoped to the resolved season.
+		if err := db.Create(&database.TeamSeason{
+			TeamID: 21, Year: 2028, FBS: 1, Conf: "Big East", Sport: sport.WomensBasketball,
+		}).Error; err != nil {
+			t.Fatalf("seed 2028 season: %v", err)
+		}
+
+		// Year 0 resolves to max(team_seasons.year) = 2028: no rankable games.
+		_, err := Input(Options{DB: db, Sport: sport.WomensBasketball, Year: 0, Week: 0})
+		if !errors.Is(err, ErrNoRankableGames) {
+			t.Fatalf("Input error = %v, want ErrNoRankableGames (no phantom prior-season window)", err)
+		}
+	})
+
+	t.Run("men's empty database unchanged", func(t *testing.T) {
+		db := setupTestDB(t)
+		if err := db.Create(&[]database.TeamSeason{
+			{TeamID: 31, Year: 2028, FBS: 1, Conf: "Big East", Sport: sport.Basketball},
+		}).Error; err != nil {
+			t.Fatalf("seed men's season: %v", err)
+		}
+
+		_, err := Input(Options{DB: db, Sport: sport.Basketball, Year: 2028, Week: 0})
+		if err != nil {
+			t.Fatalf("men's empty-season Input: %v", err)
+		}
+		if errors.Is(err, ErrNoRankableGames) {
+			t.Error("men's loader must never produce ErrNoRankableGames")
 		}
 	})
 }
