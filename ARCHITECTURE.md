@@ -64,7 +64,11 @@ The `Updater` and `Ranker` structs each carry a typed sport identifier
 (`sport.Sport`, converted to the ESPN slug via `espn.Sport`). The CLI exposes
 sport subcommands (`ncaaf`, `ncaam`, `ncaaw`). The `schedule` command runs
 football and men's basketball in a single process with sport-appropriate cron
-schedules; women's basketball is one-shot only until its scheduled jobs land.
+schedules; women's basketball joins it only behind the opt-in
+`schedule --ncaaw-polling` flag (default off, `NCAAW_POLLING` env): Eastern-
+pinned games/team-info/season-init crons over the Nov–Apr season, a bounded
+daily season-init retry across the November 1–14 opener window, and ranking
+updates through the same shared ranking worker and deploy coalescer.
 Its `backfill` command audits daily ESPN finals and D-I metadata for every
 imported year, then atomically replaces the explicitly scoped women's ranking
 seasons. Rank rows for other sports and lookback-only years are untouched.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -179,9 +180,8 @@ type sportSchedule struct {
 }
 
 // registerJobs adds the three cron jobs for a sport to the scheduler and starts
-// the ranking-update worker goroutine. The worker runs until ctx is cancelled;
-// wg is released once the worker has exited so callers can join it before
-// shutting down the deployer (whose only Trigger producer is this worker).
+// the ranking worker. The worker runs until ctx is canceled and must be joined
+// before shutting down the deploy coalescer.
 func (ss sportSchedule) registerJobs(
 	ctx context.Context,
 	s gocron.Scheduler,
@@ -193,6 +193,18 @@ func (ss sportSchedule) registerJobs(
 	fbsPriorEnabled bool,
 ) {
 	update := make(chan bool, 1)
+	womens := ss.Name == "ncaaw"
+	requestRanking := func() {
+		if womens {
+			// A pending wake will already see all the games just written.
+			select {
+			case update <- true:
+			default:
+			}
+			return
+		}
+		update <- true
+	}
 
 	wg.Add(1)
 	go func() {
@@ -211,9 +223,13 @@ func (ss sportSchedule) registerJobs(
 					// row on every enabled football run, so a row frozen
 					// after startup is usable without a restart.
 					var updateErr error
-					if fbsPriorEnabled {
+					published := true
+					switch {
+					case womens:
+						published, updateErr = u.UpdateScheduledNCAAWRankings()
+					case fbsPriorEnabled:
 						updateErr = u.UpdateRecentRankingsWithPrior()
-					} else {
+					default:
 						updateErr = u.UpdateRecentRankings()
 					}
 					if updateErr != nil {
@@ -222,8 +238,10 @@ func (ss sportSchedule) registerJobs(
 						return
 					}
 					al.success(ss.Name + " ranking")
-					log.Infof("%s rankings updated", ss.Name)
-					d.Trigger()
+					if published {
+						log.Infof("%s rankings updated", ss.Name)
+						d.Trigger()
+					}
 				}()
 			case <-ctx.Done():
 				return
@@ -231,7 +249,12 @@ func (ss sportSchedule) registerJobs(
 		}
 	}()
 
-	// Completed games poll
+	// A large women's slate can outlast a tick. Let the next tick catch up
+	// rather than running two imports for the same sport at once.
+	var gameOptions []gocron.JobOption
+	if womens {
+		gameOptions = append(gameOptions, gocron.WithSingletonMode(gocron.LimitModeReschedule))
+	}
 	if _, err := s.NewJob(gocron.CronJob(ss.GamesCron, false), gocron.NewTask(func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -255,10 +278,10 @@ func (ss sportSchedule) registerJobs(
 					ss.Name, len(result.Skipped), result.SkippedIDs())
 			}
 			if len(result.Processed) > 0 {
-				update <- true
+				requestRanking()
 			}
 		}
-	})); err != nil {
+	}), gameOptions...); err != nil {
 		panic(err)
 	}
 
@@ -290,7 +313,13 @@ func (ss sportSchedule) registerJobs(
 			}
 		}()
 
-		addedSeasons, err := u.UpdateTeamSeasons(ctx, false)
+		var addedSeasons int
+		var err error
+		if womens {
+			addedSeasons, err = u.InitializeScheduledNCAAWSeason(ctx)
+		} else {
+			addedSeasons, err = u.UpdateTeamSeasons(ctx, false)
+		}
 		log.Infof("%s: added %d seasons", ss.Name, addedSeasons)
 		if err != nil {
 			log.Error(err)
@@ -307,7 +336,7 @@ func (ss sportSchedule) registerJobs(
 			}
 		}
 		if addedSeasons > 0 {
-			update <- true
+			requestRanking()
 		}
 	})); err != nil {
 		panic(err)
@@ -340,6 +369,59 @@ func registerFBSPriorRetryJob(
 	return err
 }
 
+// scheduledSport pairs a sport's cron schedule with its ESPN client sport.
+type scheduledSport struct {
+	schedule sportSchedule
+	sport    espn.Sport
+}
+
+// scheduledSports returns the registered sport schedules. With women's polling
+// disabled (the default) the list is exactly the two baseline entries, so no
+// women's updater, cron job, or ranking worker is constructed and the existing
+// football and men's basketball behavior is bit-for-bit unchanged.
+//
+// The women's cron expressions pin America/New_York with a CRON_TZ prefix so
+// the Eastern Nov-Apr season window holds regardless of the process timezone,
+// and they sit next to — not on top of — the shared men's basketball ticks:
+// the games poll runs two minutes off the men's 5-minute grid, the weekly team
+// refresh runs an hour after the men's Sunday refresh. Women's season
+// initialization retries daily November 1–14 if ESPN is not ready. Rankings
+// use the same worker pattern and shared deploy coalescer as the other sports.
+func scheduledSports(ncaawPolling bool) []scheduledSport {
+	sports := []scheduledSport{
+		{
+			schedule: sportSchedule{
+				Name:          "ncaaf",
+				GamesCron:     "*/5 * * 1,8-12 *",
+				TeamInfoCron:  "0 5 * 1,8-12 0",
+				NewSeasonCron: "0 6 10 8 *",
+			},
+			sport: espn.CollegeFootball,
+		},
+		{
+			schedule: sportSchedule{
+				Name:          "ncaam",
+				GamesCron:     "*/5 * * 1-4,11-12 *",
+				TeamInfoCron:  "0 5 * 1-4,11-12 0",
+				NewSeasonCron: "0 6 1 11 *",
+			},
+			sport: espn.CollegeBasketball,
+		},
+	}
+	if ncaawPolling {
+		sports = append(sports, scheduledSport{
+			schedule: sportSchedule{
+				Name:          "ncaaw",
+				GamesCron:     "CRON_TZ=America/New_York 2-59/5 * * 1-4,11-12 *",
+				TeamInfoCron:  "CRON_TZ=America/New_York 0 6 * 1-4,11-12 0",
+				NewSeasonCron: "CRON_TZ=America/New_York 0 7 1-14 11 *",
+			},
+			sport: espn.CollegeWomensBasketball,
+		})
+	}
+	return sports
+}
+
 func scheduleCommand(
 	log *zap.SugaredLogger,
 	db *gorm.DB,
@@ -351,6 +433,7 @@ func scheduleCommand(
 		return nil, errors.New("schedule: nil DB or logger")
 	}
 	var fbsPriorEnabled bool
+	var ncaawPolling bool
 	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Run the scheduled updater for all sports",
@@ -368,29 +451,7 @@ func scheduleCommand(
 			al := newAlerter(log)
 			d := newDeployer(log, deployScript, al)
 
-			sports := []struct {
-				schedule sportSchedule
-				sport    espn.Sport
-			}{
-				{
-					schedule: sportSchedule{
-						Name:          "ncaaf",
-						GamesCron:     "*/5 * * 1,8-12 *",
-						TeamInfoCron:  "0 5 * 1,8-12 0",
-						NewSeasonCron: "0 6 10 8 *",
-					},
-					sport: espn.CollegeFootball,
-				},
-				{
-					schedule: sportSchedule{
-						Name:          "ncaam",
-						GamesCron:     "*/5 * * 1-4,11-12 *",
-						TeamInfoCron:  "0 5 * 1-4,11-12 0",
-						NewSeasonCron: "0 6 1 11 *",
-					},
-					sport: espn.CollegeBasketball,
-				},
-			}
+			sports := scheduledSports(ncaawPolling)
 
 			var wg sync.WaitGroup
 			// The early-season prior is football-only: enable it for the ncaaf
@@ -416,6 +477,9 @@ func scheduleCommand(
 				if err := registerFBSPriorRetryJob(ctx, s, log, footballUpdater); err != nil {
 					return err
 				}
+			}
+			if ncaawPolling {
+				log.Info("ncaaw polling enabled: women's basketball scheduled jobs registered")
 			}
 
 			end := make(chan os.Signal, 1)
@@ -443,7 +507,28 @@ func scheduleCommand(
 	// read or written, and every ranking path stays at the exact baseline.
 	cmd.Flags().BoolVar(&fbsPriorEnabled, "fbs-early-season-prior", false,
 		"automatically freeze and blend a stored FBS preseason prior into scheduled football rankings (default off)")
+	// The opt-in women's polling flag. Default off: with the flag unset (and
+	// NCAAW_POLLING unset) no women's job is registered and every existing
+	// path stays at the exact baseline. The Compose NCAAW_POLLING variable
+	// supplies the default so an environment can opt in without touching the
+	// command line; the explicit flag still overrides it.
+	cmd.Flags().BoolVar(&ncaawPolling, "ncaaw-polling", ncaawPollingDefault(os.Getenv("NCAAW_POLLING")),
+		"register scheduled women's basketball jobs (games, team info, season init with retry, rankings) "+
+			"(default from NCAAW_POLLING, default off)")
 	return cmd, nil
+}
+
+// ncaawPollingDefault resolves the --ncaaw-polling flag default from the
+// Compose NCAAW_POLLING environment variable so an environment can opt in via
+// its .env override; only unambiguous truthy spellings enable polling, and
+// anything else (including unset) stays off.
+func ncaawPollingDefault(env string) bool {
+	switch strings.ToLower(strings.TrimSpace(env)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func sportCommand(

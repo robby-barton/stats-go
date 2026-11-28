@@ -91,13 +91,14 @@ not publish rankings or fetch game or poll data. See the
 
 Run one-off operations or start the scheduled service. One-shot commands are
 nested under sport subcommands (`ncaaf`, `ncaam`, `ncaaw`). The `schedule`
-command runs football and men's basketball. Women's basketball is available
-for manual validation only; automatic polling, historical coverage checks,
-and public rankings are still pending. Use ESPN's season-ending year for
+command runs football and men's basketball; women's basketball joins the
+schedule only with the opt-in `--ncaaw-polling` flag (or `NCAAW_POLLING=true`
+in the environment). Use ESPN's season-ending year for
 basketball (`2027` means 2026–27):
 
 ```sh
 make updater OPTS="schedule"                      # schedule football and men's basketball
+make updater OPTS="schedule --ncaaw-polling"      # also schedule women's basketball (opt-in)
 make updater OPTS="ncaaf games"                   # update current week's football games
 make updater OPTS="ncaaf games --all"             # update all football games for current year
 make updater OPTS="ncaaf games --single 12345"    # force-update a single game by ID
@@ -116,7 +117,7 @@ make updater OPTS="ncaaw ranking"                 # compute the latest women's r
 
 | Subcommand | Command | Flags | Description |
 |------------|---------|-------|-------------|
-| `schedule` | | `--fbs-early-season-prior` | Run as scheduled service (football and men's basketball); the sole prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md) |
+| `schedule` | | `--fbs-early-season-prior`, `--ncaaw-polling` | Run as scheduled service (football and men's basketball). The prior flag is opt-in (default off) and only affects scheduled football rankings — see [the early-season prior document](docs/fbs-early-season-prior.md). `--ncaaw-polling` is opt-in (default off, `NCAAW_POLLING` env) and adds the women's basketball jobs — see [the launch plan](docs/ncaaw-launch-plan.md) |
 | `ncaaf` / `ncaam` / `ncaaw` | `games` | `--all`, `--single <id>`, `--year <y>` | Update games (current week by default) |
 | | `ranking` | `--all`, `--fbs-early-season-prior` | Update rankings (current season by default; the prior flag requires `--all` and is football-only) |
 | | `teams` | | Update team info from ESPN |
@@ -218,6 +219,12 @@ make local-deploy     # build and run via docker compose
 
 In production, the container runs `updater schedule`, which polls for completed
 games during each sport's season (football: Aug–Jan, basketball: Nov–Apr).
+Women's basketball polling is opt-in: set `NCAAW_POLLING=true` in Compose's
+`.env` and recreate the updater. To turn it off, set it back to `false` and
+recreate the updater; imported data and rankings stay in place. Before
+turning it on, catch up any missed games with the verified backfill. Scheduled
+polling only covers today and yesterday Eastern. New women's snapshots go
+through the shared site build trigger, even before the frontend displays them.
 
 ## CI/CD
 

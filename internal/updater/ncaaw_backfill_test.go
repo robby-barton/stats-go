@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,6 +85,7 @@ type ncaawBFFixture struct {
 	conferences   []espn.SiteConference
 	bulkD1        []espn.TeamInfo
 	currentSeason int64
+	calendarReady *atomic.Bool // non-nil: 2027's year query returns the prior year until ready
 
 	dayStatus     map[string]int   // ET day → forced daily-walk HTTP status
 	dailyYear     map[string]int64 // ET day → forced wrong season year
@@ -358,7 +360,7 @@ func setupNCAAWBackfillServer(t *testing.T, fx *ncaawBFFixture) *httptest.Server
 			}
 			encode(w, espn.ScoreboardESPN{Leagues: []espn.ScoreboardLeague{{
 				Season: espn.ScoreboardSeason{
-					Year:      year,
+					Year:      fx.advertisedCalendarYear(year),
 					StartDate: "2026-07-13T07:00Z",
 					EndDate:   "2027-04-07T06:59Z",
 					Type:      espn.ScoreboardSeasonType{ID: 2, Name: "Regular Season"},
@@ -395,6 +397,13 @@ func setupNCAAWBackfillServer(t *testing.T, fx *ncaawBFFixture) *httptest.Server
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+func (fx *ncaawBFFixture) advertisedCalendarYear(year int64) int64 {
+	if year == 2027 && fx.calendarReady != nil && !fx.calendarReady.Load() {
+		return year - 1
+	}
+	return year
 }
 
 // bulkD1Wraps wraps the bulk-listed teams for the /teams response.

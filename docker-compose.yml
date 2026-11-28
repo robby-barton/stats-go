@@ -34,6 +34,11 @@ services:
     environment:
       <<: *pg-environment
       TZ: ${TZ:-America/New_York}
+      # Opt-in scheduled women's basketball polling (feeds the updater's
+      # --ncaaw-polling flag default; the flag still overrides). Leave false
+      # to keep the scheduler football + men's basketball only. Catch up
+      # missed games before enabling; the poll covers two Eastern dates.
+      NCAAW_POLLING: ${NCAAW_POLLING:-false}
       DEPLOY_SCRIPT: ${DEPLOY_SCRIPT:-/scripts/deploy-web.sh}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
       SMTP_HOST: ${SMTP_HOST:-}

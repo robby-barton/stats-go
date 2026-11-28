@@ -33,6 +33,15 @@ var boundaryLoc = func() *time.Location {
 	return loc
 }()
 
+// ErrNoRankableGames reports that a season has no rankable games to build a
+// ranking window from. Only the women's basketball latest-window resolution
+// fails closed this way: a freshly initialized season (or any season before
+// its first stored ranking game) must not fall through to a phantom window
+// built from another season's rows. Scheduled callers treat it as an expected
+// season-start skip — nothing is written, no deploy fires, no job fails —
+// while explicit one-shot invocations still surface it as an error.
+var ErrNoRankableGames = errors.New("load: no rankable games for season")
+
 // Options configures what Input loads.
 type Options struct {
 	DB    *gorm.DB
@@ -157,7 +166,8 @@ func resolve(opts Options) (ranking.Input, Window, error) {
 			}
 			if game == (database.Game{}) {
 				return ranking.Input{}, Window{}, fmt.Errorf(
-					"load: no %s rankable games for season %d", opts.Sport, year)
+					"load: no %s rankable games for season %d: %w",
+					opts.Sport, year, ErrNoRankableGames)
 			}
 		} else if err := opts.DB.
 			Where("sport = ? and season <= ?", opts.Sport, year).

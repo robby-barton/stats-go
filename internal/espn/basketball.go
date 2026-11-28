@@ -128,7 +128,17 @@ func (bc *BasketballClient) getSeasonDates(ctx context.Context, year int64) ([]s
 // day, a single-day fetch would miss it permanently. Fetching two days
 // ensures the 5-minute cron has a full day of retries to catch it.
 func (bc *BasketballClient) GetCurrentWeekGames(ctx context.Context, group Group) ([]Game, error) {
-	now := time.Now()
+	return bc.getRecentGames(ctx, group, time.Now())
+}
+
+func (bc *BasketballClient) getRecentGames(ctx context.Context, group Group, now time.Time) ([]Game, error) {
+	if bc.Sport == CollegeWomensBasketball {
+		eastern, err := time.LoadLocation("America/New_York")
+		if err != nil {
+			return nil, fmt.Errorf("loading women's basketball poll timezone: %w", err)
+		}
+		now = now.In(eastern)
+	}
 	var allGames []Game
 	seen := make(map[int64]bool)
 
@@ -198,7 +208,15 @@ func (bc *BasketballClient) getGamesByDates(ctx context.Context, dates []string,
 // This replaces the cdn schedule walk, retired with the rest of the
 // basketball cdn migration (2026-08-30).
 func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int64) (map[int64]int64, error) {
-	dates, err := bc.getSeasonDates(ctx, year)
+	var dates []string
+	var err error
+	if bc.Sport == CollegeWomensBasketball {
+		// At the opener the default scoreboard can still advertise last
+		// season. Don't consult or seed its process-lifetime cache here.
+		dates, err = bc.GetSeasonDatesForYear(ctx, year)
+	} else {
+		dates, err = bc.getSeasonDates(ctx, year)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +232,9 @@ func (bc *BasketballClient) TeamConferencesByYear(ctx context.Context, year int6
 			var res SiteScoreboardESPN
 			if err := makeRequest(ctx, bc.Client, url, &res); err != nil {
 				return nil, err
+			}
+			if bc.Sport == CollegeWomensBasketball && res.Leagues[0].Season.Year != year {
+				return nil, fmt.Errorf("scoreboard for %s returned season %d, expected %d", date, res.Leagues[0].Season.Year, year)
 			}
 			maps.Copy(teamConfs, extractTeamConfs(res.Events))
 			bc.Throttle(ctx)

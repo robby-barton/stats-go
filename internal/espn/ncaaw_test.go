@@ -1,7 +1,11 @@
 package espn
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/robby-barton/stats-go/internal/sport"
 )
@@ -59,6 +63,37 @@ func TestNewClientForSport_WomensBasketball(t *testing.T) {
 	}
 	if containsAll(mens.Scoreboard, "womens-college-basketball") {
 		t.Errorf("men's scoreboard URL %q must not use the women's path", mens.Scoreboard)
+	}
+}
+
+func TestWomensRecentGamesUseEasternDaysAcrossDST(t *testing.T) {
+	dates := make(chan string, 4)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		dates <- q.Get("dates") + ":" + q.Get("groups")
+		_, _ = io.WriteString(w, `{"leagues":[{"season":{"year":2027}}],"events":[]}`)
+	}))
+	t.Cleanup(ts.Close)
+	client := &BasketballClient{Client: &Client{
+		MaxAttempts:    1,
+		RequestTimeout: time.Second,
+		Sport:          CollegeWomensBasketball,
+		scoreboardURL:  ts.URL,
+	}}
+	// 04:30 UTC Monday is still Sunday at 23:30 Eastern after the fall-back.
+	observed := time.Date(2026, time.November, 2, 4, 30, 0, 0, time.UTC)
+	if _, err := client.getRecentGames(t.Context(), D1Basketball, observed); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"20261101:50", "20261031:50"} {
+		select {
+		case got := <-dates:
+			if got != want {
+				t.Errorf("scoreboard request = %q, want %q", got, want)
+			}
+		default:
+			t.Fatalf("missing scoreboard request %q", want)
+		}
 	}
 }
 
